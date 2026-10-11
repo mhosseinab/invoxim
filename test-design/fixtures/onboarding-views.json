@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "notice": "Expected display states only; no application state reducer is implemented.",
+  "fixtures": [
+    {
+      "id": "VIEW-01",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "connect_mailbox",
+        "headlineKey": "mailbox.title",
+        "primaryAction": "connect_mailbox",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": false,
+        "hasProcessingConsent": false,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-02",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "review_import",
+        "headlineKey": "import.review.title",
+        "primaryAction": "start_import",
+        "canStartImport": true,
+        "readyRecordCount": 0,
+        "historyComplete": false,
+        "hasProcessingConsent": false,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-03",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "review_import",
+        "headlineKey": "import.review.changeRequired",
+        "primaryAction": "review_import",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": false,
+        "hasProcessingConsent": false,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-04",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "importing",
+        "headlineKey": "import.progress.recent",
+        "primaryAction": "none",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-05",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "importing",
+        "headlineKey": "import.empty.recent",
+        "primaryAction": "none",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-06",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "records_ready",
+        "headlineKey": "import.progress.ready",
+        "primaryAction": "view_purchases",
+        "canStartImport": false,
+        "readyRecordCount": 1,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-07",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "records_ready",
+        "headlineKey": "import.progress.ready",
+        "primaryAction": "view_purchases",
+        "canStartImport": false,
+        "readyRecordCount": 4,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 1
+      }
+    },
+    {
+      "id": "VIEW-08",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "records_ready",
+        "headlineKey": "import.progress.ready",
+        "primaryAction": "view_purchases",
+        "canStartImport": false,
+        "readyRecordCount": 4,
+        "historyComplete": true,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-09",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "no_matches",
+        "headlineKey": "import.empty.complete",
+        "primaryAction": "adjust_range",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": true,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-10",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "paused_budget",
+        "headlineKey": "import.paused.budget",
+        "primaryAction": "view_usage",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-11",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "paused_budget",
+        "headlineKey": "import.paused.budget",
+        "primaryAction": "view_usage",
+        "canStartImport": false,
+        "readyRecordCount": 3,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-12",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "needs_reconnect",
+        "headlineKey": "import.paused.auth",
+        "primaryAction": "reconnect",
+        "canStartImport": false,
+        "readyRecordCount": 3,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-13",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "processing_unavailable",
+        "headlineKey": "import.paused.service",
+        "primaryAction": "view_example",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": false,
+        "hasProcessingConsent": false,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-14",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "processing_unavailable",
+        "headlineKey": "import.paused.service",
+        "primaryAction": "view_example",
+        "canStartImport": false,
+        "readyRecordCount": 2,
+        "historyComplete": false,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    },
+    {
+      "id": "VIEW-15",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "needs_attention",
+        "headlineKey": "import.reviewNeeded",
+        "primaryAction": "view_review",
+        "canStartImport": false,
+        "readyRecordCount": 0,
+        "historyComplete": true,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 2
+      }
+    },
+    {
+      "id": "VIEW-16",
+      "description": "Synthetic labeled display projection, not output of an implemented reducer.",
+      "view": {
+        "schemaVersion": 1,
+        "state": "records_ready",
+        "headlineKey": "purchase.noPayment",
+        "primaryAction": "view_purchases",
+        "canStartImport": false,
+        "readyRecordCount": 1,
+        "historyComplete": true,
+        "hasProcessingConsent": true,
+        "exampleData": false,
+        "reviewItemCount": 0
+      }
+    }
+  ]
+}

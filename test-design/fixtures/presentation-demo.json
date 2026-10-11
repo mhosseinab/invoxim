@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "exampleData": true,
+  "notice": "Synthetic read-only demo. Never import into a real workspace. Amounts are minor-unit strings.",
+  "currency": "EUR",
+  "range": {
+    "start": "2026-09-01",
+    "endExclusive": "2026-10-01"
+  },
+  "purchases": [
+    {
+      "id": "demo-headphones",
+      "merchant": "Example Audio",
+      "date": "2026-09-10",
+      "documentTotalMinor": "12000",
+      "useTag": "unassigned",
+      "evidenceIds": [
+        "demo-order",
+        "demo-invoice",
+        "demo-paid",
+        "demo-refund"
+      ],
+      "expectedPaidMinor": "12000",
+      "expectedRefundedMinor": "3000",
+      "expectedNetMinor": "9000"
+    },
+    {
+      "id": "demo-unpaid",
+      "merchant": "Example Studio",
+      "date": "2026-09-12",
+      "documentTotalMinor": "8000",
+      "useTag": "unassigned",
+      "evidenceIds": [
+        "demo-unpaid-invoice"
+      ],
+      "expectedPaidMinor": "0",
+      "expectedRefundedMinor": "0",
+      "expectedNetMinor": "0"
+    },
+    {
+      "id": "demo-purchase-a",
+      "merchant": "Example Supplies",
+      "date": "2026-09-15",
+      "documentTotalMinor": "1500",
+      "useTag": "personal",
+      "evidenceIds": [
+        "demo-small-a"
+      ],
+      "expectedPaidMinor": "1500",
+      "expectedRefundedMinor": "0",
+      "expectedNetMinor": "1500"
+    },
+    {
+      "id": "demo-purchase-b",
+      "merchant": "Example Supplies",
+      "date": "2026-09-15",
+      "documentTotalMinor": "1500",
+      "useTag": "work",
+      "evidenceIds": [
+        "demo-small-b"
+      ],
+      "expectedPaidMinor": "1500",
+      "expectedRefundedMinor": "0",
+      "expectedNetMinor": "1500"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "demo-order",
+      "kind": "order",
+      "text": "SYNTHETIC EXAMPLE. Order AUDIO-001. Headphones total EUR 120.00. Payment status not stated."
+    },
+    {
+      "id": "demo-invoice",
+      "kind": "invoice",
+      "text": "SYNTHETIC EXAMPLE. Invoice INV-AUDIO-001 for order AUDIO-001. Total EUR 120.00."
+    },
+    {
+      "id": "demo-paid",
+      "kind": "payment",
+      "text": "SYNTHETIC EXAMPLE. Payment PAY-AUDIO-001 received: EUR 120.00 for order AUDIO-001 on 2026-09-10."
+    },
+    {
+      "id": "demo-refund",
+      "kind": "refund",
+      "text": "SYNTHETIC EXAMPLE. Refund REF-AUDIO-001 completed: EUR 30.00 for order AUDIO-001 on 2026-09-18."
+    },
+    {
+      "id": "demo-unpaid-invoice",
+      "kind": "unpaid_invoice",
+      "text": "SYNTHETIC EXAMPLE. Invoice INV-STUDIO-001. EUR 80.00 due. Unpaid."
+    },
+    {
+      "id": "demo-small-a",
+      "kind": "payment",
+      "text": "SYNTHETIC EXAMPLE. Example Supplies. Paid EUR 15.00. Receipt SUP-A on 2026-09-15."
+    },
+    {
+      "id": "demo-small-b",
+      "kind": "payment",
+      "text": "SYNTHETIC EXAMPLE. Example Supplies. Paid EUR 15.00. Receipt SUP-B on 2026-09-15."
+    }
+  ],
+  "ledgerEntries": [
+    {
+      "id": "demo-pay-1",
+      "purchaseId": "demo-headphones",
+      "evidenceId": "demo-paid",
+      "kind": "payment",
+      "amountMinor": "12000",
+      "date": "2026-09-10"
+    },
+    {
+      "id": "demo-ref-1",
+      "purchaseId": "demo-headphones",
+      "evidenceId": "demo-refund",
+      "kind": "refund",
+      "amountMinor": "3000",
+      "date": "2026-09-18"
+    },
+    {
+      "id": "demo-pay-a",
+      "purchaseId": "demo-purchase-a",
+      "evidenceId": "demo-small-a",
+      "kind": "payment",
+      "amountMinor": "1500",
+      "date": "2026-09-15"
+    },
+    {
+      "id": "demo-pay-b",
+      "purchaseId": "demo-purchase-b",
+      "evidenceId": "demo-small-b",
+      "kind": "payment",
+      "amountMinor": "1500",
+      "date": "2026-09-15"
+    }
+  ],
+  "expectedSummary": {
+    "purchaseCount": 4,
+    "paymentCount": 3,
+    "refundCount": 1,
+    "paidMinor": "15000",
+    "refundedMinor": "3000",
+    "netMinor": "12000",
+    "unpaidDocumentTotalMinor": "8000"
+  }
+}

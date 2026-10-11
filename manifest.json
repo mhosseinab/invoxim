@@ -1,0 +1,644 @@
+{
+  "package": "inbox-ledger-agent-blueprint",
+  "version": "1.1",
+  "preparedAt": "2026-10-11",
+  "scope": "specification, presentation/onboarding contracts, and coding-agent instructions; not an implemented application",
+  "hashAlgorithm": "SHA-256",
+  "files": [
+    {
+      "path": ".agents/ADAPTERS.md",
+      "bytes": 4064,
+      "sha256": "42d7b4bdde935c592cc0683ffb4826fa0cc6686c8925d0ab55047619159ab5fc"
+    },
+    {
+      "path": ".agents/backlog.json",
+      "bytes": 41223,
+      "sha256": "4abf4aa536db6a33231192cc04ce5382a84a881b613b754ba3d91e36fd4c86e8"
+    },
+    {
+      "path": ".agents/rules/01-scope-and-architecture.md",
+      "bytes": 1242,
+      "sha256": "7f3addcae4a1f963ae302f3b55270c82c410d222f768975527f909c09255d8ad"
+    },
+    {
+      "path": ".agents/rules/02-tdd-and-evidence.md",
+      "bytes": 1235,
+      "sha256": "3e199d282e7f20f323776119c640a9253c2f12b37caf0b6f4b446aea1967fcae"
+    },
+    {
+      "path": ".agents/rules/03-security-and-data.md",
+      "bytes": 1371,
+      "sha256": "038692496424be3d9ddffc51609804e8ee52e5b8507320c98f1eaa394e2749fc"
+    },
+    {
+      "path": ".agents/rules/04-money-and-ai.md",
+      "bytes": 1365,
+      "sha256": "faad6fc6cf00e57b31800ecc8a29d28dacb025aa352a0d5fd00a6f84dc6299ee"
+    },
+    {
+      "path": ".agents/rules/05-collaboration-and-review.md",
+      "bytes": 1419,
+      "sha256": "661a53bc7e8df82075930571c97cae316876f57c1d0692b0da4d8ad033be42ba"
+    },
+    {
+      "path": ".agents/rules/06-delivery-and-operations.md",
+      "bytes": 1305,
+      "sha256": "b5176af465de9def2f5a54bc7b4fa0749ca7de5a1b5a8a613f4d399e7f4bbe83"
+    },
+    {
+      "path": ".agents/rules/07-truthful-product-ux.md",
+      "bytes": 2353,
+      "sha256": "b5a05c1cbd1243b5c0873c40133046ecbef593c4f2dcf70685cb6e592d9a0624"
+    },
+    {
+      "path": ".agents/skill-registry.json",
+      "bytes": 8288,
+      "sha256": "682727b83a572fce4079f7cba42996b4c85f4bf52adf3476c43b385efb4e5080"
+    },
+    {
+      "path": ".agents/skills/ai-extraction-and-evals/SKILL.md",
+      "bytes": 1522,
+      "sha256": "635f6ea6d4295ca667978bdb6a5812ee17482ef43b681b513f1fc5e14de4ace2"
+    },
+    {
+      "path": ".agents/skills/architecture-and-scope/SKILL.md",
+      "bytes": 1344,
+      "sha256": "ca5fe8e0f915b508ef97413fa7e4a8f17d238a432f9cd0e2f5cb8accdfcf12bf"
+    },
+    {
+      "path": ".agents/skills/backend-and-contracts/SKILL.md",
+      "bytes": 1325,
+      "sha256": "aea36da7400de5227319037296f4cec3d2a1dd1e5078b36624321d592a8f0a49"
+    },
+    {
+      "path": ".agents/skills/cloudflare-runtime/SKILL.md",
+      "bytes": 1373,
+      "sha256": "dca815d23337e652b1353f64d46655a07e23797dd9c7c51a9942b1854b603879"
+    },
+    {
+      "path": ".agents/skills/code-review-and-release/SKILL.md",
+      "bytes": 1786,
+      "sha256": "6e7f2f5f291ee343a474522498df5d122969b8a92d13529aac4a00309720fa7f"
+    },
+    {
+      "path": ".agents/skills/d1-data-integrity/SKILL.md",
+      "bytes": 1352,
+      "sha256": "aedcf21b50de83dd31f3823a37b18b296b4fb41bf7f51222349ac53f6f0b48b7"
+    },
+    {
+      "path": ".agents/skills/drive-archiving/SKILL.md",
+      "bytes": 1421,
+      "sha256": "7ac72fc6896b20a744fe3a156413a2ae90b49bdebb51727e4af17cb7445a2f86"
+    },
+    {
+      "path": ".agents/skills/frontend-and-accessibility/SKILL.md",
+      "bytes": 1747,
+      "sha256": "dbb4d2b70b8f86ed8584fff9c5ad5724ac694a1638a1329dc9117d99dc5a4ae0"
+    },
+    {
+      "path": ".agents/skills/money-dedup-recurring/SKILL.md",
+      "bytes": 1418,
+      "sha256": "df1091754f67715584a2959400fd7d3428da9665d5918dcb40bcf836047a0482"
+    },
+    {
+      "path": ".agents/skills/oauth-and-mail-sync/SKILL.md",
+      "bytes": 1842,
+      "sha256": "c91ed79b64e61d3de8da6f45b0938b0214b9d6350ca1550142450fb752460fc5"
+    },
+    {
+      "path": ".agents/skills/observability-and-cost/SKILL.md",
+      "bytes": 1835,
+      "sha256": "1f781db0798764502490ddcca8db2acb1e8d39ad87dd08a0a6e45993c8edc26b"
+    },
+    {
+      "path": ".agents/skills/plan-and-orchestrate/SKILL.md",
+      "bytes": 1894,
+      "sha256": "fc2ed6a84b9cfd1f49a5a2cc1ecaeffd4051d202861e38296c723fcdb2a93212"
+    },
+    {
+      "path": ".agents/skills/product-presentation-and-onboarding/SKILL.md",
+      "bytes": 3119,
+      "sha256": "16311468302d69b87f01d85b1f983c2c9704811f308085314c14f464a68c3151"
+    },
+    {
+      "path": ".agents/skills/security-and-privacy/SKILL.md",
+      "bytes": 1502,
+      "sha256": "4428d486d99c356b8091d34d5202e49c819e594220f767ec1b680bc13bcc4e90"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/SKILL.md",
+      "bytes": 1373,
+      "sha256": "8f9e367705576ebd3970957e7df2cee6eb5e4fb11b057f3ef1f6ea74bd1cd8db"
+    },
+    {
+      "path": ".agents/skills/tdd-and-property-testing/SKILL.md",
+      "bytes": 1338,
+      "sha256": "875d11aa578603d719c8b9f5deca755ed742ec2bc378268c14e24cfd63d9b83a"
+    },
+    {
+      "path": ".agents/subagents/accessibility.md",
+      "bytes": 1795,
+      "sha256": "2e297e0523b91e0c45e1924415ea6cc16f6fa951118b84c36203f1ac9fd1c134"
+    },
+    {
+      "path": ".agents/subagents/ai.md",
+      "bytes": 1756,
+      "sha256": "9625e39e7b2546199280593280d39f0035e0eb742ffa2d57b8c75aecf68ffb0e"
+    },
+    {
+      "path": ".agents/subagents/architect.md",
+      "bytes": 1714,
+      "sha256": "0ee41902163ed5c27a0afd001aa4dce6551e63a8f48a8053257d3668cf47c6b5"
+    },
+    {
+      "path": ".agents/subagents/backend.md",
+      "bytes": 1768,
+      "sha256": "fba85171f4b50c104006eae582069526d803f15f733ff4e0b80b0ea663513dd5"
+    },
+    {
+      "path": ".agents/subagents/cloudflare.md",
+      "bytes": 1736,
+      "sha256": "d4852e461c92c223bf423ded1b3e15521fd34c27f9997ac5b7e4457596adebe9"
+    },
+    {
+      "path": ".agents/subagents/database.md",
+      "bytes": 1745,
+      "sha256": "b7e848c7695dff7ff64bd1f465a0454da9915e63905cc6716fc43862637cdad4"
+    },
+    {
+      "path": ".agents/subagents/frontend.md",
+      "bytes": 1813,
+      "sha256": "f2cadc046d29baee1beffe34d6d8df8b6cef0085dc001d3f5363b42312404768"
+    },
+    {
+      "path": ".agents/subagents/integrations.md",
+      "bytes": 1796,
+      "sha256": "cd857ea4a21736fa87a765a82fdc1682e8e31aaa158cce8715dd47ce4b2372df"
+    },
+    {
+      "path": ".agents/subagents/observability.md",
+      "bytes": 1744,
+      "sha256": "8f80b539f158921791d008b624ef916dcc72684843c925b771c2634bb25ded24"
+    },
+    {
+      "path": ".agents/subagents/orchestrator.md",
+      "bytes": 1902,
+      "sha256": "fdc30f737f2f332e728a5b72ffa2caec2f0208ca7a502e43f3fe6eab9c5768e1"
+    },
+    {
+      "path": ".agents/subagents/principal-reviewer.md",
+      "bytes": 1854,
+      "sha256": "b9969a62cd10d25f41fe3b77d9611d32235229e2e0e599debd31ac2244926b84"
+    },
+    {
+      "path": ".agents/subagents/qa.md",
+      "bytes": 1846,
+      "sha256": "4eb57a2772b7e1d6dbdf9b57bb1a35cdb5133b9630d9b741fdc38a73c978faa5"
+    },
+    {
+      "path": ".agents/subagents/security.md",
+      "bytes": 1824,
+      "sha256": "7573e26a0373f2ce55b087f4e0ab291b1cba3b49f0b022ede1fc8b57fcbe10f4"
+    },
+    {
+      "path": ".agents/templates/completion-report.md",
+      "bytes": 1263,
+      "sha256": "235b8fdcd1e02adcd4cf96677b236100855a483b91f12b4c156532a3cc1c13fe"
+    },
+    {
+      "path": ".agents/templates/review-report.md",
+      "bytes": 1197,
+      "sha256": "ee5017d7b96167b7a452c0713280e8a961e2a0f03711241650b7b73088229406"
+    },
+    {
+      "path": ".agents/templates/task-handoff.md",
+      "bytes": 637,
+      "sha256": "e05346b4056f6c12c68fe270f57d7af02405d294f320093796fb56554ade2012"
+    },
+    {
+      "path": ".claude/agents/ledger-accessibility.md",
+      "bytes": 869,
+      "sha256": "f925a298167a2f316cf63f29b18817c3aee9296f000d14ea9b391fad7547708c"
+    },
+    {
+      "path": ".claude/agents/ledger-ai.md",
+      "bytes": 848,
+      "sha256": "97d8b127a55aaa93d17df7d25968877bdbbef76620211c38bce2e993b3f39e9a"
+    },
+    {
+      "path": ".claude/agents/ledger-architect.md",
+      "bytes": 818,
+      "sha256": "392d850e28c35bdef39c4e4e8312ab6693228ef85895b1b526f6b98dc724051e"
+    },
+    {
+      "path": ".claude/agents/ledger-backend.md",
+      "bytes": 871,
+      "sha256": "0d8dc0ec75c0290bdee08e5996c646780ab9bf67e2fd2cbeb211af7c82e5d749"
+    },
+    {
+      "path": ".claude/agents/ledger-cloudflare.md",
+      "bytes": 848,
+      "sha256": "fc7f182aac478e65bc07ca7dc53bd013ffa4ea96b842a6038fa1f7ff9e915793"
+    },
+    {
+      "path": ".claude/agents/ledger-database.md",
+      "bytes": 845,
+      "sha256": "abbbf0390fce80bd2c57df8a6f7ff28f1423bfc680aa8addd5d462a358db200b"
+    },
+    {
+      "path": ".claude/agents/ledger-frontend.md",
+      "bytes": 851,
+      "sha256": "c25fb96e8259d1ce7db76450e198c3e96c45b00b965fbf800f8aac4301d4ea29"
+    },
+    {
+      "path": ".claude/agents/ledger-integrations.md",
+      "bytes": 857,
+      "sha256": "5cfc694d6f57e2d1ebf628c83c6cd3d2f9d6df12c115d0a6fde5d1afc61b186b"
+    },
+    {
+      "path": ".claude/agents/ledger-observability.md",
+      "bytes": 855,
+      "sha256": "f493544aef921af60d52ca932bf4600487c73c09c81250908d369ed7c36efec9"
+    },
+    {
+      "path": ".claude/agents/ledger-orchestrator.md",
+      "bytes": 908,
+      "sha256": "cd632d7ccc5c3155dbb1e8d792da010030258ec9fbfc4f0e47b9628fb88cf662"
+    },
+    {
+      "path": ".claude/agents/ledger-principal-reviewer.md",
+      "bytes": 886,
+      "sha256": "51c118ea4d0743f68e9afee426375a408e3ddcd818b04a08b8776758ddc765e1"
+    },
+    {
+      "path": ".claude/agents/ledger-qa.md",
+      "bytes": 871,
+      "sha256": "8514e7ccfdbbbebe214cbe5cb6310b95a38c1eff6aee5fdf53fa5a306f4c71ac"
+    },
+    {
+      "path": ".claude/agents/ledger-security.md",
+      "bytes": 851,
+      "sha256": "20eb82f6e37072057057153237410016a013f107e7bd67c4ab4119f3ba28ce3e"
+    },
+    {
+      "path": ".codex/agents/ledger-accessibility.toml",
+      "bytes": 879,
+      "sha256": "2715166cc80eda6c4bf5e90cd7dc8936b7fb7c307c435c7ae98f6a80fbf1d5b8"
+    },
+    {
+      "path": ".codex/agents/ledger-ai.toml",
+      "bytes": 845,
+      "sha256": "8e4c64bc9362101cfab48459d43b9c9fe6bfde11664c9ebd9f124ea1d8ddfba1"
+    },
+    {
+      "path": ".codex/agents/ledger-architect.toml",
+      "bytes": 828,
+      "sha256": "0420b0f265e7140a29abc01798d859614e26a26e301582385d9c05039c32782f"
+    },
+    {
+      "path": ".codex/agents/ledger-backend.toml",
+      "bytes": 868,
+      "sha256": "19b5f8f1b0324d6c739a1d6b2a92b18a12eb434a535acf9b82536e9385b07907"
+    },
+    {
+      "path": ".codex/agents/ledger-cloudflare.toml",
+      "bytes": 845,
+      "sha256": "e037519aa9ee6f016662c14ad40b4fcf63f5898488a8546c92630637001264c7"
+    },
+    {
+      "path": ".codex/agents/ledger-database.toml",
+      "bytes": 842,
+      "sha256": "90dc8d4f81857c4f7b30a75ea5009ebde662c68d1f45d4e7d2543dcae6c4c905"
+    },
+    {
+      "path": ".codex/agents/ledger-frontend.toml",
+      "bytes": 848,
+      "sha256": "44b77b4446fcb8d5a6476dfd17bbb381c0bbde01f6090ad94ca98cb00a7e802c"
+    },
+    {
+      "path": ".codex/agents/ledger-integrations.toml",
+      "bytes": 854,
+      "sha256": "ee421c9e684128dd4898e60ef65f4c1de5223c3652f118e9e17d172d75452615"
+    },
+    {
+      "path": ".codex/agents/ledger-observability.toml",
+      "bytes": 852,
+      "sha256": "1fd0eaa5ef19a89e98cc2da14c342c13973a688bf2033c04131e127926bd8289"
+    },
+    {
+      "path": ".codex/agents/ledger-orchestrator.toml",
+      "bytes": 898,
+      "sha256": "c6c1ec8f3d7023bebe5301a155c3a47dfa8c67ce9cea791d71a0a4a0fbb1307f"
+    },
+    {
+      "path": ".codex/agents/ledger-principal-reviewer.toml",
+      "bytes": 896,
+      "sha256": "4c2b6dfb50579d58c40968a699f7ece269c732674929f0805fb8315b6d72b099"
+    },
+    {
+      "path": ".codex/agents/ledger-qa.toml",
+      "bytes": 868,
+      "sha256": "db8404c63747ae046120995ed1507bdd79a824585e819eb2cdc85825f52db6d7"
+    },
+    {
+      "path": ".codex/agents/ledger-security.toml",
+      "bytes": 861,
+      "sha256": "fec89334b4c11b3997fb7e475dd3c21b562ded73296f32a5514e8bf09924b6bd"
+    },
+    {
+      "path": ".codex/config.toml",
+      "bytes": 48,
+      "sha256": "91345cc0675538cf03efa43c7009cd323269280fcfdd63cfbcf878ae5f77a900"
+    },
+    {
+      "path": ".opencode/agents/ledger-accessibility.md",
+      "bytes": 856,
+      "sha256": "87a1834aab43d3edb4eb02f48b21e74002dff21621ffeeca0d8a7d762c2789e2"
+    },
+    {
+      "path": ".opencode/agents/ledger-ai.md",
+      "bytes": 789,
+      "sha256": "1c6ba26ef926a4c9f100e9b978a2962af104a872403ef5ce2e1ff2ec4ada706b"
+    },
+    {
+      "path": ".opencode/agents/ledger-architect.md",
+      "bytes": 809,
+      "sha256": "7cf6399613df8b03c5ea23636ee9897375ca4778b7423789d457c578b7f32bd5"
+    },
+    {
+      "path": ".opencode/agents/ledger-backend.md",
+      "bytes": 807,
+      "sha256": "418adf7642970009b7323c245f397104398bc0b2050ac87fe001bf2dedd9997b"
+    },
+    {
+      "path": ".opencode/agents/ledger-cloudflare.md",
+      "bytes": 781,
+      "sha256": "34f3760ed5faa029561e7a52093c59cc0e962faa3eb09a5adf8f454afe0607d6"
+    },
+    {
+      "path": ".opencode/agents/ledger-database.md",
+      "bytes": 780,
+      "sha256": "bdfcf614d8a14a85df43d2a9c7dafbbfb908d08489e83f98b7402b7a4d75bb96"
+    },
+    {
+      "path": ".opencode/agents/ledger-frontend.md",
+      "bytes": 786,
+      "sha256": "001be2024fcba7402d03c69bd722b3e5bc365280c5dffd885b7d14b01ce48d0f"
+    },
+    {
+      "path": ".opencode/agents/ledger-integrations.md",
+      "bytes": 788,
+      "sha256": "6a5c70056df3c27b49865b5c67406d6eff3a4b694caeca868b18564cb9d7e92e"
+    },
+    {
+      "path": ".opencode/agents/ledger-observability.md",
+      "bytes": 785,
+      "sha256": "446aecadd9b854860f468767f9e5fefdd3bc10f470fd6d0b905dcf2f2910e6e4"
+    },
+    {
+      "path": ".opencode/agents/ledger-orchestrator.md",
+      "bytes": 831,
+      "sha256": "8c36f61b6ce1120e14121d723ec2a9c22acb77b3444319ebefb070d4399d022b"
+    },
+    {
+      "path": ".opencode/agents/ledger-principal-reviewer.md",
+      "bytes": 868,
+      "sha256": "65005e3a4d93283bf9824f7ff2ca71aeeada0a4c42ecc9fdd1c8a56accb06a09"
+    },
+    {
+      "path": ".opencode/agents/ledger-qa.md",
+      "bytes": 812,
+      "sha256": "b5301b4592eee70fd16d7dff9fcdc15acc03e4760f57981ed4e0e9178988600d"
+    },
+    {
+      "path": ".opencode/agents/ledger-security.md",
+      "bytes": 843,
+      "sha256": "b55dea0bdce4e0eb1aa3ae1202b4f6d00dcfb2cdb18d72b74fef569461770b65"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 5630,
+      "sha256": "a6fbf686afa10db8e279cc70ffeee15f2926539cf0f3fef558a091402f87ae11"
+    },
+    {
+      "path": "BLUEPRINT.md",
+      "bytes": 16081,
+      "sha256": "fb4c9895b8f9fdedc5da12f200d9f0134bb4224d4fa32896147d2a39fe819037"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "bytes": 7439,
+      "sha256": "9717f763d92e638ef37accf6a19d40eb4f27006b847813ab1a7dc3f850c759d2"
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 789,
+      "sha256": "7a6c01d19e32fecc01decd0e18861fedaa7a0d25686a3bb748b51f36a48ae472"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5467,
+      "sha256": "ecce60b362d71fb91ab84053fe219be01d19e993691c74568a28f0ebf1463c08"
+    },
+    {
+      "path": "START_HERE.md",
+      "bytes": 4229,
+      "sha256": "a3f4b33c148e5deaf38594669727bc6e00e9575ffeed0dc3ef4100bdb3711430"
+    },
+    {
+      "path": "VALIDATION.md",
+      "bytes": 5554,
+      "sha256": "1d9afb2c199e30e753a58dbd7790335d7952a2e7a3779e8145568ea3dba7968d"
+    },
+    {
+      "path": "config/app.example.json",
+      "bytes": 2247,
+      "sha256": "2def12993b7f75775dd73cd2623bda82aa51b058ede61f272117b25279879d74"
+    },
+    {
+      "path": "contracts/README.md",
+      "bytes": 4945,
+      "sha256": "4fd5880548df560937892c1ccd24174145e92e1065f90534eedb873a3facd85c"
+    },
+    {
+      "path": "contracts/config.schema.json",
+      "bytes": 14843,
+      "sha256": "87d3c5a1c1fa0a5c7fa47290697cf8ca357af146e45d1b0fea03a99ee3e0441c"
+    },
+    {
+      "path": "contracts/extraction.schema.json",
+      "bytes": 6079,
+      "sha256": "563b8a6ba5ca523d4c5d782a89dd72292aa27dd052d1ed89244842110c76ce87"
+    },
+    {
+      "path": "contracts/onboarding-view.schema.json",
+      "bytes": 4118,
+      "sha256": "cbc1717058225b80a61ecf3f77184e3bbfeafb97b59232aab17a560e597a326d"
+    },
+    {
+      "path": "contracts/ux-copy.en.json",
+      "bytes": 7634,
+      "sha256": "c025407a760d90fab96e9199c3ec29c3a1d0925f87af2a548377798a168e4f50"
+    },
+    {
+      "path": "docs/01-product-and-ux.md",
+      "bytes": 11115,
+      "sha256": "4b0091b9807d476e39e0e47b63ef72ad54ce6898bd14f2e83625a660a8c48a39"
+    },
+    {
+      "path": "docs/02-architecture.md",
+      "bytes": 10248,
+      "sha256": "16ea1998345ada8903fc9305ee7e22bd0134357a743f39527230865abaa6c362"
+    },
+    {
+      "path": "docs/03-data-model.md",
+      "bytes": 16209,
+      "sha256": "b55de8302e7cd51b807c6e56f5092f5f2a1fbcbb8efa84c576f97fe280f821e5"
+    },
+    {
+      "path": "docs/04-email-and-storage.md",
+      "bytes": 13053,
+      "sha256": "9d2f4aeea6677d53bbe8620d05c298fba96534851027d4fdf0a15a9a2f0926cf"
+    },
+    {
+      "path": "docs/05-ai-and-evaluations.md",
+      "bytes": 11413,
+      "sha256": "560fc363268f3c685235f2aadce7ca46c2f13f157606f29629b78cc57fb56393"
+    },
+    {
+      "path": "docs/06-security-and-privacy.md",
+      "bytes": 11837,
+      "sha256": "8d1b86d656c257d41cc37a218c6cb12e9b95a68cd93b0167d43845432a4bfec4"
+    },
+    {
+      "path": "docs/07-engineering-quality.md",
+      "bytes": 11459,
+      "sha256": "c7b15a81792a20f6308c7e886b98afc7ceb5ac0907eaa33b50eb05ef5574bed2"
+    },
+    {
+      "path": "docs/08-implementation-plan.md",
+      "bytes": 28194,
+      "sha256": "a47cf62419ba44eb44ea6e5f4052989605aac8377adac002ca894c43effcdb4e"
+    },
+    {
+      "path": "docs/09-operations-and-costs.md",
+      "bytes": 11730,
+      "sha256": "d61e0e1ac95bd4494c011abb60406a80dec1affba115991344389e1fdab61089"
+    },
+    {
+      "path": "docs/10-decisions-and-release-gates.md",
+      "bytes": 7986,
+      "sha256": "b143102eab858f81dcf8e343629b677795ba2c9348510c1c3e625db48b4584b7"
+    },
+    {
+      "path": "docs/11-source-register.md",
+      "bytes": 8981,
+      "sha256": "f74c672cb67e6835302c20d879e5dc536c5bb3468ae245f134844a4ebb8b45bb"
+    },
+    {
+      "path": "docs/12-api-contracts.md",
+      "bytes": 12462,
+      "sha256": "681656195da51eb323a768191acb820c4558edb48f35a71bc25b2d37a4a5c7d2"
+    },
+    {
+      "path": "docs/13-presentation-and-onboarding.md",
+      "bytes": 23697,
+      "sha256": "ff06cf8c1ef915275bb2badc3b5ae42a7c1dd5bf502176f9bce64143ce9607c9"
+    },
+    {
+      "path": "docs/14-market-validation.md",
+      "bytes": 10508,
+      "sha256": "87f06c91f1812102a5b04bafe1020581bd9aed0a2ec10a0cf4c2409145258fd5"
+    },
+    {
+      "path": "docs/sources.json",
+      "bytes": 11639,
+      "sha256": "fb67b210e419ff7df2278e6c36ff91f2466c4ff513c595186dbc21a19a48f25e"
+    },
+    {
+      "path": "evidence/blueprint-helper-tests-red-v1.1.log",
+      "bytes": 7898,
+      "sha256": "612d48cd01057ea0dbc5a9866e40932fc8ac85403b772a182d4df305f9b375f3"
+    },
+    {
+      "path": "evidence/blueprint-helper-tests.log",
+      "bytes": 2540,
+      "sha256": "324d8c64dcea6ca9c8ca318cbf18618f5710fd75de03fc54c30fbe81fb03e503"
+    },
+    {
+      "path": "evidence/package-syntax-audit.json",
+      "bytes": 218,
+      "sha256": "3c6f1e5672b1f58a6d35a66ea1f6d9f633c1549b6cab8d7f75921a24278ac2d0"
+    },
+    {
+      "path": "test-design/README.md",
+      "bytes": 2969,
+      "sha256": "e709cf56f2cfa3b83ddb2fa2d20f6790dd1d5b289f3e9280b33211a45881811f"
+    },
+    {
+      "path": "test-design/acceptance-cases.json",
+      "bytes": 57832,
+      "sha256": "4d5cc428cbe26cb1db47c1e435d392dc4cf6bac1942c1e2c5c2ddad7fddae760"
+    },
+    {
+      "path": "test-design/financial-cases.json",
+      "bytes": 32677,
+      "sha256": "50221f54be56e96301f631584889552c80e6b53e8c221331c4f8a097d572a711"
+    },
+    {
+      "path": "test-design/fixtures/onboarding-views.json",
+      "bytes": 8217,
+      "sha256": "f80b1c7f358ecfa2ed205d990747723a2c7bffc6a4815fc4efffb037d6bb5d9d"
+    },
+    {
+      "path": "test-design/fixtures/presentation-demo.json",
+      "bytes": 3883,
+      "sha256": "feb8a09cef41a9e2f3e7859f5c6bcf7458bde246cbc43201ef51b457663f43b3"
+    },
+    {
+      "path": "test-design/fixtures/receipts.json",
+      "bytes": 26949,
+      "sha256": "6778f906a1abf347b9581d45cc574111953e80a0844ae6307050db83d412900a"
+    },
+    {
+      "path": "test-design/market-benchmark-template.md",
+      "bytes": 2021,
+      "sha256": "84f3128178b6462fdabb4fad48b66e5a81ac8f9ab0067c9460afda91c685333f"
+    },
+    {
+      "path": "tools/README.md",
+      "bytes": 2712,
+      "sha256": "082bd9bd3045d3941cfe77a8936595c0be9975441eef7a225e64cc9b325fba27"
+    },
+    {
+      "path": "tools/check_package_syntax.py",
+      "bytes": 2404,
+      "sha256": "7caafa68c12a7ff1862e560a9a739f591fab173e3bf19757ef653902eb78977d"
+    },
+    {
+      "path": "tools/install_claude_skills.py",
+      "bytes": 2531,
+      "sha256": "89e5d18b6af23f3e91c0d8eafd393a2b2adf6303f381317d942b1ad20ad00376"
+    },
+    {
+      "path": "tools/test_blueprint_helpers.py",
+      "bytes": 7547,
+      "sha256": "bede3cbf63ff0cc39b8fb224a309dd40c29d03417eabceabac8f6beebb53d676"
+    },
+    {
+      "path": "tools/validate_blueprint.py",
+      "bytes": 11798,
+      "sha256": "b01cff1be12a18ed609c4641066aef6ba0ab5986af06f9dab203030bbe61f7c7"
+    },
+    {
+      "path": "tools/validate_presentation.py",
+      "bytes": 6965,
+      "sha256": "26360bc66e4ea906b8df195438d98033674a6e93ae6b2362fe18f5433583d7f1"
+    },
+    {
+      "path": "validation-report.json",
+      "bytes": 1643,
+      "sha256": "9956c15c446c3242b5fdf48b66f6828dee70be4f8c43f0c0a6fbf05b166ad007"
+    }
+  ]
+}

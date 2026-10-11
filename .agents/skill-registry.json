@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "maxConcurrentSubagents": 4,
+  "skills": [
+    {
+      "name": "plan-and-orchestrate",
+      "path": ".agents/skills/plan-and-orchestrate/SKILL.md",
+      "description": "Plan and coordinate bounded implementation tasks without inventing results."
+    },
+    {
+      "name": "architecture-and-scope",
+      "path": ".agents/skills/architecture-and-scope/SKILL.md",
+      "description": "Design minimal domain boundaries and challenge unnecessary complexity."
+    },
+    {
+      "name": "tdd-and-property-testing",
+      "path": ".agents/skills/tdd-and-property-testing/SKILL.md",
+      "description": "Use behavioral TDD, independent oracles and runtime integration tests."
+    },
+    {
+      "name": "backend-and-contracts",
+      "path": ".agents/skills/backend-and-contracts/SKILL.md",
+      "description": "Implement strict APIs and domain use cases with tenant-scoped authorization."
+    },
+    {
+      "name": "frontend-and-accessibility",
+      "path": ".agents/skills/frontend-and-accessibility/SKILL.md",
+      "description": "Build a usable, responsive financial UI with accurate states and accessible controls."
+    },
+    {
+      "name": "cloudflare-runtime",
+      "path": ".agents/skills/cloudflare-runtime/SKILL.md",
+      "description": "Implement and verify Pages, Workers, Queues and scheduled jobs within actual limits."
+    },
+    {
+      "name": "d1-data-integrity",
+      "path": ".agents/skills/d1-data-integrity/SKILL.md",
+      "description": "Protect tenant ownership, migrations, financial atomicity and query efficiency."
+    },
+    {
+      "name": "oauth-and-mail-sync",
+      "path": ".agents/skills/oauth-and-mail-sync/SKILL.md",
+      "description": "Connect independent mailbox identities and synchronize reliably through provider APIs."
+    },
+    {
+      "name": "drive-archiving",
+      "path": ".agents/skills/drive-archiving/SKILL.md",
+      "description": "Archive exact originals to explicitly authorized user-owned Drive storage."
+    },
+    {
+      "name": "ai-extraction-and-evals",
+      "path": ".agents/skills/ai-extraction-and-evals/SKILL.md",
+      "description": "Extract evidence-backed receipt fields through bounded provider-agnostic inference."
+    },
+    {
+      "name": "money-dedup-recurring",
+      "path": ".agents/skills/money-dedup-recurring/SKILL.md",
+      "description": "Maintain correct payments, refunds, FX, deduplication and recurring estimates."
+    },
+    {
+      "name": "security-and-privacy",
+      "path": ".agents/skills/security-and-privacy/SKILL.md",
+      "description": "Review identity, data access, credentials, processors and adversarial input boundaries."
+    },
+    {
+      "name": "observability-and-cost",
+      "path": ".agents/skills/observability-and-cost/SKILL.md",
+      "description": "Operate bounded background work with redacted telemetry and real budget controls."
+    },
+    {
+      "name": "code-review-and-release",
+      "path": ".agents/skills/code-review-and-release/SKILL.md",
+      "description": "Review correctness independently and reject incomplete or overcomplicated delivery."
+    },
+    {
+      "name": "systematic-debugging",
+      "path": ".agents/skills/systematic-debugging/SKILL.md",
+      "description": "Reproduce failures and repair root causes without weakening safeguards."
+    },
+    {
+      "name": "product-presentation-and-onboarding",
+      "path": ".agents/skills/product-presentation-and-onboarding/SKILL.md",
+      "description": "Build truthful presentation and a consent-safe, resumable first-value flow."
+    }
+  ],
+  "roles": [
+    {
+      "name": "orchestrator",
+      "path": ".agents/subagents/orchestrator.md",
+      "description": "Coordinates task order, bounded delegation, shared contracts and milestone evidence.",
+      "readOnly": false,
+      "skills": [
+        "plan-and-orchestrate",
+        "architecture-and-scope",
+        "code-review-and-release",
+        "product-presentation-and-onboarding"
+      ]
+    },
+    {
+      "name": "architect",
+      "path": ".agents/subagents/architect.md",
+      "description": "Reviews the smallest architecture compatible with the agreed scope and runtime.",
+      "readOnly": true,
+      "skills": [
+        "architecture-and-scope",
+        "cloudflare-runtime",
+        "d1-data-integrity"
+      ]
+    },
+    {
+      "name": "backend",
+      "path": ".agents/subagents/backend.md",
+      "description": "Implements typed API/domain use cases and application security mechanisms.",
+      "readOnly": false,
+      "skills": [
+        "backend-and-contracts",
+        "tdd-and-property-testing",
+        "money-dedup-recurring"
+      ]
+    },
+    {
+      "name": "frontend",
+      "path": ".agents/subagents/frontend.md",
+      "description": "Implements dashboard, onboarding, settings and review interfaces.",
+      "readOnly": false,
+      "skills": [
+        "frontend-and-accessibility",
+        "backend-and-contracts",
+        "tdd-and-property-testing",
+        "product-presentation-and-onboarding"
+      ]
+    },
+    {
+      "name": "qa",
+      "path": ".agents/subagents/qa.md",
+      "description": "Independently implements and executes acceptance, integration and failure tests.",
+      "readOnly": false,
+      "skills": [
+        "tdd-and-property-testing",
+        "systematic-debugging",
+        "code-review-and-release",
+        "product-presentation-and-onboarding"
+      ]
+    },
+    {
+      "name": "cloudflare",
+      "path": ".agents/subagents/cloudflare.md",
+      "description": "Implements Workers runtime, bindings, queues and deployment mechanics.",
+      "readOnly": false,
+      "skills": [
+        "cloudflare-runtime",
+        "tdd-and-property-testing",
+        "observability-and-cost"
+      ]
+    },
+    {
+      "name": "database",
+      "path": ".agents/subagents/database.md",
+      "description": "Implements and reviews schema, tenant repositories and atomic financial writes.",
+      "readOnly": false,
+      "skills": [
+        "d1-data-integrity",
+        "money-dedup-recurring",
+        "tdd-and-property-testing"
+      ]
+    },
+    {
+      "name": "security",
+      "path": ".agents/subagents/security.md",
+      "description": "Performs independent read-only security, privacy and release-gate review.",
+      "readOnly": true,
+      "skills": [
+        "security-and-privacy",
+        "oauth-and-mail-sync",
+        "code-review-and-release",
+        "product-presentation-and-onboarding"
+      ]
+    },
+    {
+      "name": "integrations",
+      "path": ".agents/subagents/integrations.md",
+      "description": "Implements mailbox, MIME and user-owned storage provider adapters.",
+      "readOnly": false,
+      "skills": [
+        "oauth-and-mail-sync",
+        "drive-archiving",
+        "cloudflare-runtime",
+        "tdd-and-property-testing"
+      ]
+    },
+    {
+      "name": "ai",
+      "path": ".agents/subagents/ai.md",
+      "description": "Implements bounded inference, extraction validation and honest evaluations.",
+      "readOnly": false,
+      "skills": [
+        "ai-extraction-and-evals",
+        "money-dedup-recurring",
+        "tdd-and-property-testing"
+      ]
+    },
+    {
+      "name": "accessibility",
+      "path": ".agents/subagents/accessibility.md",
+      "description": "Reviews usability and accessibility of financial journeys without editing the patch.",
+      "readOnly": true,
+      "skills": [
+        "frontend-and-accessibility",
+        "code-review-and-release",
+        "product-presentation-and-onboarding"
+      ]
+    },
+    {
+      "name": "observability",
+      "path": ".agents/subagents/observability.md",
+      "description": "Implements redacted monitoring, quotas and operational recovery evidence.",
+      "readOnly": false,
+      "skills": [
+        "observability-and-cost",
+        "cloudflare-runtime",
+        "tdd-and-property-testing"
+      ]
+    },
+    {
+      "name": "principal-reviewer",
+      "path": ".agents/subagents/principal-reviewer.md",
+      "description": "Independently challenges correctness, complexity and unsupported completion claims.",
+      "readOnly": true,
+      "skills": [
+        "code-review-and-release",
+        "architecture-and-scope",
+        "security-and-privacy",
+        "product-presentation-and-onboarding"
+      ]
+    }
+  ]
+}

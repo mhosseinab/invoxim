@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:inbox-ledger:onboarding-view:v1",
+  "title": "Bounded authenticated onboarding display projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "state",
+    "headlineKey",
+    "primaryAction",
+    "canStartImport",
+    "readyRecordCount",
+    "historyComplete",
+    "hasProcessingConsent",
+    "exampleData",
+    "reviewItemCount"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "state": {
+      "enum": [
+        "connect_mailbox",
+        "review_import",
+        "importing",
+        "records_ready",
+        "no_matches",
+        "paused_budget",
+        "needs_reconnect",
+        "processing_unavailable",
+        "needs_attention"
+      ]
+    },
+    "headlineKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "primaryAction": {
+      "enum": [
+        "connect_mailbox",
+        "review_import",
+        "start_import",
+        "view_purchases",
+        "adjust_range",
+        "view_usage",
+        "reconnect",
+        "view_example",
+        "view_review",
+        "none"
+      ]
+    },
+    "canStartImport": {
+      "type": "boolean"
+    },
+    "readyRecordCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "historyComplete": {
+      "type": "boolean"
+    },
+    "hasProcessingConsent": {
+      "type": "boolean"
+    },
+    "exampleData": {
+      "const": false
+    },
+    "activeImportId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 120
+    },
+    "connectionId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 120
+    },
+    "disclosureVersion": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 120
+    },
+    "reviewItemCount": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "records_ready"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "readyRecordCount": {
+            "minimum": 1
+          },
+          "hasProcessingConsent": {
+            "const": true
+          },
+          "primaryAction": {
+            "const": "view_purchases"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "no_matches"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "readyRecordCount": {
+            "const": 0
+          },
+          "historyComplete": {
+            "const": true
+          },
+          "hasProcessingConsent": {
+            "const": true
+          },
+          "primaryAction": {
+            "const": "adjust_range"
+          },
+          "reviewItemCount": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "canStartImport": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "state": {
+            "const": "review_import"
+          },
+          "primaryAction": {
+            "const": "start_import"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "connect_mailbox"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "canStartImport": {
+            "const": false
+          },
+          "readyRecordCount": {
+            "const": 0
+          },
+          "hasProcessingConsent": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "needs_attention"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reviewItemCount": {
+            "minimum": 1
+          },
+          "primaryAction": {
+            "const": "view_review"
+          },
+          "canStartImport": {
+            "const": false
+          },
+          "hasProcessingConsent": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}

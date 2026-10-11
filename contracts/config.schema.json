@@ -1,0 +1,649 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:inbox-ledger:config:v1",
+  "title": "Nonsecret application configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "environment": {
+      "enum": [
+        "local",
+        "staging",
+        "production"
+      ]
+    },
+    "publicSignupEnabled": {
+      "type": "boolean"
+    },
+    "signupMode": {
+      "enum": [
+        "allowlist",
+        "public"
+      ]
+    },
+    "defaultReportingCurrency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "defaultTimezone": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "mail": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxMailboxesPerUser": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "defaultHistoryMonths": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "syncIntervalMinutes": {
+          "type": "integer",
+          "minimum": 15,
+          "maximum": 1440
+        },
+        "dispatchIntervalMinutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        },
+        "manualSyncCooldownSeconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 3600
+        },
+        "discoveryPageSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "gmail",
+              "outlook"
+            ]
+          },
+          "maxItems": 2
+        },
+        "recentFirstDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        }
+      },
+      "required": [
+        "maxMailboxesPerUser",
+        "defaultHistoryMonths",
+        "syncIntervalMinutes",
+        "dispatchIntervalMinutes",
+        "manualSyncCooldownSeconds",
+        "discoveryPageSize",
+        "providers",
+        "recentFirstDays"
+      ]
+    },
+    "jobs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxConcurrentPerTenant": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "consumerConcurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "leaseSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 1800
+        },
+        "maxQueueBodyBytes": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 2048
+        }
+      },
+      "required": [
+        "maxConcurrentPerTenant",
+        "consumerConcurrency",
+        "leaseSeconds",
+        "maxQueueBodyBytes"
+      ]
+    },
+    "documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxAttachmentBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 16777216
+        },
+        "maxAiTextCharacters": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 100000
+        },
+        "maxJsonResponseBytes": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 524288
+        },
+        "parser": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": [
+                "disabled",
+                "cloudflare-markdown",
+                "approved-custom"
+              ]
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "approvedCapabilities": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "pdf-text",
+                  "image-ocr",
+                  "pdf-scan"
+                ]
+              },
+              "maxItems": 3
+            }
+          },
+          "required": [
+            "provider",
+            "enabled",
+            "approvedCapabilities"
+          ]
+        }
+      },
+      "required": [
+        "maxAttachmentBytes",
+        "maxAiTextCharacters",
+        "maxJsonResponseBytes",
+        "parser"
+      ]
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hosted": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "providerId": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "adapter": {
+              "enum": [
+                "openai-chat-compatible",
+                "cloudflare-workers-ai",
+                "custom-approved"
+              ]
+            },
+            "baseUrl": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 200
+            },
+            "secretRef": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "priceVersion": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 80
+            }
+          },
+          "required": [
+            "enabled",
+            "providerId",
+            "adapter",
+            "baseUrl",
+            "model",
+            "secretRef",
+            "priceVersion"
+          ]
+        },
+        "approvedByokProviders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "adapter": {
+                "enum": [
+                  "openai-chat-compatible",
+                  "custom-approved"
+                ]
+              },
+              "baseUrl": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://"
+              },
+              "modelIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "maxItems": 100
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "text",
+                    "json-schema",
+                    "image",
+                    "pdf"
+                  ]
+                },
+                "maxItems": 4
+              },
+              "pricingVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 80
+              }
+            },
+            "required": [
+              "id",
+              "adapter",
+              "baseUrl",
+              "modelIds",
+              "capabilities",
+              "pricingVersion"
+            ]
+          },
+          "maxItems": 30
+        },
+        "maxAttemptsPerExtraction": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "documentsPerUserDay": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            },
+            "documentsPerUserMonth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "operatorDailyUsdMicros": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000000
+            },
+            "operatorMonthlyUsdMicros": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000000
+            }
+          },
+          "required": [
+            "documentsPerUserDay",
+            "documentsPerUserMonth",
+            "operatorDailyUsdMicros",
+            "operatorMonthlyUsdMicros"
+          ]
+        }
+      },
+      "required": [
+        "hosted",
+        "approvedByokProviders",
+        "maxAttemptsPerExtraction",
+        "limits"
+      ]
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rawArchiveEnabledByDefault": {
+          "const": false
+        },
+        "supportedProviders": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "google-drive"
+            ]
+          },
+          "maxItems": 1
+        },
+        "allowOperatorRawStorage": {
+          "const": false
+        }
+      },
+      "required": [
+        "rawArchiveEnabledByDefault",
+        "supportedProviders",
+        "allowOperatorRawStorage"
+      ]
+    },
+    "fx": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "enum": [
+            "frankfurter-v2"
+          ]
+        },
+        "rateSource": {
+          "enum": [
+            "ecb"
+          ]
+        },
+        "maxPriorRateAgeDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 14
+        }
+      },
+      "required": [
+        "provider",
+        "rateSource",
+        "maxPriorRateAgeDays"
+      ]
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "completedJobsDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "failedJobsDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "usageEventsDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365
+        },
+        "oauthStateSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 600
+        }
+      },
+      "required": [
+        "completedJobsDays",
+        "failedJobsDays",
+        "usageEventsDays",
+        "oauthStateSeconds"
+      ]
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "logDocumentContent": {
+          "const": false
+        },
+        "runtimeAiToolsEnabled": {
+          "const": false
+        },
+        "followModelUrls": {
+          "const": false
+        },
+        "allowUnapprovedAiHosts": {
+          "const": false
+        }
+      },
+      "required": [
+        "logDocumentContent",
+        "runtimeAiToolsEnabled",
+        "followModelUrls",
+        "allowUnapprovedAiHosts"
+      ]
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "displayName",
+        "demoEnabled",
+        "releaseStage",
+        "features"
+      ],
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "demoEnabled": {
+          "type": "boolean"
+        },
+        "releaseStage": {
+          "enum": [
+            "M0",
+            "M1",
+            "M2"
+          ]
+        },
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outlook",
+            "driveArchive",
+            "recurring",
+            "useTags"
+          ],
+          "properties": {
+            "outlook": {
+              "type": "boolean"
+            },
+            "driveArchive": {
+              "type": "boolean"
+            },
+            "recurring": {
+              "type": "boolean"
+            },
+            "useTags": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "pilotMeasurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "requiresUserOptIn",
+        "retentionDays",
+        "maxEventsPerUserDay"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "requiresUserOptIn": {
+          "const": true
+        },
+        "retentionDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "maxEventsPerUserDay": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "environment",
+    "publicSignupEnabled",
+    "signupMode",
+    "defaultReportingCurrency",
+    "defaultTimezone",
+    "mail",
+    "jobs",
+    "documents",
+    "ai",
+    "storage",
+    "fx",
+    "retention",
+    "safety",
+    "product",
+    "pilotMeasurement"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "publicSignupEnabled": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "signupMode": {
+            "const": "public"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ai": {
+            "properties": {
+              "hosted": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "ai": {
+            "properties": {
+              "hosted": {
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "priceVersion": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "product": {
+            "properties": {
+              "releaseStage": {
+                "const": "M0"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "product": {
+            "properties": {
+              "features": {
+                "properties": {
+                  "outlook": {
+                    "const": false
+                  },
+                  "driveArchive": {
+                    "const": false
+                  },
+                  "recurring": {
+                    "const": false
+                  },
+                  "useTags": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

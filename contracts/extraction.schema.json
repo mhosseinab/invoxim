@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:inbox-ledger:extraction:v1",
+  "title": "Transient receipt extraction response",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "documentType": {
+      "enum": [
+        "receipt",
+        "invoice",
+        "order-confirmation",
+        "refund",
+        "credit-note",
+        "cancellation",
+        "statement",
+        "non-purchase",
+        "unknown"
+      ]
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "merchant": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "documentDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "eventDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{3}$"
+          },
+          "total": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
+          },
+          "tax": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
+          },
+          "invoiceNumber": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160
+          },
+          "orderReference": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160
+          },
+          "category": {
+            "enum": [
+              "groceries",
+              "dining",
+              "shopping",
+              "transport",
+              "travel",
+              "home",
+              "utilities",
+              "health",
+              "education",
+              "entertainment",
+              "software",
+              "business-services",
+              "other",
+              "uncategorized"
+            ]
+          },
+          "paymentEvidence": {
+            "enum": [
+              "explicitly-paid",
+              "explicitly-unpaid",
+              "unknown"
+            ]
+          },
+          "refundEvidence": {
+            "enum": [
+              "completed",
+              "pending",
+              "none",
+              "unknown"
+            ]
+          },
+          "paymentMethodHint": {
+            "enum": [
+              "card",
+              "cash",
+              "bank-transfer",
+              "wallet",
+              "store-credit",
+              "unknown"
+            ]
+          },
+          "recurringCadence": {
+            "enum": [
+              "monthly",
+              "yearly",
+              "other",
+              "unknown"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "enum": [
+                    "merchant",
+                    "documentDate",
+                    "eventDate",
+                    "currency",
+                    "total",
+                    "tax",
+                    "invoiceNumber",
+                    "orderReference",
+                    "payment",
+                    "refund",
+                    "recurring",
+                    "paymentAmount",
+                    "refundAmount",
+                    "storeCreditAmount"
+                  ]
+                },
+                "inputPartId": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "quote": {
+                  "type": "string",
+                  "maxLength": 400
+                }
+              },
+              "required": [
+                "field",
+                "inputPartId",
+                "quote"
+              ]
+            },
+            "maxItems": 20
+          },
+          "paymentAmount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
+          },
+          "refundAmount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
+          },
+          "storeCreditAmount": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
+          }
+        },
+        "required": [
+          "merchant",
+          "documentDate",
+          "eventDate",
+          "currency",
+          "total",
+          "tax",
+          "invoiceNumber",
+          "orderReference",
+          "category",
+          "paymentEvidence",
+          "refundEvidence",
+          "paymentMethodHint",
+          "recurringCadence",
+          "evidence",
+          "paymentAmount",
+          "refundAmount",
+          "storeCreditAmount"
+        ]
+      },
+      "maxItems": 10
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "ambiguous-currency",
+          "ambiguous-date",
+          "missing-total",
+          "multiple-totals",
+          "unsupported-language",
+          "incomplete-document",
+          "suspected-injection",
+          "unreadable"
+        ]
+      },
+      "maxItems": 12
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "documentType",
+    "records",
+    "warnings"
+  ],
+  "description": "Untrusted transient model response. Schema validity does not establish evidence, payment, currency validity, correct arithmetic, or persistence eligibility. Strip evidence quotes before storage."
+}

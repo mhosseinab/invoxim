@@ -1,0 +1,280 @@
+{
+  "checkedAt": "2026-10-11",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "Gmail authorization scopes",
+      "url": "https://developers.google.com/workspace/gmail/api/auth/scopes",
+      "supports": "Read-only mailbox access is restricted; server storage/transmission can require a security assessment."
+    },
+    {
+      "id": "S02",
+      "title": "Restricted-scope verification",
+      "url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification",
+      "supports": "Public-launch prerequisites and assessment rules; confirm applicability for the final implementation."
+    },
+    {
+      "id": "S03",
+      "title": "Cloudflare Pages bindings",
+      "url": "https://developers.cloudflare.com/pages/functions/bindings/",
+      "supports": "Pages Functions can call a bound Worker service; verify cookie/origin behavior in the deployed app."
+    },
+    {
+      "id": "S04",
+      "title": "Drive authorization scopes",
+      "url": "https://developers.google.com/workspace/drive/api/guides/api-specific-auth",
+      "supports": "drive.file limits the application to files it creates or the user selects for it."
+    },
+    {
+      "id": "S05",
+      "title": "Queues delivery guarantees",
+      "url": "https://developers.cloudflare.com/queues/reference/delivery-guarantees/",
+      "supports": "At-least-once delivery requires idempotent consumers; do not assume ordering."
+    },
+    {
+      "id": "S06",
+      "title": "Queues pricing",
+      "url": "https://developers.cloudflare.com/queues/platform/pricing/",
+      "supports": "Free operations and 24-hour retention; paid allowances; retry operation costs."
+    },
+    {
+      "id": "S07",
+      "title": "D1 limits",
+      "url": "https://developers.cloudflare.com/d1/platform/limits/",
+      "supports": "Per-database size, query constraints, and plan-dependent Time Travel retention."
+    },
+    {
+      "id": "S08",
+      "title": "Workers limits",
+      "url": "https://developers.cloudflare.com/workers/platform/limits/",
+      "supports": "Runtime and request/CPU limits; benchmark rather than assume free-tier suitability."
+    },
+    {
+      "id": "S09",
+      "title": "Workers pricing",
+      "url": "https://developers.cloudflare.com/workers/platform/pricing/",
+      "supports": "Free allowances and paid subscription baseline; recheck before deployment."
+    },
+    {
+      "id": "S10",
+      "title": "D1 pricing",
+      "url": "https://developers.cloudflare.com/d1/platform/pricing/",
+      "supports": "Rows read/written and storage billing; indexes matter."
+    },
+    {
+      "id": "S11",
+      "title": "D1 Database API",
+      "url": "https://developers.cloudflare.com/d1/worker-api/d1-database/",
+      "supports": "Prepared statements and batch API; test actual atomic/fencing behavior, not generic ORM transaction assumptions."
+    },
+    {
+      "id": "S12",
+      "title": "Gmail synchronization",
+      "url": "https://developers.google.com/workspace/gmail/api/guides/sync",
+      "supports": "Full/partial sync and expired history recovery."
+    },
+    {
+      "id": "S13",
+      "title": "Google OAuth 2.0",
+      "url": "https://developers.google.com/identity/protocols/oauth2",
+      "supports": "Token lifecycle and external Testing-mode refresh-token expiry exceptions."
+    },
+    {
+      "id": "S14",
+      "title": "Microsoft Graph mail overview",
+      "url": "https://learn.microsoft.com/en-us/graph/api/resources/mail-api-overview?view=graph-rest-1.0",
+      "supports": "Personal and organizational mailbox support; service/account restrictions remain relevant."
+    },
+    {
+      "id": "S15",
+      "title": "Microsoft Graph permissions",
+      "url": "https://learn.microsoft.com/en-us/graph/permissions-reference",
+      "supports": "Delegated Mail.Read versus insufficient basic-mail access."
+    },
+    {
+      "id": "S16",
+      "title": "Microsoft Graph message delta",
+      "url": "https://learn.microsoft.com/en-us/graph/delta-query-messages",
+      "supports": "Per-folder delta state and opaque continuation links."
+    },
+    {
+      "id": "S17",
+      "title": "Microsoft Graph immutable IDs",
+      "url": "https://learn.microsoft.com/en-us/graph/outlook-immutable-id",
+      "supports": "Request header and lifecycle limitations for stable message identifiers."
+    },
+    {
+      "id": "S18",
+      "title": "Yahoo developer access",
+      "url": "https://senders.yahooinc.com/developer/developer-access/",
+      "supports": "Commercial access is not a guaranteed instant OAuth integration; defer until verified."
+    },
+    {
+      "id": "S19",
+      "title": "Proton Mail Bridge",
+      "url": "https://proton.me/mail/bridge",
+      "supports": "Desktop-local bridge is not a drop-in Cloudflare cloud mailbox connector."
+    },
+    {
+      "id": "S20",
+      "title": "Better Auth Google provider",
+      "url": "https://better-auth.com/docs/authentication/google",
+      "supports": "Google login integration; not a reason to conflate app identity and additional mailbox authorizations."
+    },
+    {
+      "id": "S21",
+      "title": "Better Auth Drizzle adapter",
+      "url": "https://better-auth.com/docs/adapters/drizzle",
+      "supports": "Adapter setup; select and pin compatible stable versions after the runtime spike."
+    },
+    {
+      "id": "S22",
+      "title": "Drizzle D1 connection",
+      "url": "https://orm.drizzle.team/docs/sqlite/connect-cloudflare-d1",
+      "supports": "D1 integration exists; check stable package versions and runtime behavior."
+    },
+    {
+      "id": "S23",
+      "title": "Cloudflare Vitest integration",
+      "url": "https://developers.cloudflare.com/workers/testing/vitest-integration/",
+      "supports": "Tests in the Workers runtime rather than Node-only mocks."
+    },
+    {
+      "id": "S24",
+      "title": "Workers AI Markdown conversion",
+      "url": "https://developers.cloudflare.com/workers-ai/features/markdown-conversion/",
+      "supports": "Candidate document-conversion adapter, not an OCR accuracy guarantee."
+    },
+    {
+      "id": "S25",
+      "title": "Markdown supported formats",
+      "url": "https://developers.cloudflare.com/workers-ai/features/markdown-conversion/supported-formats/",
+      "supports": "Check supported MIME formats and test numeric fidelity for actual receipt types."
+    },
+    {
+      "id": "S26",
+      "title": "Workers AI data usage",
+      "url": "https://developers.cloudflare.com/workers-ai/platform/data-usage/",
+      "supports": "Service data-use policy; check model licensing and the selected processing path."
+    },
+    {
+      "id": "S27",
+      "title": "Workers AI pricing",
+      "url": "https://developers.cloudflare.com/workers-ai/platform/pricing/",
+      "supports": "Account-level allowance and model-dependent costs; not a guaranteed number of free receipts."
+    },
+    {
+      "id": "S28",
+      "title": "Frankfurter API",
+      "url": "https://frankfurter.dev/",
+      "supports": "Current v2 API, historical rates and providers; prefer a stated provider such as ECB and persist exact rate snapshots."
+    },
+    {
+      "id": "S29",
+      "title": "Google API Services User Data Policy",
+      "url": "https://developers.google.com/terms/api-services-user-data-policy",
+      "supports": "Limited Use, security, and transfer rules also matter for derived data and processors."
+    },
+    {
+      "id": "S30",
+      "title": "OWASP prompt injection prevention",
+      "url": "https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html",
+      "supports": "Treat document instructions as untrusted input; combine structural controls and output validation."
+    },
+    {
+      "id": "S31",
+      "title": "OWASP SSRF prevention",
+      "url": "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+      "supports": "Constrain destinations, redirects, and network reachability for configurable providers."
+    },
+    {
+      "id": "S32",
+      "title": "WCAG 2.2",
+      "url": "https://www.w3.org/TR/WCAG22/",
+      "supports": "AA is the accessibility target, not a certification supplied by an automated test."
+    },
+    {
+      "id": "S33",
+      "title": "Codex skills",
+      "url": "https://developers.openai.com/codex/skills/",
+      "supports": "Canonical skill layout and discovery; the documentation may redirect to ChatGPT Learn."
+    },
+    {
+      "id": "S34",
+      "title": "Codex subagents",
+      "url": "https://developers.openai.com/codex/multi-agent/",
+      "supports": "Native role TOML layout, required fields, and concurrency configuration; smoke-test installed version."
+    },
+    {
+      "id": "S35",
+      "title": "Claude Code subagents",
+      "url": "https://code.claude.com/docs/en/sub-agents",
+      "supports": "Native Markdown frontmatter, role tools, and skill loading behavior."
+    },
+    {
+      "id": "S36",
+      "title": "OpenCode agents",
+      "url": "https://opencode.ai/docs/agents/",
+      "supports": "Native agent Markdown and permission options."
+    },
+    {
+      "id": "S37",
+      "title": "OpenCode skills",
+      "url": "https://opencode.ai/docs/skills/",
+      "supports": "Agent Skills discovery, including .agents/skills; avoid conflicting duplicate names."
+    },
+    {
+      "id": "S38",
+      "title": "Agent Skills specification",
+      "url": "https://agentskills.io/specification",
+      "supports": "SKILL.md name/description metadata and directory naming rules."
+    },
+    {
+      "id": "S39",
+      "title": "Cloudflare official skills repository",
+      "url": "https://github.com/cloudflare/skills",
+      "supports": "Optional upstream reference only; review and pin before importing third-party instructions."
+    },
+    {
+      "id": "S40",
+      "title": "Drive upload management",
+      "url": "https://developers.google.com/workspace/drive/api/guides/manage-uploads",
+      "supports": "Pre-generated IDs support safe retry for supported file types, including binary invoice archives."
+    },
+    {
+      "id": "S41",
+      "title": "Clint pricing",
+      "url": "https://www.clint.website/en/pricing",
+      "supports": "Vendor-published free allowance with Gmail/Drive sync and USD 5/month individual plan; not a usability or accuracy benchmark.",
+      "checkedAt": "2026-10-11"
+    },
+    {
+      "id": "S42",
+      "title": "SparkReceipt pricing and inbox features",
+      "url": "https://sparkreceipt.com/pricing/",
+      "supports": "Vendor-published tiered inbox access and historical imports; baseline competitor features, not measured quality.",
+      "checkedAt": "2026-10-11"
+    },
+    {
+      "id": "S43",
+      "title": "Gennai pricing",
+      "url": "https://www.gennai.io/pricing",
+      "supports": "Vendor-published free automatic capture with two inboxes at limited invoice volume.",
+      "checkedAt": "2026-10-11"
+    },
+    {
+      "id": "S44",
+      "title": "Google OAuth 2.0 policies",
+      "url": "https://developers.google.com/identity/protocols/oauth2/policies",
+      "supports": "Public homepage and privacy/terms, secure external authorization, partial-scope handling, and contextual incremental authorization.",
+      "checkedAt": "2026-10-11"
+    },
+    {
+      "id": "S45",
+      "title": "Google Workspace user data and developer policy",
+      "url": "https://developers.google.com/workspace/workspace-api-user-data-developer-policy",
+      "supports": "Transparent limited use, disclosure and user consent, advertising/sale restrictions, and processing/security obligations.",
+      "checkedAt": "2026-10-11"
+    }
+  ]
+}

@@ -1,0 +1,1606 @@
+{
+  "schemaVersion": 1,
+  "notice": "Required behaviors for implementation tests. No application acceptance tests have been executed in this blueprint.",
+  "cases": [
+    {
+      "id": "FOUND-01",
+      "task": "T00",
+      "milestone": "M0",
+      "layer": "static",
+      "given": "Existing repository",
+      "when": "Inspect tracked and untracked files before scaffolding.",
+      "then": "Preserve unrelated files; report actual tools and blockers.",
+      "status": "not_executed"
+    },
+    {
+      "id": "FOUND-02",
+      "task": "T00",
+      "milestone": "M0",
+      "layer": "static",
+      "given": "Agent discovery",
+      "when": "Load a native adapter and its referenced role/skills.",
+      "then": "Resolve real files; do not assume agents spawned or permissions enforced.",
+      "status": "not_executed"
+    },
+    {
+      "id": "FOUND-03",
+      "task": "T00",
+      "milestone": "M0",
+      "layer": "static",
+      "given": "Dependency graph",
+      "when": "Validate task and package dependencies.",
+      "then": "No unknown dependencies, cycles, or adapter imports in core.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RUNTIME-01",
+      "task": "T01",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "Pinned stack",
+      "when": "Exercise auth adapter, D1, Pages proxy and Worker using synthetic values.",
+      "then": "Record compatible versions and measured runtime results, not Node-only success.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RUNTIME-02",
+      "task": "T01",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "Failed D1 batch",
+      "when": "Force a later statement to fail.",
+      "then": "Prove rollback or choose documented commit-marker behavior before financial writes.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RUNTIME-03",
+      "task": "T01",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "Cookie forwarding",
+      "when": "Send authentication responses through Pages service binding.",
+      "then": "Preserve Set-Cookie and correct public origin; no private response caching.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RUNTIME-04",
+      "task": "T01",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "CPU/resource limit",
+      "when": "Process representative bounded synthetic receipt/PDF workloads.",
+      "then": "Record limits and supported path; do not claim Free-plan viability without evidence.",
+      "status": "not_executed"
+    },
+    {
+      "id": "MONEY-01",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "unit-property",
+      "given": "Floating-point trap",
+      "when": "Add EUR 0.10 and EUR 0.20 using domain values.",
+      "then": "Return exactly 30 minor units without binary-float money arithmetic.",
+      "status": "not_executed"
+    },
+    {
+      "id": "MONEY-02",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "unit-property",
+      "given": "Currency precision",
+      "when": "Parse EUR, JPY and KWD cases including excess decimals.",
+      "then": "Respect currency-specific digits; reject malformed/unsupported monetary values.",
+      "status": "not_executed"
+    },
+    {
+      "id": "MONEY-03",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "unit-property",
+      "given": "Date and timezone",
+      "when": "Import an event near a month boundary in two user timezones.",
+      "then": "Apply explicit date basis and timezone consistently; preserve source dates.",
+      "status": "not_executed"
+    },
+    {
+      "id": "MONEY-04",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "unit-property",
+      "given": "Overflow",
+      "when": "Aggregate more than Number.MAX_SAFE_INTEGER in minor units.",
+      "then": "Return exact decimal-string totals or a controlled supported-bound error; never rounded numbers.",
+      "status": "not_executed"
+    },
+    {
+      "id": "MONEY-05",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "unit-property",
+      "given": "Unpaid versus paid",
+      "when": "Process an invoice due next month and a separately paid receipt.",
+      "then": "Only verified/user-confirmed payment enters spending.",
+      "status": "not_executed"
+    },
+    {
+      "id": "MONEY-06",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "unit-property",
+      "given": "Null versus zero",
+      "when": "Receive missing total and an explicit EUR 0.00 receipt.",
+      "then": "Missing is review; zero is valid and distinct.",
+      "status": "not_executed"
+    },
+    {
+      "id": "MONEY-07",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "unit-property",
+      "given": "Calendar validation",
+      "when": "Receive 2026-02-30 or an ambiguous 03/04/2026.",
+      "then": "Reject impossible date; review ambiguity rather than silently choosing a locale.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DB-01",
+      "task": "T04",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "Tenant foreign key",
+      "when": "Associate user A purchase with user B document.",
+      "then": "Database/application reject cross-tenant association.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DB-02",
+      "task": "T04",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "Unique source",
+      "when": "Insert the same tenant/provider/message/part twice concurrently.",
+      "then": "One document identity; no duplicate payment.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DB-03",
+      "task": "T04",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "Migrations",
+      "when": "Install clean database and upgrade previous fixture state.",
+      "then": "Preserve existing data/constraints and verify indexes.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DB-04",
+      "task": "T04",
+      "milestone": "M0",
+      "layer": "workerd",
+      "given": "Query scoping",
+      "when": "List, join, update and delete records with a hostile tenant parameter.",
+      "then": "All operations use trusted context and cannot read or alter other tenants.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AUTH-01",
+      "task": "T05",
+      "milestone": "M0",
+      "layer": "integration-e2e",
+      "given": "No session",
+      "when": "Call a protected API and background-status route unauthenticated.",
+      "then": "Return unauthorized without financial data.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AUTH-02",
+      "task": "T05",
+      "milestone": "M0",
+      "layer": "integration-e2e",
+      "given": "Login A, mailbox B",
+      "when": "Log in with Google A, then authorize mailbox B.",
+      "then": "Keep workspace identity A and add verified mailbox B, not a new user.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AUTH-03",
+      "task": "T05",
+      "milestone": "M0",
+      "layer": "integration-e2e",
+      "given": "CSRF/replay",
+      "when": "Reuse or change expired OAuth state or forge cross-origin mutation.",
+      "then": "Reject without changing connections or spending.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AUTH-04",
+      "task": "T05",
+      "milestone": "M0",
+      "layer": "integration-e2e",
+      "given": "Account linking",
+      "when": "Supply same displayed email from an unrelated identity flow.",
+      "then": "Never automatically merge identities based only on untrusted email text.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AUTH-05",
+      "task": "T05",
+      "milestone": "M0",
+      "layer": "integration-e2e",
+      "given": "Session cookie",
+      "when": "Inspect production session lifecycle and logout.",
+      "then": "Secure HttpOnly cookie, valid SameSite behavior and invalidation; no tokens in localStorage.",
+      "status": "not_executed"
+    },
+    {
+      "id": "SECRETS-01",
+      "task": "T06",
+      "milestone": "M0",
+      "layer": "security",
+      "given": "Encrypted credentials",
+      "when": "Persist mailbox refresh token and BYOK key.",
+      "then": "Only authenticated ciphertext stored; no secrets returned via settings/export/logs.",
+      "status": "not_executed"
+    },
+    {
+      "id": "SECRETS-02",
+      "task": "T06",
+      "milestone": "M0",
+      "layer": "security",
+      "given": "AAD swap",
+      "when": "Move encrypted token from user A connection into user B context.",
+      "then": "Decryption fails; no credential reuse.",
+      "status": "not_executed"
+    },
+    {
+      "id": "SECRETS-03",
+      "task": "T06",
+      "milestone": "M0",
+      "layer": "security",
+      "given": "Key rotation",
+      "when": "Read old-key ciphertext and rotate to active key.",
+      "then": "Controlled migration succeeds; retired key cannot encrypt new values.",
+      "status": "not_executed"
+    },
+    {
+      "id": "SECRETS-04",
+      "task": "T06",
+      "milestone": "M0",
+      "layer": "security",
+      "given": "Refresh race",
+      "when": "Two workers refresh credentials; provider omits new refresh token in one response.",
+      "then": "CAS protects newest state; missing token does not erase valid existing token.",
+      "status": "not_executed"
+    },
+    {
+      "id": "JOBS-01",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "workerd-chaos",
+      "given": "Duplicate delivery",
+      "when": "Deliver the same queue job twice in parallel.",
+      "then": "At most one committed financial result; both deliveries terminate safely.",
+      "status": "not_executed"
+    },
+    {
+      "id": "JOBS-02",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "workerd-chaos",
+      "given": "Stale lease",
+      "when": "Expire and reassign a job while first worker finishes later.",
+      "then": "Old worker cannot commit any fenced write.",
+      "status": "not_executed"
+    },
+    {
+      "id": "JOBS-03",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "workerd-chaos",
+      "given": "Queue loss",
+      "when": "Persist a ready job then simulate lost/expired queue message.",
+      "then": "Dispatcher reconstructs delivery from D1 without data payload persistence.",
+      "status": "not_executed"
+    },
+    {
+      "id": "JOBS-04",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "workerd-chaos",
+      "given": "Crash after commit",
+      "when": "Crash after financial write but before queue acknowledgement.",
+      "then": "Retry sees completed result and does not duplicate spending or archive.",
+      "status": "not_executed"
+    },
+    {
+      "id": "JOBS-05",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "workerd-chaos",
+      "given": "Disconnect race",
+      "when": "Disconnect mailbox while its extraction is running.",
+      "then": "Generation fence prevents new writes and future provider calls where cancellable.",
+      "status": "not_executed"
+    },
+    {
+      "id": "JOBS-06",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "workerd-chaos",
+      "given": "Fairness/quota",
+      "when": "Backfill one large tenant while another has a fresh receipt.",
+      "then": "Bounded pages and per-tenant concurrency prevent starvation.",
+      "status": "not_executed"
+    },
+    {
+      "id": "JOBS-07",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "workerd-chaos",
+      "given": "Poison message",
+      "when": "Retry permanent malformed input repeatedly.",
+      "then": "One terminal issue; bounded attempts, no endless cost loop.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-01",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "12-month import",
+      "when": "Start import on a fixed date and paginate historical candidates.",
+      "then": "Use fixed calendar boundary and cutoff; resumable counts and coverage are truthful.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-02",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "New mail during import",
+      "when": "Deliver a receipt while historical pagination is running.",
+      "then": "Capture/replay incremental changes without loss or duplicate payment.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-03",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "History expired",
+      "when": "Return 404 for stored history cursor.",
+      "then": "Recover with bounded scan and visible coverage; do not discard existing records.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-04",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "Revoked token",
+      "when": "Return invalid_grant after controlled refresh.",
+      "then": "Pause affected connection and request reconnect; retain ledger records.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-05",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "Rate limit",
+      "when": "Return 429 with Retry-After during pagination.",
+      "then": "Respect delay, retain checkpoint, and continue other tenants.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-06",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "Second Gmail inbox",
+      "when": "Connect two verified Gmail accounts to one workspace.",
+      "then": "Discover both independently; strong duplicate receipts count once.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-07",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "Message removed",
+      "when": "Delete source email after extraction with no archive.",
+      "then": "Preserve structured record and mark original unavailable, not a fabricated link.",
+      "status": "not_executed"
+    },
+    {
+      "id": "GMAIL-08",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "provider-contract",
+      "given": "Filtered search coverage",
+      "when": "Place supported receipts outside Inbox and in an unfamiliar language.",
+      "then": "Scan configured folders/labels; disclose candidate-query gaps and allow bounded recovery scan.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DOCUMENT-01",
+      "task": "T10",
+      "milestone": "M0",
+      "layer": "unit-integration",
+      "given": "Multipart mail",
+      "when": "Provide nested MIME with HTML, text, inline logo and two invoices.",
+      "then": "Deduplicate body alternatives and process each real invoice separately.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DOCUMENT-02",
+      "task": "T10",
+      "milestone": "M0",
+      "layer": "unit-integration",
+      "given": "Text-layer PDF",
+      "when": "Parse a synthetic PDF with tax, subtotal and total.",
+      "then": "Choose actual paid total with numeric evidence; do not assume attachment bytes are plain text.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DOCUMENT-03",
+      "task": "T10",
+      "milestone": "M0",
+      "layer": "unit-integration",
+      "given": "Scanned PDF",
+      "when": "Provide image-only or password-protected PDF.",
+      "then": "Use a verified capable path or Needs Review; never guessed OCR totals.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DOCUMENT-04",
+      "task": "T10",
+      "milestone": "M0",
+      "layer": "unit-integration",
+      "given": "Resource bomb",
+      "when": "Supply oversized or highly nested compressed content.",
+      "then": "Reject within bounded memory/CPU; no unbounded decompression or hidden raw storage.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DOCUMENT-05",
+      "task": "T10",
+      "milestone": "M0",
+      "layer": "unit-integration",
+      "given": "Remote HTML assets",
+      "when": "Render mail containing scripts, tracking pixels and remote CSS.",
+      "then": "Do not execute or fetch them; render only safe extracted fields.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DOCUMENT-06",
+      "task": "T10",
+      "milestone": "M0",
+      "layer": "unit-integration",
+      "given": "Truncated document",
+      "when": "Hit text limit before final total.",
+      "then": "Mark incomplete/review instead of silently extracting subtotal.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-01",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "Malformed output",
+      "when": "Return extra fields, fenced text, invalid amount or huge JSON.",
+      "then": "Reject boundedly; at most one repair, no unvalidated DB writes.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-02",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "Evidence mismatch",
+      "when": "Model returns a total not supported by input quote.",
+      "then": "Financial blocker; self-reported confidence cannot override evidence.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-03",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "Injection",
+      "when": "Receipt requests exporting secrets and changing system instructions.",
+      "then": "No tool, URL fetch, key disclosure, or policy change.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-04",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "Provider choice",
+      "when": "BYOK model times out while hosted model is available.",
+      "then": "No undisclosed fallback or second destination; show selected-provider failure.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-05",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "Concurrent budgets",
+      "when": "Two jobs reserve the last allowance simultaneously.",
+      "then": "Only authorized reservation proceeds; quota cannot be overspent by race.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-06",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "Ambiguous billed timeout",
+      "when": "Provider may have processed timed-out request.",
+      "then": "Keep conservative usage state and bounded retry, not unlimited free retries.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-07",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "SSRF",
+      "when": "Choose localhost, metadata IP, embedded credentials or redirected AI endpoint.",
+      "then": "Reject destination; no arbitrary outbound proxy.",
+      "status": "not_executed"
+    },
+    {
+      "id": "AI-08",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "contract-security",
+      "given": "Capability mismatch",
+      "when": "Select text-only endpoint for native PDF input.",
+      "then": "Use verified converter or unsupported state; never invent provider file support.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-01",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Order plus invoice plus receipt",
+      "when": "Process three messages for the same stable purchase reference.",
+      "then": "Keep all evidence, create one actual payment event.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-02",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Two real identical purchases",
+      "when": "Process same merchant/amount/day with different purchase references.",
+      "then": "Keep distinct; weak similarity can suggest review only.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-03",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Installments",
+      "when": "Process EUR 100 order with two paid EUR 50 installments.",
+      "then": "Two distinct payment events total EUR 100; no third invoice-total entry.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-04",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Reissued invoice",
+      "when": "Receive corrected document using old invoice number with different total.",
+      "then": "Version/conflict review; no silent overwrite or extra payment.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-05",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Pending refund",
+      "when": "Receive refund request or credit note without cash completion.",
+      "then": "No negative cash entry.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-06",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Partial and full refunds",
+      "when": "Process separate completed refunds against one purchase.",
+      "then": "Validate amounts/currency and unique events; net is correct without deleting original payment.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-07",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Statement aggregation",
+      "when": "Receive a monthly card statement plus individual receipts.",
+      "then": "Do not add statement total as another purchase.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-08",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Same attachment across users",
+      "when": "Two tenants upload identical receipt evidence.",
+      "then": "No cross-tenant linkage, retrieval, cache leak or shared financial state.",
+      "status": "not_executed"
+    },
+    {
+      "id": "UI-01",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "e2e-accessibility",
+      "given": "Truthful total",
+      "when": "Mix paid, unpaid, duplicate-blocked and missing-FX records.",
+      "then": "Summary equals eligible ledger entries and shows exclusions/coverage.",
+      "status": "not_executed"
+    },
+    {
+      "id": "UI-02",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "e2e-accessibility",
+      "given": "Empty/importing state",
+      "when": "New user starts backfill and closes browser.",
+      "then": "Work continues; returning UI shows actual progress, not false completion.",
+      "status": "not_executed"
+    },
+    {
+      "id": "UI-03",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "e2e-accessibility",
+      "given": "Filter consistency",
+      "when": "Apply month/category/merchant filters and paginate equal-date records.",
+      "then": "List, summary and export agree; stable pagination does not skip ties.",
+      "status": "not_executed"
+    },
+    {
+      "id": "UI-04",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "e2e-accessibility",
+      "given": "Mobile and keyboard",
+      "when": "Navigate primary journey at 360px width without a mouse.",
+      "then": "Readable money, labeled inputs, visible focus and accessible status updates.",
+      "status": "not_executed"
+    },
+    {
+      "id": "EDIT-01",
+      "task": "T14",
+      "milestone": "M0",
+      "layer": "e2e-workerd",
+      "given": "Override survives",
+      "when": "User corrects category/amount then a source is reprocessed.",
+      "then": "Preserve explicit override and audit original extracted value.",
+      "status": "not_executed"
+    },
+    {
+      "id": "EDIT-02",
+      "task": "T14",
+      "milestone": "M0",
+      "layer": "e2e-workerd",
+      "given": "Concurrent edits",
+      "when": "Two tabs edit the same purchase version.",
+      "then": "Second receives conflict rather than losing first change.",
+      "status": "not_executed"
+    },
+    {
+      "id": "EDIT-03",
+      "task": "T14",
+      "milestone": "M0",
+      "layer": "e2e-workerd",
+      "given": "Payment confirmation",
+      "when": "User confirms an unpaid invoice was paid with date and amount.",
+      "then": "One user-confirmed event with distinct provenance; repeated request is idempotent.",
+      "status": "not_executed"
+    },
+    {
+      "id": "EDIT-04",
+      "task": "T14",
+      "milestone": "M0",
+      "layer": "e2e-workerd",
+      "given": "Merge/unmerge",
+      "when": "Merge records with overlapping evidence then reverse.",
+      "then": "Preserve provenance, total and unique ledger events.",
+      "status": "not_executed"
+    },
+    {
+      "id": "EDIT-05",
+      "task": "T14",
+      "milestone": "M0",
+      "layer": "e2e-workerd",
+      "given": "Review scope",
+      "when": "Resolve nonfinancial category warning but leave uncertain currency.",
+      "then": "Financial blocker remains; unrelated archive failure does not hide valid spending.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LIFECYCLE-01",
+      "task": "T15",
+      "milestone": "M0",
+      "layer": "security-e2e",
+      "given": "CSV formula",
+      "when": "Export merchant beginning with =, +, -, @, tab or carriage return.",
+      "then": "Text cannot become an executable spreadsheet formula; money fields remain correctly typed.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LIFECYCLE-02",
+      "task": "T15",
+      "milestone": "M0",
+      "layer": "security-e2e",
+      "given": "Export tenant leak",
+      "when": "Request another user’s data/export with guessed ID.",
+      "then": "No cross-tenant response or archive link.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LIFECYCLE-03",
+      "task": "T15",
+      "milestone": "M0",
+      "layer": "security-e2e",
+      "given": "Account deletion",
+      "when": "Delete account while jobs are queued/running.",
+      "then": "Invalidate session, fence jobs, erase active records/keys within stated target.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LIFECYCLE-04",
+      "task": "T15",
+      "milestone": "M0",
+      "layer": "security-e2e",
+      "given": "Disconnect retains",
+      "when": "Disconnect one mailbox with shared purchase evidence.",
+      "then": "Stop sync/remove credentials, keep records unless separately confirmed for deletion.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LIFECYCLE-05",
+      "task": "T15",
+      "milestone": "M0",
+      "layer": "security-e2e",
+      "given": "Data deletion preview",
+      "when": "Delete data from one of two inboxes supporting the same purchase.",
+      "then": "Preview accurate effects and retain independently supported evidence.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LIFECYCLE-06",
+      "task": "T15",
+      "milestone": "M0",
+      "layer": "security-e2e",
+      "given": "No raw persistence",
+      "when": "Inspect D1, queue payloads, logs and export after processing.",
+      "then": "No raw bodies/PDFs/evidence quotes/model transcripts or secrets.",
+      "status": "not_executed"
+    },
+    {
+      "id": "OUTLOOK-01",
+      "task": "T17",
+      "milestone": "M1",
+      "layer": "provider-contract",
+      "given": "Personal and work accounts",
+      "when": "Connect supported Outlook.com and organizational accounts.",
+      "then": "Use delegated read access; display tenant/admin-policy errors truthfully.",
+      "status": "not_executed"
+    },
+    {
+      "id": "OUTLOOK-02",
+      "task": "T17",
+      "milestone": "M1",
+      "layer": "provider-contract",
+      "given": "Folder coverage",
+      "when": "Put receipts in nested, archive and moved folders.",
+      "then": "Maintain folder-specific state; not Inbox-only while claiming full mailbox.",
+      "status": "not_executed"
+    },
+    {
+      "id": "OUTLOOK-03",
+      "task": "T17",
+      "milestone": "M1",
+      "layer": "provider-contract",
+      "given": "Opaque links",
+      "when": "Return nextLink/deltaLink with encoded tokens.",
+      "then": "Follow trusted provider URL intact; never concatenate or invent delta tokens.",
+      "status": "not_executed"
+    },
+    {
+      "id": "OUTLOOK-04",
+      "task": "T17",
+      "milestone": "M1",
+      "layer": "provider-contract",
+      "given": "Immutable IDs",
+      "when": "Move message between supported folders during sync.",
+      "then": "Request immutable IDs consistently and avoid duplicate documents.",
+      "status": "not_executed"
+    },
+    {
+      "id": "OUTLOOK-05",
+      "task": "T17",
+      "milestone": "M1",
+      "layer": "provider-contract",
+      "given": "Delta reset",
+      "when": "Expire a folder delta token.",
+      "then": "Recover that folder safely with coverage warning and no cursor loss.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DRIVE-01",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "provider-contract-e2e",
+      "given": "Optional storage",
+      "when": "Use app without Drive then connect a different Google account.",
+      "then": "App works without raw archive; independent storage consent ties correct account.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DRIVE-02",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "provider-contract-e2e",
+      "given": "Least privilege",
+      "when": "Create receipts folder and upload PDF/.eml.",
+      "then": "Use drive.file; never require whole-drive read access.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DRIVE-03",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "provider-contract-e2e",
+      "given": "Lost upload response",
+      "when": "Upload succeeds but response is lost; retry.",
+      "then": "Reuse saved pre-generated ID and verify existing file; no duplicate original.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DRIVE-04",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "provider-contract-e2e",
+      "given": "Drive unavailable",
+      "when": "Hit full quota, revoked permission or deleted folder.",
+      "then": "Preserve ledger; report archive failure and controlled recovery.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DRIVE-05",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "provider-contract-e2e",
+      "given": "Archive after import",
+      "when": "Enable archiving for old records whose email may be deleted.",
+      "then": "Explicit bounded backfill; truthful missing-original status.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DRIVE-06",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "provider-contract-e2e",
+      "given": "Delete account with archive",
+      "when": "Delete service account while invoices exist in user Drive.",
+      "then": "Leave user-owned files by default and disclose this behavior.",
+      "status": "not_executed"
+    },
+    {
+      "id": "FX-01",
+      "task": "T19",
+      "milestone": "M1",
+      "layer": "unit-property",
+      "given": "Non-business day",
+      "when": "Value weekend receipt with latest eligible prior rate.",
+      "then": "Persist source/date/exact rate; do not use a later rate.",
+      "status": "not_executed"
+    },
+    {
+      "id": "FX-02",
+      "task": "T19",
+      "milestone": "M1",
+      "layer": "unit-property",
+      "given": "Missing rate",
+      "when": "Receive unsupported currency or too-old prior rate.",
+      "then": "Show original amount and missing conversion; never default rate to 1.",
+      "status": "not_executed"
+    },
+    {
+      "id": "FX-03",
+      "task": "T19",
+      "milestone": "M1",
+      "layer": "unit-property",
+      "given": "Round per entry",
+      "when": "Convert two EUR-equivalent half-minor-unit entries.",
+      "then": "Round each then sum, consistent with displayed rows.",
+      "status": "not_executed"
+    },
+    {
+      "id": "FX-04",
+      "task": "T19",
+      "milestone": "M1",
+      "layer": "unit-property",
+      "given": "Refund month",
+      "when": "Refund a January purchase in February at February FX.",
+      "then": "February net reflects refund date/rate; January payment remains.",
+      "status": "not_executed"
+    },
+    {
+      "id": "FX-05",
+      "task": "T19",
+      "milestone": "M1",
+      "layer": "unit-property",
+      "given": "Change report currency",
+      "when": "Change preference during valuation jobs.",
+      "then": "Preserve original amounts; version valuations and show pending coverage.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECUR-01",
+      "task": "T20",
+      "milestone": "M1",
+      "layer": "unit-e2e",
+      "given": "Three monthly receipts",
+      "when": "Receive three same-service monthly payments with anchored dates.",
+      "then": "Suggest a series; forecast does not create ledger payments.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECUR-02",
+      "task": "T20",
+      "milestone": "M1",
+      "layer": "unit-e2e",
+      "given": "Month-end schedule",
+      "when": "Start on January 31 with February then March occurrence.",
+      "then": "Clamp February but restore original anchor in March.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECUR-03",
+      "task": "T20",
+      "milestone": "M1",
+      "layer": "unit-e2e",
+      "given": "One annual term",
+      "when": "Receipt explicitly states annual subscription with charge.",
+      "then": "Suggest annual cadence with transparent evidence, not annual deduction from one ambiguous purchase.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECUR-04",
+      "task": "T20",
+      "milestone": "M1",
+      "layer": "unit-e2e",
+      "given": "Variable usage versus increase",
+      "when": "Compare variable usage bills and fixed-plan price change.",
+      "then": "Do not label every variation a subscription price increase; require reviewable evidence.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECUR-05",
+      "task": "T20",
+      "milestone": "M1",
+      "layer": "unit-e2e",
+      "given": "User dismissed/canceled",
+      "when": "Dismiss or mark series canceled then resync receipts.",
+      "then": "Preserve user decision and historical spending; no external cancellation request.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RELEASE-01",
+      "task": "T25",
+      "milestone": "M1",
+      "layer": "release",
+      "given": "Evaluation integrity",
+      "when": "Run labeled challenge and held-out receipt sets.",
+      "then": "Report denominators, errors and coverage; no fabricated accuracy or tests.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RELEASE-02",
+      "task": "T25",
+      "milestone": "M1",
+      "layer": "release",
+      "given": "Secret/PII scanning",
+      "when": "Scan build, logs, traces, CI artifacts and exported settings.",
+      "then": "No customer content, credentials or production tokens.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RELEASE-03",
+      "task": "T25",
+      "milestone": "M1",
+      "layer": "release",
+      "given": "Restore after deletion",
+      "when": "Restore an older snapshot containing a deleted account.",
+      "then": "Reapply independent tombstones and invalidate stale auth before serving.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RELEASE-04",
+      "task": "T25",
+      "milestone": "M1",
+      "layer": "release",
+      "given": "Accessibility",
+      "when": "Audit keyboard, forms, charts, contrast and screen-reader labels.",
+      "then": "Meet documented AA target checks; do not claim certification from automated scans.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RELEASE-05",
+      "task": "T25",
+      "milestone": "M1",
+      "layer": "release",
+      "given": "Deployed smoke",
+      "when": "Exercise same build on approved staging with provider test identities.",
+      "then": "Record actual connection/sync/archive/export paths and limitations.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RELEASE-06",
+      "task": "T25",
+      "milestone": "M1",
+      "layer": "release",
+      "given": "Public gate denied",
+      "when": "Attempt unrestricted signup without provider/privacy/security approvals.",
+      "then": "Remain allowlisted; no code flag silently bypasses release approval.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LEDGER-09",
+      "task": "T12",
+      "milestone": "M0",
+      "layer": "unit-workerd",
+      "given": "Mixed tender on one receipt",
+      "when": "Process EUR 100 total, EUR 70 card payment and EUR 30 redeemed store credit.",
+      "then": "Keep EUR 100 purchase detail and one EUR 70 cash-spending entry; ambiguous splits remain in review.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PRESENT-01",
+      "task": "T27",
+      "milestone": "M0",
+      "layer": "static",
+      "given": "Proposed public copy and dated findings",
+      "when": "Review all headlines and comparative/privacy claims.",
+      "then": "Lead purchase records; do not claim unique free service, complete spend, guaranteed savings, unverified security or proven market fit.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PRESENT-02",
+      "task": "T28",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "M0 with Outlook/Drive/recurring disabled",
+      "when": "Open landing, login and navigation.",
+      "then": "Only live-enabled capabilities have active CTAs; future features/examples are labeled, not presented as available.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PRESENT-03",
+      "task": "T03",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Public-config response with private operator settings nearby",
+      "when": "Fetch public JSON unauthenticated.",
+      "then": "Only whitelisted labels/flags/policy paths appear; no keys, key references, tenant values, budget reserves or diagnostics.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PRESENT-04",
+      "task": "T27",
+      "milestone": "M0",
+      "layer": "static",
+      "given": "No final brand, prices, or testimonials selected",
+      "when": "Review new copy and config.",
+      "then": "Keep configurable working name; do not invent commercial decisions, quotes, customer counts, or a permanent free promise.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DEMO-01",
+      "task": "T28",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Unauthenticated browser and disabled live AI",
+      "when": "Visit /demo and inspect a synthetic purchase.",
+      "then": "Usable labeled example; no login, provider calls, model use, private API reads, queues or database writes.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DEMO-02",
+      "task": "T28",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Signed-in user has private records cached",
+      "when": "Open /demo then sign out/switch user.",
+      "then": "Demo never reads private cache/loaders; no private record in example or another user session; clear appropriate query data.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DEMO-03",
+      "task": "T28",
+      "milestone": "M0",
+      "layer": "component",
+      "given": "Presentation demo fixture",
+      "when": "Render purchase lifecycle and period summary.",
+      "then": "Headphones net is EUR 90; summary net EUR 120; unpaid EUR 80 excluded; two EUR 15 purchases remain distinct.",
+      "status": "not_executed"
+    },
+    {
+      "id": "DEMO-04",
+      "task": "T28",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Synthetic example route",
+      "when": "Attempt edit, export, sync, archive or source navigation.",
+      "then": "Read-only controls cannot invoke live mutations; synthetic evidence stays local and clearly labeled; no demo records enter real account/export.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-01",
+      "task": "T05",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "New Google login",
+      "when": "Complete identity authorization.",
+      "then": "Only identity scopes requested; login does not create a mailbox connection or request Drive; no company, card, bank, or AI-key gate.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-02",
+      "task": "T08",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Valid mailbox OAuth callback",
+      "when": "Complete token/identity/scope verification.",
+      "then": "Store awaiting_import connection, no message listing/body fetch/parser/model call or auto-sync; redirect to account review.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-03",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Connect Gmail screen",
+      "when": "Read explanation then start OAuth.",
+      "then": "Explain mailbox-wide read permission and app purchase filtering before provider prompt; cannot claim receipt-only technical access.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-04",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Login account A, mailbox selected B",
+      "when": "Return from OAuth and change wrong mailbox before Start.",
+      "then": "Show actual B; login remains A; no B content scanned before explicit Start and no accidental workspace switch.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-05",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Signed-in user starts mailbox connection",
+      "when": "Cancel or deny requested scope.",
+      "then": "Session remains; accurate no-connection/partial-scope state; retry only on explicit action, no infinite OAuth loop.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-06",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Approved hosted provider and known user allowance",
+      "when": "Open review/start.",
+      "then": "Show real destinations, remaining allowance, historical consumption, actual date range/currency/timezone and hourly behavior before acceptance.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-07",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Same account, range and review revision",
+      "when": "Double-click Start and send from two tabs.",
+      "then": "Single durable parent import and authorized schedule; replay returns same run or documented conflict; no extra billed extraction.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-08",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "No Drive connection or BYOK key",
+      "when": "Complete normal hosted path.",
+      "then": "Can reach real records without archive/key/company/setup survey; processor identity still visible; optional choices are not silently enabled.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-09",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Review card refers to an old disclosure or destination",
+      "when": "Submit Start after configuration changes.",
+      "then": "Reject with PROCESSING_REVIEW_REQUIRED; show updated details and require acceptance; no request to the new unapproved recipient.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-10",
+      "task": "T11",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Hosted AI/parser disabled and no approved BYOK route",
+      "when": "Attempt new import/extraction.",
+      "then": "Return accurate unavailable state and preserve example/existing records; never fabricate provider or silently fall back.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-11",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Active import with first records",
+      "when": "Refresh, use Back, close and reopen on another device.",
+      "then": "Resume server-owned run and preferences; no duplicate job; history continues without browser; no forced new wizard.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-12",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "One importing mailbox and available second slot",
+      "when": "Add another inbox.",
+      "then": "Independent verified connection and explicit review; original import/session unaffected; reached limits explained without fake billing.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-13",
+      "task": "T07",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Connected mailbox still awaiting explicit Start",
+      "when": "Cron or forged manual sync request runs.",
+      "then": "No content jobs dispatched; return safe review-required state; connection authorization is not processing authorization.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-14",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Live budget exhausted after some history",
+      "when": "Observe progress, then open records.",
+      "then": "Show paused reason, retained records and available recovery; no upgrade checkout or implied free-unlimited processing.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ONBOARD-15",
+      "task": "T08",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Provider grants identity but not required mail scope",
+      "when": "Return callback and attempt content fetch.",
+      "then": "Related feature disabled, missing permission explained; no content request or success label for an unreadable connection.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-01",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "unit",
+      "given": "Default 12-month interval and frozen cutoff",
+      "when": "Create recent/older slices across calendar and DST boundaries.",
+      "then": "Disjoint half-open slices exactly cover requested interval; recent last 30 calendar days is ordering only; no boundary loss.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-02",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "unit",
+      "given": "Explicit range shorter than 30 days",
+      "when": "Plan import.",
+      "then": "Recent range clamps to start; omit empty older slice; no expansion beyond user-selected dates.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-03",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Provider returns candidate pages in nonchronological order",
+      "when": "Run recent-first discovery.",
+      "then": "Use date-bounded recent slice rather than trusting order; schedule discovered recent extraction without waiting for full history.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-04",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Live mail overlaps recent/older/recovery scans",
+      "when": "Replay concurrent discoveries.",
+      "then": "Shared source/business dedupe and independent cursors avoid duplicate entries or missed new messages.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-05",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "One accepted purchase and unfinished older jobs",
+      "when": "Open progress then select View purchase records.",
+      "then": "Record visible immediately; chosen history continues; page transition does not cancel queued work.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-06",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Recent slice complete and older processing unfinished",
+      "when": "Read parent state.",
+      "then": "Parent not complete; counter concepts remain distinct; no false fully-imported flag or all-receipts-found assertion.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-07",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "component",
+      "given": "Unknown candidate denominator",
+      "when": "Render progress and periodic updates.",
+      "then": "Show stage and accurate distinct counts; no fabricated percentage, ETA or progress based on total inbox size.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-08",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "component",
+      "given": "No recent records but older slice pending",
+      "when": "Render empty state.",
+      "then": "Say no recent matches yet; continue older scan; do not claim no purchases or zero spending.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-09",
+      "task": "T09",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Worker crash after durable discovery but before queue acknowledgment",
+      "when": "Resume/replay slices.",
+      "then": "Saved cursor/job boundaries retain work and avoid duplicate purchase counts; browser is irrelevant to recovery.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECENT-10",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "measurement",
+      "given": "Predeclared small representative test workload",
+      "when": "Measure start-to-first-record and first-user-action separately.",
+      "then": "Record actual times, sample size, failures/pauses and limits; five minutes is an internal target, never fabricated achieved SLA.",
+      "status": "not_executed"
+    },
+    {
+      "id": "HOME-01",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Ready purchases with partially imported history",
+      "when": "Open Home at mobile and desktop sizes.",
+      "then": "Search, coverage and recent records lead; charts secondary; useful next action only when supported by real data.",
+      "status": "not_executed"
+    },
+    {
+      "id": "HOME-02",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "component",
+      "given": "Order, invoice, payment EUR 120, pending/completed partial refund EUR 30",
+      "when": "Render evidence timeline before and after completion evidence.",
+      "then": "One purchase; paid EUR 120; pending refund not netted; completed refund nets to EUR 90; each event has source/provenance.",
+      "status": "not_executed"
+    },
+    {
+      "id": "HOME-03",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "component",
+      "given": "Only unpaid/uncertain invoices",
+      "when": "Open Home and details.",
+      "then": "Show records and specific uncertainty; no payment-inflated summary or misleading empty/zero-spend claim.",
+      "status": "not_executed"
+    },
+    {
+      "id": "HOME-04",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "integration",
+      "given": "Old purchase payment and current-month refund",
+      "when": "Filter Home to current month then open lifecycle.",
+      "then": "Month shows only current event effects; lifecycle explicitly includes older payment; summary/list/export date semantics agree.",
+      "status": "not_executed"
+    },
+    {
+      "id": "HOME-05",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "component",
+      "given": "One missing field and valid remaining evidence",
+      "when": "Open Needs attention.",
+      "then": "Ask the exact question needed; avoid compulsory full re-entry; uncertain new entry excluded without hiding unrelated valid payments.",
+      "status": "not_executed"
+    },
+    {
+      "id": "HOME-06",
+      "task": "T13",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "Source deleted, no Drive copy",
+      "when": "Open purchase evidence actions.",
+      "then": "Keep structured record; show Original unavailable and reason; no falsely successful archive badge or broken download CTA.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ACCESS-01",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "360 CSS px, zoom/reflow and keyboard-only input",
+      "when": "Complete example/sign-in/connect/review/start/results path.",
+      "then": "No critical horizontal scrolling/clipped values; controls labeled; privacy and destination visible; focus order and errors work.",
+      "status": "not_executed"
+    },
+    {
+      "id": "ACCESS-02",
+      "task": "T29",
+      "milestone": "M0",
+      "layer": "e2e",
+      "given": "User reading progress while background records arrive",
+      "when": "Poll status and complete first extraction.",
+      "then": "No forced redirect/focus theft; polite milestone announcements, no per-message alert flood; View records offered.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LATE-DRIVE-01",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "e2e",
+      "given": "Archive feature available and first real purchase opened",
+      "when": "Show optional archive prompt, dismiss, or connect from Settings earlier.",
+      "then": "At most one dismissible prompt; no gate; no repeated nag on every route; actual separate account/folder displayed.",
+      "status": "not_executed"
+    },
+    {
+      "id": "LATE-DRIVE-02",
+      "task": "T18",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Drive denied/full/disconnected or later account deletion",
+      "when": "Continue extraction and inspect archive state.",
+      "then": "Financial records unaffected; actual upload needed for saved badge; existing user-owned Drive files remain by default.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECUR-UX-01",
+      "task": "T20",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Two comparable service bills and tax/currency/usage variants",
+      "when": "Compute display change evidence.",
+      "then": "Link actual source pair; only comparable basis supports strong price-change claim; others labeled uncertain, no FX-only alert.",
+      "status": "not_executed"
+    },
+    {
+      "id": "RECUR-UX-02",
+      "task": "T21",
+      "milestone": "M1",
+      "layer": "component",
+      "given": "Receipt-based recurring suggestion with no usage data",
+      "when": "Render series and next date.",
+      "then": "Do not claim unused service or guaranteed savings; projected date clearly estimated unless documented terms support it.",
+      "status": "not_executed"
+    },
+    {
+      "id": "TAG-01",
+      "task": "T21",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Purchase default Unassigned",
+      "when": "Set Work manually and reprocess source.",
+      "then": "Tag survives; no automatic tax/income/profile inference; payment eligibility unchanged.",
+      "status": "not_executed"
+    },
+    {
+      "id": "TAG-02",
+      "task": "T21",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Mixed manual tags and cross-inbox evidence",
+      "when": "Filter list, summary and CSV/JSON export.",
+      "then": "Same tag/date/ledger inclusion semantics and unique events; unassigned records preserved; no team/accounting structures.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PILOT-01",
+      "task": "T30",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Operator measurement off or user has not opted in",
+      "when": "Complete product flow.",
+      "then": "No optional product events stored; features fully work; technical import timestamps not mislabeled as user activation.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PILOT-02",
+      "task": "T30",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Opt-in optional events enabled",
+      "when": "Attempt arbitrary/private payload, cross-tenant access or high-volume duplicates.",
+      "then": "Only allowlisted fields/events and authorized bounded actions accepted; caps/dedupe enforced; no receipt IDs/amounts/search terms in event rows.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PILOT-03",
+      "task": "T30",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Demo visitor, background sync, or passive polling",
+      "when": "Run actions that resemble activity.",
+      "then": "No real-product activation event; demo never counts; only explicit authorized evidence-open intent is measured.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PILOT-04",
+      "task": "T30",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Optional events exist",
+      "when": "Opt out, exceed retention, or delete account.",
+      "then": "Purge relevant events, stop future collection and retain full product access on opt-out; no delayed event resurrection.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PILOT-05",
+      "task": "T30",
+      "milestone": "M1",
+      "layer": "integration",
+      "given": "Explicit owned evidence-open action returns a safe external link",
+      "when": "Record optional activation proxy.",
+      "then": "Record intent only, once; do not assert external receipt was loaded/read or that money was saved.",
+      "status": "not_executed"
+    },
+    {
+      "id": "PILOT-06",
+      "task": "T30",
+      "milestone": "M1",
+      "layer": "static",
+      "given": "No competitor trial or pilot executed",
+      "when": "Prepare validation report.",
+      "then": "Worksheet remains marked not run with empty results; no invented participants/retention/accuracy or market-fit claims.",
+      "status": "not_executed"
+    }
+  ]
+}

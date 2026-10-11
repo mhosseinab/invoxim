@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "environment": "local",
+  "publicSignupEnabled": false,
+  "signupMode": "allowlist",
+  "defaultReportingCurrency": "EUR",
+  "defaultTimezone": "Europe/Vienna",
+  "mail": {
+    "maxMailboxesPerUser": 3,
+    "defaultHistoryMonths": 12,
+    "syncIntervalMinutes": 60,
+    "dispatchIntervalMinutes": 5,
+    "manualSyncCooldownSeconds": 300,
+    "discoveryPageSize": 50,
+    "providers": [
+      "gmail"
+    ],
+    "recentFirstDays": 30
+  },
+  "jobs": {
+    "maxConcurrentPerTenant": 2,
+    "consumerConcurrency": 2,
+    "leaseSeconds": 300,
+    "maxQueueBodyBytes": 2048
+  },
+  "documents": {
+    "maxAttachmentBytes": 4194304,
+    "maxAiTextCharacters": 24000,
+    "maxJsonResponseBytes": 131072,
+    "parser": {
+      "provider": "disabled",
+      "enabled": false,
+      "approvedCapabilities": []
+    }
+  },
+  "ai": {
+    "hosted": {
+      "enabled": false,
+      "providerId": "operator-primary",
+      "adapter": "openai-chat-compatible",
+      "baseUrl": null,
+      "model": null,
+      "secretRef": "HOSTED_AI_API_KEY",
+      "priceVersion": null
+    },
+    "approvedByokProviders": [],
+    "maxAttemptsPerExtraction": 2,
+    "limits": {
+      "documentsPerUserDay": 50,
+      "documentsPerUserMonth": 500,
+      "operatorDailyUsdMicros": 1000000,
+      "operatorMonthlyUsdMicros": 10000000
+    }
+  },
+  "storage": {
+    "rawArchiveEnabledByDefault": false,
+    "supportedProviders": [
+      "google-drive"
+    ],
+    "allowOperatorRawStorage": false
+  },
+  "fx": {
+    "provider": "frankfurter-v2",
+    "rateSource": "ecb",
+    "maxPriorRateAgeDays": 7
+  },
+  "retention": {
+    "completedJobsDays": 7,
+    "failedJobsDays": 30,
+    "usageEventsDays": 90,
+    "oauthStateSeconds": 600
+  },
+  "safety": {
+    "logDocumentContent": false,
+    "runtimeAiToolsEnabled": false,
+    "followModelUrls": false,
+    "allowUnapprovedAiHosts": false
+  },
+  "product": {
+    "displayName": "Inbox Ledger",
+    "demoEnabled": true,
+    "releaseStage": "M0",
+    "features": {
+      "outlook": false,
+      "driveArchive": false,
+      "recurring": false,
+      "useTags": false
+    }
+  },
+  "pilotMeasurement": {
+    "enabled": false,
+    "requiresUserOptIn": true,
+    "retentionDays": 30,
+    "maxEventsPerUserDay": 100
+  }
+}
