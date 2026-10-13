@@ -10,8 +10,11 @@ export type M1CleanupItem =
   | (BaseItem & { readonly scope: "account"; readonly deleted_at: number })
   | (BaseItem & { readonly scope: "connection" });
 const leaves = [
+  "archive_upload_sessions",
   "archive_objects",
   "archive_folders",
+  "recurring_entries",
+  "recurring_series",
   "entry_valuations",
   "outlook_inventory_states",
   "outlook_folders",
@@ -54,12 +57,18 @@ function predicate(
   item: M1CleanupItem,
 ): { text: string; values: (string | number)[] } {
   if (item.scope === "account") return { text: "1", values: [] };
+  if (table === "recurring_series") return { text: "0", values: [] };
+  if (table === "archive_upload_sessions")
+    return {
+      text: "EXISTS(SELECT 1 FROM archive_objects a WHERE a.user_id=v.user_id AND a.id=v.object_id AND (a.mailbox_connection_id=? OR a.storage_connection_id=?))",
+      values: [item.target_id, item.target_id],
+    };
   if (table === "archive_objects")
     return {
       text: "(v.mailbox_connection_id=? OR v.storage_connection_id=?)",
       values: [item.target_id, item.target_id],
     };
-  if (table !== "entry_valuations")
+  if (table !== "entry_valuations" && table !== "recurring_entries")
     return { text: "v.connection_id=?", values: [item.target_id] };
   if (item.stage < 6) return { text: "0", values: [] };
   return {
@@ -76,7 +85,7 @@ export async function cleanupM1Leaves(
     const available = (
       await db
         .prepare(
-          "SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('archive_objects','archive_folders','entry_valuations','outlook_inventory_states','outlook_folders','archive_settings','storage_oauth_intents','storage_refresh_leases') LIMIT 8",
+          "SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('archive_upload_sessions','archive_objects','archive_folders','recurring_entries','recurring_series','entry_valuations','outlook_inventory_states','outlook_folders','archive_settings','storage_oauth_intents','storage_refresh_leases') LIMIT 11",
         )
         .all<{ name: string }>()
     ).results;
@@ -90,20 +99,17 @@ export async function cleanupM1Leaves(
     for (const table of present) {
       const scope = predicate(table, item);
       queries.push(
-        `(SELECT json_object('leaf','${table}','ids',json_group_array(CAST(rowid AS TEXT))) FROM(SELECT v.rowid AS rowid FROM ${table} v WHERE v.user_id=? AND ${scope.text} AND ${guard.text} LIMIT 100) HAVING COUNT(*)>0)`,
+        `(SELECT json_object('leaf','${table}','ids',json_group_array(CAST(rowid AS TEXT))) FROM(SELECT v.rowid AS rowid FROM ${table} v WHERE v.user_id=? AND ${scope.text} LIMIT 100) HAVING COUNT(*)>0)`,
       );
-      argumentsList.push(item.user_id, ...scope.values, ...guard.values);
+      argumentsList.push(item.user_id, ...scope.values);
     }
     // A changed request/profile must stop this unit, not fall through to legacy parent erasure.
-    queries.push(
-      `(SELECT json_object('leaf','blocked','ids',json('[]')) WHERE NOT (${guard.text}))`,
-    );
-    argumentsList.push(...guard.values);
+    // Check the shared guard once, keeping all eleven leaves below D1's 100-bind limit.
     const selected = await db
       .prepare(
-        `SELECT json_extract(value,'$.leaf') AS leaf,json_extract(value,'$.ids') AS ids FROM json_each(json_array(${queries.join(",")})) WHERE value IS NOT NULL ORDER BY CAST(key AS INTEGER) LIMIT 1`,
+        `SELECT json_extract(selected,'$.leaf') AS leaf,json_extract(selected,'$.ids') AS ids FROM (SELECT CASE WHEN ${guard.text} THEN (SELECT value FROM json_each(json_array(${queries.join(",")})) WHERE value IS NOT NULL ORDER BY CAST(key AS INTEGER) LIMIT 1) ELSE json_object('leaf','blocked','ids',json('[]')) END AS selected) WHERE selected IS NOT NULL`,
       )
-      .bind(...argumentsList)
+      .bind(...guard.values, ...argumentsList)
       .first<{ leaf: string; ids: string }>();
     if (!selected) return false;
     if (selected.leaf === "blocked") return true;
