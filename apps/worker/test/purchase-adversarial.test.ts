@@ -422,6 +422,12 @@ it("HOME-05 actual review endpoint retains exact missing field names without dis
       purchaseId: string;
       reason: string;
       missingFields: string[];
+      sourceContext: {
+        mailboxAddress: string;
+        receivedAt: number;
+        provider: string;
+        available: boolean;
+      };
     }>;
   };
   expect(body.reviews.find((r) => r.id === "qa-missing-question")).toEqual({
@@ -429,6 +435,12 @@ it("HOME-05 actual review endpoint retains exact missing field names without dis
     documentId: "o-missing",
     purchaseId: "missing",
     reason: "incomplete-financial-facts",
+    sourceContext: {
+      mailboxAddress: "qa-home-a-mail@example.invalid",
+      receivedAt: 0,
+      provider: "gmail",
+      available: true,
+    },
     missingFields: ["currency"],
   });
   expect(JSON.stringify(body)).not.toMatch(
