@@ -6,9 +6,11 @@ export const privateCopy = {
   connections: "Connected inboxes",
   loading: "Loading your records…",
   unavailable:
-    "Your private workspace is unavailable. Sign-in is not available in this preview. You can still explore the example.",
-  expired:
-    "Your session has ended. Sign in again when login is available, or explore the example.",
+    "Your private workspace is unavailable right now. Try again or explore the example.",
+  signedOut: "Sign in to continue to your private workspace.",
+  loginUnavailable:
+    "Sign-in is unavailable right now. You can still explore the example.",
+  signIn: "Sign in",
   failed:
     "We could not load your records. Try again; no example data has been substituted.",
   invalidFilters:

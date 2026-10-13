@@ -4,7 +4,7 @@ export const onboardingCopy = {
   loading: "Loading your workspace…",
   unavailable:
     "Onboarding is unavailable right now. Existing records and the example remain available.",
-  expired: "Your session has ended. Sign in again to continue.",
+  signedOut: "Sign in to continue to your private workspace.",
   loginTitle: "Sign in to your private workspace",
   connectTitle: "Connect the inbox where you receive receipts.",
   reviewTitle: "Review and start",

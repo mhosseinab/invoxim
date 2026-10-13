@@ -56,6 +56,7 @@ export function OnboardingPage({
         setWorkspace(null);
       }
       setError("");
+      setLoginReady(false);
       try {
         const profile = await readPrivate(
           "/api/me",
@@ -85,7 +86,7 @@ export function OnboardingPage({
           ) {
             setWorkspace(null);
             setAcceptedRunId(null);
-            setError(text.expired);
+            setError(text.signedOut);
             try {
               const config = await readPrivate(
                 "/api/public-config",

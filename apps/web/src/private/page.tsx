@@ -7,6 +7,7 @@ import {
   type PurchaseReviews,
   type PurchaseSummary,
   profileViewSchema,
+  publicConfigSchema,
   purchaseCoverageSchema,
   purchaseDetailSchema,
   purchaseFiltersSchema,
@@ -33,7 +34,7 @@ type Data = {
 };
 type State =
   | { kind: "loading" }
-  | { kind: "error"; status: number }
+  | { kind: "error"; status: number; loginReady: boolean }
   | { kind: "ready"; data: Data };
 const filterNames = [
   "q",
@@ -429,10 +430,33 @@ export function PrivatePage({ displayName }: { displayName: string }) {
         if (active && requestRevision === revision)
           setState({ kind: "ready", data });
       } catch (error) {
-        if (active && !controller.signal.aborted)
+        const status = error instanceof PrivateLoadError ? error.status : 502;
+        let loginReady = false;
+        if (
+          active &&
+          !controller.signal.aborted &&
+          (status === 401 || status === 403)
+        ) {
+          try {
+            const config = await readPrivate(
+              "/api/public-config",
+              publicConfigSchema,
+              controller.signal,
+            );
+            loginReady = config.loginEnabled;
+          } catch {
+            // Unavailable or invalid capabilities cannot enable login.
+          }
+        }
+        if (
+          active &&
+          !controller.signal.aborted &&
+          requestRevision === revision
+        )
           setState({
             kind: "error",
-            status: error instanceof PrivateLoadError ? error.status : 502,
+            status,
+            loginReady,
           });
       }
     }
@@ -542,12 +566,20 @@ export function PrivatePage({ displayName }: { displayName: string }) {
               <p>
                 {state.status === 400
                   ? text.invalidFilters
-                  : state.status === 401
-                    ? text.expired
+                  : state.status === 401 || state.status === 403
+                    ? text.signedOut
                     : state.status === 503
                       ? text.unavailable
                       : text.failed}
               </p>
+              {(state.status === 401 || state.status === 403) &&
+                (state.loginReady ? (
+                  <a className="primary" href="/onboarding">
+                    {text.signIn}
+                  </a>
+                ) : (
+                  <p>{text.loginUnavailable}</p>
+                ))}
               <a className="primary" href="/demo">
                 Try an example
               </a>
