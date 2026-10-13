@@ -16,3 +16,5 @@ Deployed Worker version `f40f250e-991e-467d-b903-da02b5227e4b`, independently co
 - [x] Live accepted v3 inference and completed reconciliation observed.
 - [ ] Refresh Connections/Needs attention to inspect progress and existing review items.
 - No migration, mailbox reconnection or new provider configuration is required for this repair.
+
+Final observation: 15 messages discovered; v3 has two accepted results containing zero records and two `incomplete` review results. No v3 schema failure was observed. Purchase count remains zero; processing has advanced without inventing purchase evidence.
