@@ -17,3 +17,9 @@ The service reuses purchase filters and the existing valuation decoder, includin
 ## Still required for full T19
 
 Native period coverage needs actual quote/refund/per-event rounding and corrupt-snapshot/in-request mutation/expiry/policy cases beyond the existing repository/service regression. List and lifecycle export still need the same report stamp, per-event reporting provenance and full-period summary equality; frontend continuations and preference-driven queued revaluation are incomplete. This checkpoint does not claim full T19, live reference quality, export completeness or production activation. FX stays disabled, and this source increment is excluded from the isolated AI deployment. No schema reset/provider credentials/new processor was introduced.
+
+## Independent acceptance coverage increment
+
+QA agent fx_period_acceptance_qa added8cases in the existing period native suite (13total), touching no production code. Explicit independent monetary constants prove two half-minor January payments round individually to total2, a February refund uses its separate1.5rate and rounds to2, annual net0, and originals stay unchanged. Cases also cover corrupted persisted signed value, legal-looking quote with wrong snapshot hash, expiry equality/after, changed policy source/age and a real D1 mutation during initial stamp signing with final stale refusal. Fixtures use stored valuation service to build inputs; expected money does not call the production converter. No manufactured RED was claimed for this coverage of implemented behavior.
+
+First validation passed as part of175tests/sevenfiles17.99s exit0 (/tmp/invoxim-m1-acceptance-increment.txt); this includes separate Outlook regressions, not175FXcases. Root five-package typecheck8.059s0 and scoped static checks0. Full list/export same-stamp equality, frontend continuation and preference-queued revaluation remain required. No FX deployment occurred.

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import type { FxConversionPolicy, PurchaseFilters } from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
@@ -7,6 +8,7 @@ import {
   createFxPeriodService,
   type FxPeriodResult,
 } from "../../../packages/adapters/src/fx/period";
+import { createFxValuationRepository } from "../../../packages/adapters/src/fx/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
 
 const policy = { source: "synthetic-reference", maxPriorAgeDays: 2 };
@@ -92,16 +94,21 @@ async function read(
   continuation?: string,
   stamp?: string,
   actorKey = "session-a",
+  options: {
+    filters?: PurchaseFilters;
+    policy?: FxConversionPolicy;
+    now?: number;
+  } = {},
 ) {
   const budget = createInvocationDatabase(env.DB, 40);
   for (let i = 0; i < 5; i++) await budget.db.prepare("SELECT 1").first();
   const result = await createFxPeriodService(budget.db, {
-    policy,
+    policy: options.policy ?? policy,
     signing,
     remainingStatements: budget.remainingStatements,
-    clock: () => 1000,
+    clock: () => options.now ?? 1000,
   }).read(context, {
-    filters: { from: "2026-01-01", to: "2026-12-31" },
+    filters: options.filters ?? { from: "2026-01-01", to: "2026-12-31" },
     actorKey,
     ...(continuation ? { continuation } : {}),
     ...(stamp ? { stamp } : {}),
@@ -223,4 +230,190 @@ it("FX-01/05 shares purchase selection and never includes orphan or merged event
       unconvertedCount: "0",
     },
   });
+});
+
+async function storeSmallQuotedPeriod() {
+  await run("DELETE FROM ledger_entries WHERE user_id=?", context.userId);
+  const repository = createFxValuationRepository(env.DB, {
+    policy,
+    clock: () => 1000,
+  });
+  for (const [id, kind, eventDate, effectiveDate, rate, expected] of [
+    ["paid-a", "payment", "2026-01-11", "2026-01-09", "0.5", "1"],
+    ["paid-b", "payment", "2026-01-11", "2026-01-09", "0.5", "1"],
+    ["refund", "refund", "2026-02-02", "2026-02-02", "1.5", "-2"],
+  ] as const) {
+    await run(
+      "INSERT INTO ledger_entries(id,user_id,purchase_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible,origin) VALUES(?,?,'p',?,?,1,'EUR',?,'user-confirmed-date',1,'user-confirmed')",
+      id,
+      context.userId,
+      id,
+      kind,
+      eventDate,
+    );
+    expect(
+      await repository.put(context, {
+        entryId: id,
+        expectedProfileVersion: 1,
+        expectedEntryVersion: 1,
+        expectedValuationVersion: 0,
+        reportingCurrency: "USD",
+        quote: {
+          source: policy.source,
+          fromCurrency: "EUR",
+          toCurrency: "USD",
+          requestedDate: eventDate,
+          effectiveDate,
+          rate,
+          retrievedAt: 1000,
+          version: "synthetic-v1",
+        },
+      }),
+    ).toMatchObject({
+      status: "stored",
+      result: { signedMinor: expected },
+    });
+  }
+}
+
+it("FX-01/03/04 sums separately rounded January payments and values the February refund at its own date/rate", async () => {
+  await storeSmallQuotedPeriod();
+  // Each 1 EUR minor at 0.5 rounds to 1 USD minor: January is 2, not 1.
+  // February's refund uses 1.5, rounding its signed value to -2, not -1.
+  for (const [from, to, paid, refunded, net, count] of [
+    ["2026-01-01", "2026-01-31", "2", "0", "2", "2"],
+    ["2026-02-01", "2026-02-28", "0", "2", "-2", "1"],
+    ["2026-01-01", "2026-12-31", "2", "2", "0", "3"],
+  ] as const) {
+    expect(
+      await read(undefined, undefined, "session-a", { filters: { from, to } }),
+    ).toMatchObject({
+      status: "complete",
+      summaryScope: "period",
+      reportingCurrency: "USD",
+      summary: {
+        paidMinor: paid,
+        refundedMinor: refunded,
+        netMinor: net,
+        convertedCount: count,
+        pendingCount: "0",
+        unconvertedCount: "0",
+        reasons: {},
+      },
+    });
+  }
+  expect(
+    (
+      await env.DB.prepare(
+        "SELECT id,kind,CAST(amount_minor AS TEXT) AS minor,currency,event_date FROM ledger_entries WHERE user_id=? ORDER BY id",
+      )
+        .bind(context.userId)
+        .all()
+    ).results,
+  ).toEqual([
+    {
+      id: "paid-a",
+      kind: "payment",
+      minor: "1",
+      currency: "EUR",
+      event_date: "2026-01-11",
+    },
+    {
+      id: "paid-b",
+      kind: "payment",
+      minor: "1",
+      currency: "EUR",
+      event_date: "2026-01-11",
+    },
+    {
+      id: "refund",
+      kind: "refund",
+      minor: "1",
+      currency: "EUR",
+      event_date: "2026-02-02",
+    },
+  ]);
+});
+
+it("FX-03 refuses a stored converted amount inconsistent with the immutable rate", async () => {
+  await storeSmallQuotedPeriod();
+  await run(
+    "UPDATE entry_valuations SET signed_minor='2' WHERE user_id=? AND entry_id='paid-a'",
+    context.userId,
+  );
+  await expect(read()).rejects.toThrow("FX_PERIOD_UNAVAILABLE");
+});
+
+it("FX-01 refuses a valid-looking public quote with an inconsistent snapshot identity", async () => {
+  await storeSmallQuotedPeriod();
+  const corruptedId = "a".repeat(64);
+  await run(
+    "INSERT INTO fx_rates(id,source,from_currency,to_currency,requested_date,effective_date,rate,retrieved_at,source_version) VALUES(?,?,'EUR','USD','2026-01-11','2026-01-09','0.5',1000,'corrupt-synthetic-v1')",
+    corruptedId,
+    policy.source,
+  );
+  await run(
+    "UPDATE entry_valuations SET rate_id=? WHERE user_id=? AND entry_id='paid-a'",
+    corruptedId,
+    context.userId,
+  );
+  await expect(read()).rejects.toThrow("FX_PERIOD_UNAVAILABLE");
+});
+
+it.each([901000, 901001])(
+  "FX-05 refuses continuation at or after its expiry (%i)",
+  async (now) => {
+    const first = await read();
+    if (first.status !== "in_progress")
+      throw new Error("EXPECTED_CONTINUATION");
+    await expect(
+      read(first.continuation, first.stamp, "session-a", { now }),
+    ).rejects.toThrow("INVALID_FX_INPUT");
+  },
+);
+
+it.each([
+  { source: "different-reference", maxPriorAgeDays: 2 },
+  { source: policy.source, maxPriorAgeDays: 1 },
+])(
+  "FX-05 refuses a continuation after the policy changes to %j",
+  async (changedPolicy) => {
+    const first = await read();
+    if (first.status !== "in_progress")
+      throw new Error("EXPECTED_CONTINUATION");
+    await expect(
+      read(first.continuation, first.stamp, "session-a", {
+        policy: changedPolicy,
+      }),
+    ).rejects.toThrow("INVALID_FX_INPUT");
+  },
+);
+
+it("FX-05 returns stale when a real ledger mutation occurs after the initial fence within one invocation", async () => {
+  const budget = createInvocationDatabase(env.DB, 40);
+  let mutated = false;
+  const result = await createFxPeriodService(budget.db, {
+    policy,
+    signing: {
+      verify: (value) => signing.verify(value),
+      async sign(payload) {
+        if (!mutated) {
+          mutated = true;
+          await run(
+            "UPDATE ledger_entries SET amount_minor=1 WHERE user_id=? AND id='00001'",
+            context.userId,
+          );
+        }
+        return signing.sign(payload);
+      },
+    },
+    remainingStatements: budget.remainingStatements,
+    clock: () => 1000,
+  }).read(context, {
+    filters: { from: "2026-01-01", to: "2026-12-31" },
+    actorKey: "session-a",
+  });
+  expect(mutated).toBe(true);
+  expect(result).toEqual({ status: "stale" });
+  expect(budget.executedStatements()).toBeLessThanOrEqual(40);
 });

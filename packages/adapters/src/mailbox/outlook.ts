@@ -81,7 +81,10 @@ function permittedTenant(authority: string, tid: string) {
         : authority === tid)
   );
 }
-function requiredReadScope(scope: string | undefined, required: boolean) {
+export function validateOutlookReadScopes(
+  scope: string | undefined,
+  required: boolean,
+) {
   if (scope === undefined) {
     if (required) throw new MailboxError("MISSING_PERMISSION");
     return;
@@ -328,7 +331,7 @@ export function createOutlookAuthorization(configuration: {
         code_verifier: input.verifier,
         redirect_uri: input.callback,
       });
-      requiredReadScope(result.scope, true);
+      validateOutlookReadScopes(result.scope, true);
       const identity = await signedIdentity(result.id_token, input.nonce);
       const access = await accessIdentity(result.access_token);
       if (access.sub !== identity.sub)
@@ -350,7 +353,7 @@ export function createOutlookAuthorization(configuration: {
         grant_type: "refresh_token",
         refresh_token: current.refreshToken,
       });
-      requiredReadScope(result.scope, false);
+      validateOutlookReadScopes(result.scope, false);
       const access = await accessIdentity(result.access_token);
       if (access.sub !== expected) throw new MailboxError("ACCOUNT_MISMATCH");
       // Microsoft may return an optional/unsigned refresh ID token. It is never authority.

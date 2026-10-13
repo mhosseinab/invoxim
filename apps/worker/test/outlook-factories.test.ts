@@ -45,6 +45,7 @@ async function fixture(
     expired?: boolean;
     provider?: "outlook" | "gmail";
     refreshToken?: boolean;
+    scopes?: string;
   } = {},
 ) {
   const id = `outlook-factory-${++sequence}`;
@@ -84,7 +85,7 @@ async function fixture(
       "https://login.microsoftonline.com/22222222-2222-4222-8222-222222222222/v2.0|synthetic-sub",
       `${id}@example.invalid`,
       ciphertext,
-      JSON.stringify(OUTLOOK_AUTHORIZATION_SCOPES),
+      options.scopes ?? JSON.stringify(OUTLOOK_AUTHORIZATION_SCOPES),
     )
     .run();
   const lease: JobLease = {
@@ -384,3 +385,65 @@ it("T17 content checkpoint revocation during refresh prevents returning a reader
   ).rejects.toMatchObject({ code: "CONTENT_AUTH_CHANGED" });
   expect(requests).toHaveLength(2);
 });
+
+const deniedScopes = [
+  {
+    label: "missing read permission",
+    scopes: JSON.stringify(["openid", "profile", "email"]),
+  },
+  { label: "empty grants", scopes: "[]" },
+  { label: "basic read only", scopes: JSON.stringify(["Mail.ReadBasic"]) },
+  { label: "read write only", scopes: JSON.stringify(["Mail.ReadWrite"]) },
+  {
+    label: "read plus write",
+    scopes: JSON.stringify([
+      "https://graph.microsoft.com/Mail.Read",
+      "https://graph.microsoft.com/Mail.ReadWrite",
+    ]),
+  },
+  {
+    label: "read plus send",
+    scopes: JSON.stringify(["Mail.Read", "Mail.Send"]),
+  },
+  {
+    label: "read shared",
+    scopes: JSON.stringify(["Mail.Read", "Mail.Read.Shared"]),
+  },
+  {
+    label: "untrusted scope origin",
+    scopes: JSON.stringify(["https://attacker.invalid/Mail.Read"]),
+  },
+  { label: "malformed JSON", scopes: "{" },
+  { label: "non-array grants", scopes: JSON.stringify({ scope: "Mail.Read" }) },
+  { label: "non-string grant", scopes: JSON.stringify(["Mail.Read", null]) },
+];
+for (const kind of ["discovery", "content"] as const)
+  it.each(deniedScopes)(
+    `T17 ${kind} refuses fresh credentials with $label before any provider request`,
+    async ({ scopes }) => {
+      const value = await fixture({ scopes });
+      const requests = transport();
+      await expect(open(kind, value)).rejects.toMatchObject({
+        code: authCode(kind),
+      });
+      expect(requests).toEqual([]);
+    },
+  );
+
+it.each(["discovery", "content"] as const)(
+  "T17 %s accepts the OAuth policy's bare, case-insensitive read-only scopes",
+  async (kind) => {
+    const value = await fixture({
+      scopes: JSON.stringify([
+        "openid",
+        "PROFILE",
+        "email",
+        "offline_access",
+        "MAIL.READ",
+      ]),
+    });
+    const requests = transport();
+    await read(kind, await open(kind, value), value);
+    expect(requests).toHaveLength(kind === "discovery" ? 1 : 2);
+  },
+);
