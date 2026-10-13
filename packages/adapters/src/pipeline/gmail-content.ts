@@ -174,7 +174,10 @@ export function createGmailContentReader(
           return { status: "unreadable", code: "invalid_mime" };
         identities.add(part.partId);
         if (part.partId === input.partKey) selectedPayload = entry.value;
-        if (part.parts !== undefined) {
+        if (
+          part.parts !== undefined &&
+          (!Array.isArray(part.parts) || part.parts.length > 0)
+        ) {
           if (!Array.isArray(part.parts))
             return { status: "unreadable", code: "invalid_mime" };
           if (part.parts.length > DOCUMENT_LIMITS.parts - count)

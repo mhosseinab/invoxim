@@ -144,7 +144,7 @@ export function normalizeGmailDocumentInput(options: {
       result.children = children;
       return result;
     }
-    if (node.parts !== undefined || !node.body) {
+    if (node.parts?.length || !node.body) {
       failure = "invalid_mime";
       return;
     }
