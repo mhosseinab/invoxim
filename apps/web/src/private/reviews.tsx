@@ -1,6 +1,7 @@
 import type { PurchaseReviews } from "@invoxim/contracts";
 import { missingQuestions, reviewQuestions } from "./copy";
 import { StandaloneReview } from "./review-controls";
+import { ReviewSource } from "./review-source";
 
 export function Reviews({
   data,
@@ -28,6 +29,12 @@ export function Reviews({
                 ? "Payment needs confirmation"
                 : "A source needs review"}
           </h2>
+          <ReviewSource
+            key={JSON.stringify([expectedUserId, review.id])}
+            review={review}
+            expectedUserId={expectedUserId}
+            onReload={onReload}
+          />
           {review.missingFields.length > 0 ? (
             <ul>
               {review.missingFields.map((field) => (
@@ -38,6 +45,12 @@ export function Reviews({
             <p>
               {reviewQuestions[review.reason] ??
                 "The source needs review. A specific missing field has not been identified."}
+            </p>
+          )}
+          {review.missingFields.includes("documentDate") && (
+            <p className="muted">
+              Use the date printed on the receipt or invoice. The email received
+              date can be different.
             </p>
           )}
           {review.documentId === null && (

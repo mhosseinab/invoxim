@@ -864,3 +864,63 @@ test("Disabled Gmail API shows the app configuration problem and prevents blind 
   await expect(page.getByRole("alert")).not.toContainText("Reconnect");
   expect(starts).toBe(1);
 });
+
+test("ONBOARD-08 reviewable sources are distinct from failed receipt coverage", async ({
+  page,
+}) => {
+  await fixtures(page);
+  let failedSources = 0;
+  await page.route("**/api/onboarding", (route) =>
+    route.fulfill({
+      json: {
+        ...onboarding,
+        view: {
+          ...view,
+          state: "importing",
+          headlineKey: "import.progress.recent",
+          primaryAction: "none",
+          canStartImport: false,
+          hasProcessingConsent: true,
+          activeImportId: "run-b",
+        },
+        progress: {
+          importRunId: "run-b",
+          connectionId: "mailbox-b",
+          startAt: disclosure.startAt,
+          cutoffAt: disclosure.cutoffAt,
+          stage: "discovering_recent",
+          discoveredSources: 10,
+          processedSources: 3,
+          unsupportedSources: 0,
+          failedSources,
+          reviewSources: 2,
+          readyRecordCount: 0,
+          reviewItemCount: 0,
+          pendingJobs: 6,
+          pausedJobs: 0,
+          failedJobs: 0,
+          historyComplete: false,
+          pauseReason: null,
+        },
+      },
+    }),
+  );
+  await page.goto("/onboarding");
+  await expect(
+    page.getByText(
+      "Some source messages could not be processed. This is not complete receipt coverage.",
+    ),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Some messages need details checked before they can become purchase records. Import is still continuing.",
+    ),
+  ).toBeVisible();
+  failedSources = 1;
+  await page.reload();
+  await expect(
+    page.getByText(
+      "Some source messages could not be processed. This is not complete receipt coverage.",
+    ),
+  ).toBeVisible();
+});

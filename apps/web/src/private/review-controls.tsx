@@ -159,7 +159,9 @@ export function ReviewControls({
   purchase,
   mutation,
   onCash,
+  showQuestion = true,
 }: {
+  showQuestion?: boolean;
   reviews: Review[];
   purchase?: PurchaseView;
   mutation: CorrectionMutation;
@@ -175,21 +177,32 @@ export function ReviewControls({
         .filter((review) => review.status === "open")
         .map((review) => (
           <article key={review.id}>
-            <h3>
-              {review.blockingScope === "financial"
-                ? "Financial question"
-                : "Operational warning"}
-            </h3>
-            <p>
-              {reviewQuestions[review.reason] ??
-                "The source needs review before this issue can be resolved."}
-            </p>
-            {review.missingFields.length > 0 && (
-              <ul>
-                {review.missingFields.map((field) => (
-                  <li key={field}>{missingQuestions[field]}</li>
-                ))}
-              </ul>
+            {showQuestion && (
+              <>
+                <h3>
+                  {review.blockingScope === "financial"
+                    ? "Financial question"
+                    : "Operational warning"}
+                </h3>
+                <p>
+                  {reviewQuestions[review.reason] ??
+                    "The source needs review before this issue can be resolved."}
+                </p>
+                {review.missingFields.length > 0 && (
+                  <ul>
+                    {review.missingFields.map((field) => (
+                      <li key={field}>{missingQuestions[field]}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            {review.actions.includes("complete-record") && (
+              <p>
+                No validated purchase record is available yet. Creating one
+                requires the merchant, currency, total and document date from
+                the original email.
+              </p>
             )}
             {review.actions.includes("correct-missing-fields") &&
               purchase &&
@@ -371,6 +384,7 @@ export function StandaloneReview({
         <>
           <ReviewControls
             reviews={[loaded.review]}
+            showQuestion={false}
             mutation={mutation}
             {...(loaded.purchase ? { purchase: loaded.purchase } : {})}
           />

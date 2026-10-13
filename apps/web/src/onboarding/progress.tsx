@@ -84,10 +84,14 @@ export function ImportProgress({
             <dt>{text.progressOpenReviewItems}</dt>
             <dd>{progress.reviewItemCount}</dd>
           </dl>
-          {(progress.failedSources > 0 ||
-            progress.unsupportedSources > 0 ||
-            progress.reviewSources > 0) && (
+          {(progress.failedSources > 0 || progress.unsupportedSources > 0) && (
             <p className="notice">{text.failedSources}</p>
+          )}
+          {progress.reviewSources > 0 && (
+            <p className="notice">
+              {text.reviewSources}
+              {!complete && !paused ? " Import is still continuing." : ""}
+            </p>
           )}
           {paused && (
             <p>

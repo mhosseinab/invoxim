@@ -439,3 +439,148 @@ test("HOME-05 only validated missing fields become exact questions including unl
     page.getByRole("region", { name: "Across this purchase history" }),
   ).toContainText("EUR 90.00");
 });
+
+test("HOME-05 review identifies original email before asking for corrections", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: [
+          {
+            id: "source-review",
+            documentId: "doc-1",
+            purchaseId: null,
+            reason: "incomplete-financial-facts",
+            missingFields: ["documentDate"],
+            sourceContext: {
+              mailboxAddress: "receipts@example.test",
+              receivedAt: Date.parse("2026-10-12T10:30:00.000Z"),
+              provider: "gmail",
+              available: true,
+            },
+          },
+        ],
+        hasMore: false,
+      },
+    }),
+  );
+  await page.route("**/api/review/source-review/corrections", (route) =>
+    route.fulfill({
+      json: {
+        purchaseId: null,
+        purchaseVersion: null,
+        mutationToken: "synthetic-token".repeat(4),
+        documentId: "doc-1",
+        review: {
+          id: "source-review",
+          version: 1,
+          status: "open",
+          reason: "incomplete-financial-facts",
+          blockingScope: "financial",
+          missingFields: ["documentDate"],
+          actions: ["complete-record"],
+        },
+      },
+    }),
+  );
+  let sourceRequests = 0;
+  await page.route("**/api/review/source-review/source", (route) => {
+    sourceRequests += 1;
+    return route.fulfill({
+      json: {
+        mailboxAddress: "receipts@example.test",
+        receivedAt: Date.parse("2026-10-12T10:30:00.000Z"),
+        subject: "Synthetic receipt from October",
+        sender: "Synthetic Merchant <billing@example.test>",
+        originalUrl:
+          "https://mail.google.com/mail/#search/rfc822msgid%3Asynthetic%40example.test",
+      },
+    });
+  });
+  await page.goto("/needs-attention");
+  await expect(
+    page.getByText("receipts@example.test", { exact: false }),
+  ).toBeVisible();
+  expect(sourceRequests).toBe(0);
+  await page.getByRole("button", { name: "Show source email" }).click();
+  await expect(
+    page.getByText("Synthetic receipt from October", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Source email" }),
+  ).toContainText("Synthetic Merchant <billing@example.test>");
+  await expect(
+    page.getByRole("link", { name: "Open original email" }),
+  ).toHaveAttribute("href", /mail.google.com/);
+  await expect(page.locator("time").first()).toHaveAttribute(
+    "datetime",
+    "2026-10-12T10:30:00.000Z",
+  );
+  await page.getByRole("button", { name: "Show available actions" }).click();
+  await expect(
+    page.getByText("What date is shown on this document?", { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText(
+      "No validated purchase record is available yet. Creating one requires the merchant, currency, total and document date from the original email.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Supply missing record" }).click();
+  await expect(page.getByLabel("Merchant", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Document date", { exact: true })).toBeVisible();
+});
+
+test("HOME-05 deleted review source stays identifiable without offering a broken link", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: [
+          {
+            id: "deleted-review",
+            documentId: "doc-2",
+            purchaseId: null,
+            reason: "document-review",
+            missingFields: [],
+            sourceContext: {
+              mailboxAddress: "receipts@example.test",
+              receivedAt: Date.parse("2026-10-12T10:30:00.000Z"),
+              provider: "gmail",
+              available: false,
+            },
+          },
+        ],
+        hasMore: false,
+      },
+    }),
+  );
+  await page.goto("/needs-attention");
+  await expect(
+    page.getByRole("region", { name: "Source email" }),
+  ).toContainText("receipts@example.test");
+  await expect(
+    page.getByText("The source email is no longer available."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Show source email" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Open original email" }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(
+    accessibility.violations.filter((violation) =>
+      ["critical", "serious"].includes(violation.impact ?? ""),
+    ),
+  ).toEqual([]);
+});

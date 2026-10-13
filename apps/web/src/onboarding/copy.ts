@@ -41,6 +41,8 @@ export const onboardingCopy = {
   finished: "Scan finished",
   noReady:
     "No purchase records are ready yet. The selected history has not finished processing.",
+  reviewSources:
+    "Some messages need details checked before they can become purchase records.",
   failedSources:
     "Some source messages could not be processed. This is not complete receipt coverage.",
   pageInvoxim: "Invoxim",
