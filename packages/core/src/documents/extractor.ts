@@ -95,7 +95,28 @@ function validate(
   }
   return null;
 }
-function select(root: MimePart, ignored: string[]): MimePart[] {
+function readableHtml(part: MimePart): boolean {
+  if (
+    part.mimeType.toLowerCase().split(";")[0]?.trim() !== "text/html" ||
+    !part.bytes?.length
+  )
+    return false;
+  try {
+    const text = new TextDecoder(part.charset ?? "utf-8", {
+      fatal: true,
+      ignoreBOM: false,
+    }).decode(part.bytes);
+    const normalized = inertHtmlText(text);
+    return normalized.complete && normalized.text.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+function select(
+  root: MimePart,
+  ignored: string[],
+  legacyPlain: boolean,
+): MimePart[] {
   function visit(node: MimePart): {
     body: MimePart[];
     attachments: MimePart[];
@@ -107,11 +128,13 @@ function select(root: MimePart, ignored: string[]): MimePart[] {
       const bodies = results.flatMap((result) => result.body);
       if (mime === "multipart/alternative") {
         const body =
+          (!legacyPlain ? bodies.find(readableHtml) : undefined) ??
           bodies.find(
             (part) =>
               part.mimeType.toLowerCase().startsWith("text/plain") &&
               part.bytes?.length,
-          ) ?? bodies.find((part) => part.bytes?.length);
+          ) ??
+          bodies.find((part) => part.bytes?.length);
         for (const part of bodies) if (part !== body) ignored.push(part.partId);
         return { body: body ? [body] : [], attachments };
       }
@@ -173,7 +196,11 @@ export function createDocumentTextExtractor(
       const documents: DocumentResult[] = [];
       let characters = 0;
       let pageCount = 0;
-      for (const node of select(input.root, ignoredPartIds)) {
+      for (const node of select(
+        input.root,
+        ignoredPartIds,
+        context.bodyAlternative === "legacy-plain",
+      )) {
         if (context.signal?.aborted) return failure("needs_review", "canceled");
         const bytes = node.bytes;
         if (!bytes) return failure("unreadable", "invalid_mime");
@@ -198,7 +225,13 @@ export function createDocumentTextExtractor(
           contentHash: [...new Uint8Array(digest)]
             .map((byte) => byte.toString(16).padStart(2, "0"))
             .join(""),
-          parserVersion: "documents-v1",
+          parserVersion:
+            mimeType === "text/html" &&
+            context.bodyAlternative !== "legacy-plain" &&
+            !node.filename &&
+            node.disposition !== "attachment"
+              ? "documents-v2"
+              : "documents-v1",
         };
         if (mimeType === "text/plain" || mimeType === "text/html") {
           let text: string;

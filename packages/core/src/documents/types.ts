@@ -38,6 +38,8 @@ export interface DocumentIdentity {
 export interface DocumentContext {
   tenant: TenantContext;
   signal?: AbortSignal;
+  /** Preserve the selected part/hash for already staged version-one documents. */
+  bodyAlternative?: "legacy-plain";
 }
 export type DocumentCode =
   | "byte_limit"
