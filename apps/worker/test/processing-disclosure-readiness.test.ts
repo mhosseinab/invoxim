@@ -1,7 +1,10 @@
 import { env } from "cloudflare:workers";
 import { createLoginAuth, type LoginConfiguration } from "@invoxim/adapters";
-import { beforeAll, expect, it } from "vitest";
+import { aiSettingsResponseSchema } from "@invoxim/contracts";
+import { beforeAll, expect, it, vi } from "vitest";
+import runtimeText from "../../../config/ai.abacus.production.json?raw";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
+import { createAiRoutes } from "../src/ai-routes";
 import {
   createOnboardingRoutes,
   type OnboardingBindings,
@@ -220,5 +223,70 @@ it("ONBOARD-04 connection capacity failures remain retryable when processing is 
         .prepare("DELETE FROM connections WHERE user_id=? AND id=?")
         .bind(userId, connectionId)
         .run();
+  }
+});
+
+it("AI-03/ONBOARD-04 approved Abacus runtime variables make both read endpoints available without calling a model or starting import", async () => {
+  const preset = JSON.parse(runtimeText);
+  const configured = {
+    ...bindings,
+    ...preset.variables,
+    AI_REGISTRY_JSON: JSON.stringify(preset.registry),
+    AI_BUDGET_JSON: JSON.stringify(preset.budget),
+    AI_HOSTED_KEY: "synthetic-abacus-hosted-key",
+    CREDENTIAL_KEYRING: JSON.stringify({
+      activeVersion: 1,
+      keys: { 1: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+    }),
+  };
+  const transport = vi
+    .spyOn(globalThis, "fetch")
+    .mockRejectedValue(new Error("Unexpected external request"));
+  try {
+    const settings = await createAiRoutes().request(
+      `${configuration.origin}/api/ai/settings`,
+      { headers: { Cookie: cookie } },
+      configured,
+    );
+    expect(settings.status).toBe(200);
+    const result = aiSettingsResponseSchema.parse(await settings.json());
+    expect(result.providers).toEqual([
+      {
+        id: "abacus-routellm",
+        models: ["gpt-6-luna"],
+        policyVersion: 1,
+        noticeRefs: ["abacus-routellm-v1", "openai-upstream-v1"],
+      },
+    ]);
+    expect(result.allowance.hostedFundingAvailable).toBe(true);
+    const response = await app.request(
+      `${configuration.origin}/api/processing-disclosure?connectionId=synthetic-owned-mailbox&timezone=Europe/Vienna`,
+      { headers: { Cookie: cookie } },
+      configured,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const disclosure = await response.json();
+    expect(disclosure).toMatchObject({
+      inference: {
+        providerId: "abacus-routellm",
+        model: "gpt-6-luna",
+        mode: "hosted",
+      },
+      canStartImport: false,
+      availability: "configuration",
+    });
+    expect(transport).not.toHaveBeenCalled();
+    for (const table of ["jobs", "processing_consents", "import_runs"])
+      expect(
+        await db
+          .prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE user_id=?`)
+          .bind(userId)
+          .first("count"),
+      ).toBe(0);
+    expect(preset.budget.globalDailyUsdMicros).toBe("1000000");
+    expect(preset.budget.globalMonthlyUsdMicros).toBe("10000000");
+  } finally {
+    transport.mockRestore();
   }
 });

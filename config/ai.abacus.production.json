@@ -1,0 +1,73 @@
+{
+  "status": "owner-selected-hosted-budget-approved",
+  "variables": {
+    "AI_ENABLED": "true",
+    "AI_HOSTED_DESTINATION": "abacus-routellm",
+    "AI_HOSTED_MODEL": "gpt-6-luna"
+  },
+  "registry": [
+    {
+      "id": "abacus-routellm",
+      "endpoint": "https://routellm.abacus.ai/v1/chat/completions",
+      "configVersion": "abacus-gpt-6-luna-v1",
+      "policyVersion": 1,
+      "noticeRefs": ["abacus-routellm-v1", "openai-upstream-v1"],
+      "notices": [
+        {
+          "id": "abacus-routellm-v1",
+          "displayName": "Abacus.AI RouteLLM",
+          "dataUseSummary": "Bounded purchase evidence is sent to Abacus.AI RouteLLM for the selected OpenAI GPT-6 Luna model. Abacus states customer/API content is not used to train models.",
+          "retentionSummary": "Abacus states its upstream agreements use zero retention. Abacus itself may retain content for backup, archival or audit; no fixed duration is stated. This is not a zero-retention guarantee for the complete service.",
+          "privacyUrl": "https://abacus.ai/privacy-policy"
+        },
+        {
+          "id": "openai-upstream-v1",
+          "displayName": "OpenAI (upstream model provider)",
+          "dataUseSummary": "The selected GPT-6 Luna model is supplied by OpenAI through Abacus. Abacus advertises provider-managed failover; this app keeps the selected destination and model fixed.",
+          "retentionSummary": "Processing through Abacus follows its upstream agreements. Direct OpenAI API retention settings are not asserted to apply to this intermediary service.",
+          "privacyUrl": "https://openai.com/policies/privacy-policy/"
+        }
+      ],
+      "timeoutMs": 30000,
+      "maxInputBytes": 24000,
+      "maxOutputBytes": 65536,
+      "maxOutputTokens": 4096,
+      "models": [
+        {
+          "id": "gpt-6-luna",
+          "capabilities": {
+            "jsonSchema": false,
+            "jsonObject": true,
+            "outputLimit": "max_tokens",
+            "usage": true,
+            "idempotency": false
+          },
+          "pricing": {
+            "version": "abacus-gpt-6-luna-20261013",
+            "approved": true,
+            "currency": "USD",
+            "source": "https://routellm-apis.abacus.ai/",
+            "checkedAt": "2026-10-13T15:40:00Z",
+            "inputUsdMicrosPerMillion": "100000",
+            "outputUsdMicrosPerMillion": "500000",
+            "otherUsdMicrosPerMillion": "500000"
+          }
+        }
+      ]
+    }
+  ],
+  "budget": {
+    "dailyDocuments": 50,
+    "monthlyDocuments": 500,
+    "dailyUnits": 1000000,
+    "monthlyUnits": 10000000,
+    "globalDailyUsdMicros": "1000000",
+    "globalMonthlyUsdMicros": "10000000"
+  },
+  "requiredServerSecrets": ["AI_HOSTED_KEY", "CREDENTIAL_KEYRING"],
+  "notes": [
+    "Owner approved application inference caps of USD 1/day and USD 10/month on 2026-10-13. Existing per-user allowance defaults are 50 documents/day, 500/month and 1M/10M token units.",
+    "Input/output prices were read from Abacus public catalog HTML. Other units are conservatively charged at the output rate; verify credentialed model metadata during operator smoke.",
+    "No mailbox scan is authorized by saving settings; explicit review and Start are still required. Jobs/extraction are separately configured."
+  ]
+}
