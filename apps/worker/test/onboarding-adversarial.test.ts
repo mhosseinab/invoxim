@@ -9,6 +9,7 @@ import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { createProcessingReviewResolver } from "../../../packages/adapters/src/onboarding/processing-readiness";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { syntheticClassificationBindings } from "./classification-fixture";
 import {
   configuredAi,
   now,
@@ -373,6 +374,7 @@ it("ONBOARD-09 AI settings reject old A workspace token with current B session d
       .run();
   const configuration = configuredAi();
   const bindings = {
+    ...syntheticClassificationBindings,
     DB: env.DB,
     AUTH_ENABLED: "true",
     AUTH_ORIGIN: origin,
@@ -381,7 +383,6 @@ it("ONBOARD-09 AI settings reject old A workspace token with current B session d
     AUTH_GOOGLE_CLIENT_SECRET: "synthetic",
     AUTH_ALLOWED_EMAILS: JSON.stringify([a.loginEmail, b.loginEmail]),
     AI_ENABLED: "true",
-    AI_CLASSIFICATION_ENABLED: "false",
     AI_REGISTRY_JSON: JSON.stringify(configuration.destinations),
     AI_HOSTED_DESTINATION: "qa-onboard-provider",
     AI_HOSTED_MODEL: "qa-small",

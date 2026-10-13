@@ -11,6 +11,7 @@ import { createOnboardingImportPreparation } from "../../../packages/adapters/sr
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createOnboardingRoutes } from "../src/onboarding-routes";
+import { syntheticClassificationBindings } from "./classification-fixture";
 import {
   configuredAi,
   now,
@@ -170,6 +171,7 @@ it.each(["none", "credential", "profile", "route"] as const)(
       };
       const bindings = {
         ...gmailBindings,
+        ...syntheticClassificationBindings,
         AI_ENABLED: "true",
         AI_REGISTRY_JSON: JSON.stringify(ai.destinations),
         AI_HOSTED_DESTINATION: "qa-onboard-provider",

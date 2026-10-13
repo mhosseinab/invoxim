@@ -2,6 +2,7 @@ import classification from "../../../config/ai.classification.production.json";
 
 /** Synthetic local classifier: never invokes the remote Workers AI binding. */
 export const syntheticClassificationBindings = {
+  AI_CLASSIFICATION_ENABLED: "true",
   AI_CLASSIFICATION_JSON: JSON.stringify(classification),
   AI: {
     async run() {

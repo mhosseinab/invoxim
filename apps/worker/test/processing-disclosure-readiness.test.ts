@@ -10,6 +10,7 @@ import {
   createOnboardingRoutes,
   type OnboardingBindings,
 } from "../src/onboarding-routes";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const db = env.DB;
 const userId = "synthetic-disclosure-owner";
@@ -232,6 +233,7 @@ it("AI-03/ONBOARD-04 approved Abacus runtime variables make both read endpoints 
   const configured = {
     ...bindings,
     ...preset.variables,
+    ...syntheticClassificationBindings,
     AI_REGISTRY_JSON: JSON.stringify(preset.registry),
     AI_BUDGET_JSON: JSON.stringify(preset.budget),
     AI_HOSTED_KEY: "synthetic-abacus-hosted-key",
