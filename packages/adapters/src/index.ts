@@ -83,6 +83,10 @@ export * from "./pipeline/repository";
 export { createPipelineService } from "./pipeline/service";
 export * from "./pipeline/types";
 export * from "./purchase-views";
+export {
+  createReviewSourceReader,
+  ReviewSourceError,
+} from "./purchase-views/review-source";
 export type { PurchaseRow } from "./purchases";
 export { createPurchaseRepository } from "./purchases";
 export * from "./recurring/service";

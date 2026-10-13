@@ -637,7 +637,7 @@ export function createPurchaseViewReader(db: D1Database) {
     const rows = (
       await db
         .prepare(
-          "SELECT r.id,r.document_id AS documentId,r.purchase_id AS purchaseId,r.reason,r.missing_fields_json AS missing FROM review_items r WHERE r.user_id=? AND r.status='open' AND EXISTS(SELECT 1 FROM profiles active WHERE active.user_id=r.user_id AND active.status='active') ORDER BY r.created_at DESC,r.id ASC LIMIT ?",
+          "SELECT r.id,r.document_id AS documentId,r.purchase_id AS purchaseId,r.reason,r.missing_fields_json AS missing,c.display_address AS mailboxAddress,c.provider,s.received_at AS receivedAt,(s.available=1 AND c.state='connected' AND s.generation=c.generation) AS sourceAvailable FROM review_items r LEFT JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id LEFT JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id LEFT JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id WHERE r.user_id=? AND r.status='open' AND EXISTS(SELECT 1 FROM profiles active WHERE active.user_id=r.user_id AND active.status='active') ORDER BY r.created_at DESC,r.id ASC LIMIT ?",
         )
         .bind(tenant.userId, checked.data.limit + 1)
         .all<{
@@ -646,6 +646,10 @@ export function createPurchaseViewReader(db: D1Database) {
           purchaseId: string | null;
           reason: string;
           missing: string | null;
+          mailboxAddress: string | null;
+          receivedAt: number | null;
+          provider: string | null;
+          sourceAvailable: number | null;
         }>()
     ).results;
     return purchaseReviewsSchema.parse({
@@ -654,6 +658,18 @@ export function createPurchaseViewReader(db: D1Database) {
         documentId: row.documentId,
         purchaseId: row.purchaseId,
         reason: row.reason,
+        ...(row.mailboxAddress !== null &&
+        row.receivedAt !== null &&
+        row.provider !== null
+          ? {
+              sourceContext: {
+                mailboxAddress: row.mailboxAddress,
+                receivedAt: row.receivedAt,
+                provider: row.provider,
+                available: row.sourceAvailable === 1,
+              },
+            }
+          : {}),
         missingFields: row.missing === null ? [] : JSON.parse(row.missing),
       })),
       hasMore: rows.length > checked.data.limit,

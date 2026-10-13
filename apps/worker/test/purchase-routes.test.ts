@@ -384,3 +384,13 @@ it("HOME-05 open-review API derives tenant from actual session and rejects query
     ).status,
   ).toBe(401);
 });
+
+it("source metadata endpoint requires authentication and never caches error responses", async () => {
+  const response = await app.request(
+    `${config.origin}/api/review/review/source`,
+    {},
+    bindings,
+  );
+  expect(response.status).toBe(401);
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+});

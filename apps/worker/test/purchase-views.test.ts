@@ -515,6 +515,12 @@ it("HOME-05 read-only open review list retains linked and unlinked missing-field
       documentId: "pending-refund",
       purchaseId: "a",
       reason: "ambiguous-event",
+      sourceContext: {
+        mailboxAddress: "synthetic@example.invalid",
+        receivedAt: 0,
+        provider: "gmail",
+        available: true,
+      },
       missingFields: [],
     },
   ]);
@@ -535,6 +541,12 @@ it("HOME-05 unlinked incomplete questions are bounded, tenant-owned, typed and c
         documentId: "pending-refund",
         purchaseId: null,
         reason: "incomplete-financial-facts",
+        sourceContext: {
+          mailboxAddress: "synthetic@example.invalid",
+          receivedAt: 0,
+          provider: "gmail",
+          available: true,
+        },
         missingFields: ["currency"],
       },
     ],
@@ -548,7 +560,7 @@ it("HOME-05 unlinked incomplete questions are bounded, tenant-owned, typed and c
   ).toEqual({ reviews: [], hasMore: false });
   const text = JSON.stringify(await reader.reviews(tenant));
   expect(text).not.toMatch(
-    /merchant|totalMinor|evidenceQuote|normalized_fields|structured_fields|provider|credential/,
+    /merchant|totalMinor|evidenceQuote|normalized_fields|structured_fields|provider_message_id|providerMessageId|credential/,
   );
   await expect(reader.reviews(tenant, 51)).rejects.toMatchObject({
     code: "invalid_request",
@@ -577,4 +589,24 @@ it("bounded export rejects over 2000 authoritative cash facts without partial to
   await expect(
     createPurchaseViewReader(db).exportSnapshot(tenant, { q: "invoice-b" }),
   ).rejects.toMatchObject({ code: "read_limit" });
+});
+
+it("review identifies the original mailbox and received date without message contents", async () => {
+  await evidence("views-a", "a", "source-context");
+  await db
+    .prepare(
+      "INSERT INTO review_items(id,user_id,document_id,reason,status,blocking_scope,created_at) VALUES('context-review','views-a','source-context','extraction-review','open','financial',0)",
+    )
+    .run();
+  const result = await createPurchaseViewReader(db).reviews(tenant);
+  expect(
+    result.reviews.find((review) => review.id === "context-review"),
+  ).toMatchObject({
+    sourceContext: {
+      mailboxAddress: "synthetic@example.invalid",
+      receivedAt: 0,
+      provider: "gmail",
+      available: true,
+    },
+  });
 });

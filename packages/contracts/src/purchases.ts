@@ -312,6 +312,38 @@ export type PurchaseExportSnapshot = z.infer<
   typeof purchaseExportSnapshotSchema
 >;
 
+export const reviewSourceContextSchema = z.strictObject({
+  mailboxAddress: z.string().max(254),
+  receivedAt: z.number().int().nonnegative().max(8_640_000_000_000_000),
+  provider: z.string().max(80),
+  available: z.boolean(),
+});
+export const reviewSourceSchema = z.strictObject({
+  mailboxAddress: z.string().max(254),
+  receivedAt: z.number().int().nonnegative().max(8_640_000_000_000_000),
+  subject: z.string().max(998).nullable(),
+  sender: z.string().max(998).nullable(),
+  originalUrl: z
+    .string()
+    .max(4096)
+    .refine((value) => {
+      try {
+        const url = new URL(value);
+        return (
+          url.origin === "https://mail.google.com" &&
+          url.pathname === "/mail/" &&
+          !url.username &&
+          !url.password &&
+          url.hash.startsWith("#search/")
+        );
+      } catch {
+        return false;
+      }
+    })
+    .nullable(),
+});
+export type ReviewSource = z.infer<typeof reviewSourceSchema>;
+
 /** Open questions only: no incomplete field guesses or source contents. */
 export const purchaseReviewSchema = z.strictObject({
   id,
@@ -334,6 +366,7 @@ export const purchaseReviewSchema = z.strictObject({
     "mixed-tender",
     "document-review",
   ]),
+  sourceContext: reviewSourceContextSchema.optional(),
   missingFields: z
     .array(z.enum(["merchant", "currency", "total", "documentDate"]))
     .max(4)

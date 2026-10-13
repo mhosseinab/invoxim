@@ -1,10 +1,13 @@
-import type { AuthBindings } from "@invoxim/adapters";
+import type { GmailBindings } from "@invoxim/adapters";
 import {
   createLoginAuth,
   createProfileService,
   createPurchaseViewReader,
+  createReviewSourceReader,
+  gmailConfiguration,
   loginConfiguration,
   PurchaseViewError,
+  ReviewSourceError,
 } from "@invoxim/adapters";
 import {
   purchaseFiltersSchema,
@@ -49,7 +52,7 @@ function query(request: Request) {
   return values;
 }
 export function createPurchaseRoutes() {
-  const app = new Hono<{ Bindings: AuthBindings }>();
+  const app = new Hono<{ Bindings: GmailBindings }>();
   app.use("/api/purchases/*", async (c, next) => {
     await next();
     c.res.headers.set("Cache-Control", "no-store");
@@ -58,7 +61,7 @@ export function createPurchaseRoutes() {
     await next();
     c.res.headers.set("Cache-Control", "no-store");
   });
-  async function authorized(request: Request, bindings: AuthBindings) {
+  async function authorized(request: Request, bindings: GmailBindings) {
     const configuration = loginConfiguration(bindings);
     if (!configuration || !bindings.DB)
       return { response: error(401, "unauthorized") } as const;
@@ -76,10 +79,30 @@ export function createPurchaseRoutes() {
     ).current(request.headers);
     if (!current) return { response: error(401, "unauthorized") } as const;
     return {
+      db: database.db,
       reader: createPurchaseViewReader(database.db),
       tenant: current.tenant,
     };
   }
+  app.get("/api/review/:id/source", async (c) => {
+    try {
+      const current = await authorized(c.req.raw, c.env ?? {});
+      if ("response" in current) return current.response;
+      if (new URL(c.req.url).search) return error(400, "invalid_request");
+      const configuration = gmailConfiguration(c.env);
+      if (!configuration) return error(503, "source_unavailable");
+      return json(
+        await createReviewSourceReader(current.db, configuration).read(
+          current.tenant,
+          c.req.param("id"),
+        ),
+      );
+    } catch (cause) {
+      if (cause instanceof ReviewSourceError)
+        return error(cause.code === "not_found" ? 404 : 503, cause.code);
+      return error(503, "source_unavailable");
+    }
+  });
   app.get("/api/purchase-reviews", async (c) => {
     try {
       const current = await authorized(c.req.raw, c.env ?? {});
@@ -104,7 +127,7 @@ export function createPurchaseRoutes() {
       return failure(cause);
     }
   });
-  async function summary(c: Context<{ Bindings: AuthBindings }>) {
+  async function summary(c: Context<{ Bindings: GmailBindings }>) {
     try {
       const current = await authorized(c.req.raw, c.env ?? {});
       if ("response" in current) return current.response;
