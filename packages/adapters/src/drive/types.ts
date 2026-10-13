@@ -30,6 +30,7 @@ export class DriveArchiveError extends Error {
 export interface DriveArchiveTransport {
   generateFileId(accessToken: string): Promise<string>;
   ensureFolder(accessToken: string, plan: DriveFolderPlan): Promise<void>;
+  inspectFolder(accessToken: string, plan: DriveFolderPlan): Promise<void>;
   inspectOriginal(
     accessToken: string,
     plan: DriveOriginalPlan,

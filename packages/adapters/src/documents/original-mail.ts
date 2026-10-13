@@ -4,6 +4,7 @@ import type {
 } from "@invoxim/core";
 import { MAX_TRANSIENT_ORIGINAL_BYTES, OriginalReadError } from "@invoxim/core";
 import { z } from "zod";
+import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
 
 type UnsupportedCode = Extract<
   TransientOriginalResult,
@@ -119,15 +120,20 @@ function looksLikeOriginal(bytes: Uint8Array) {
 }
 export function createOriginalMailReader(
   configuration: OriginalMailConfiguration,
-  options: { fetcher?: typeof fetch } = {},
+  options: { fetcher?: typeof fetch; archiveByteLimit?: number } = {},
 ): TransientOriginalReader {
-  const { maxOriginalBytes, deadlineMs } = configuration.policy;
+  const { deadlineMs } = configuration.policy;
+  const maxOriginalBytes =
+    options.archiveByteLimit ?? configuration.policy.maxOriginalBytes;
   if (
     !["gmail", "outlook"].includes(configuration.provider) ||
     !tokenSchema.safeParse(configuration.accessToken).success ||
     !Number.isSafeInteger(maxOriginalBytes) ||
     maxOriginalBytes < 1 ||
-    maxOriginalBytes > MAX_TRANSIENT_ORIGINAL_BYTES ||
+    maxOriginalBytes > MAX_ARCHIVE_ORIGINAL_BYTES ||
+    !Number.isSafeInteger(configuration.policy.maxOriginalBytes) ||
+    configuration.policy.maxOriginalBytes < 1 ||
+    configuration.policy.maxOriginalBytes > MAX_TRANSIENT_ORIGINAL_BYTES ||
     !Number.isSafeInteger(deadlineMs) ||
     deadlineMs < 100 ||
     deadlineMs > 10000

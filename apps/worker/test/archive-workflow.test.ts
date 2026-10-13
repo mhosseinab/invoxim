@@ -447,6 +447,7 @@ it("composes actual encrypted credentials, exact Gmail original bytes and fenced
   await expect(
     createDriveArchiveWorkflow({
       db: meter.db,
+      remainingStatements: meter.remainingStatements,
       cipher,
       driveAuthorization: () => unusedAuthorization,
       refreshMailbox: async () => {
@@ -489,9 +490,11 @@ it.each(["synthetic-mail", "synthetic-drive"] as const)(
       throw new Error("Synthetic revoked source must not reach Drive");
     });
     const before = await financialSnapshot();
+    const meter = createInvocationDatabase(db, 40);
     await expect(
       createDriveArchiveWorkflow({
-        db,
+        db: meter.db,
+        remainingStatements: meter.remainingStatements,
         cipher,
         driveAuthorization: () => unusedAuthorization,
         refreshMailbox: async () => {
@@ -555,6 +558,7 @@ it("defers after one fenced Drive refresh with zero original reads or ID allocat
   await expect(
     createDriveArchiveWorkflow({
       db: meter.db,
+      remainingStatements: meter.remainingStatements,
       cipher,
       driveAuthorization: (authorize) => ({
         ...unusedAuthorization,
@@ -719,6 +723,7 @@ it("archives a canonical Outlook Mail.Read grant as exact original EML without e
   await expect(
     createDriveArchiveWorkflow({
       db: meter.db,
+      remainingStatements: meter.remainingStatements,
       cipher,
       driveAuthorization: () => unusedAuthorization,
       refreshMailbox: async () => {
@@ -751,9 +756,11 @@ it("refuses a shortened ungranted Outlook scope before any source or Drive HTTP"
   const driveHttp = vi.fn(async () => {
     throw new Error("Synthetic missing canonical scope must not allocate IDs");
   });
+  const meter = createInvocationDatabase(db, 40);
   await expect(
     createDriveArchiveWorkflow({
-      db,
+      db: meter.db,
+      remainingStatements: meter.remainingStatements,
       cipher,
       driveAuthorization: () => unusedAuthorization,
       refreshMailbox: async () => {

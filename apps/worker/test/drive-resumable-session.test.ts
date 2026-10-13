@@ -1,11 +1,14 @@
 import { env } from "cloudflare:workers";
 import { createLoginAuth, createProfileService } from "@invoxim/adapters";
 import type { TenantContext } from "@invoxim/core";
-import { beforeAll, beforeEach, expect, it } from "vitest";
+import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import sessionMigration from "../../../packages/adapters/migrations/0002_archive_upload_sessions.sql?raw";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
+import { createDriveResumableTransport } from "../../../packages/adapters/src/drive/resumable";
+import { createDriveResumableWorkflow } from "../../../packages/adapters/src/drive/resumable-workflow";
 import { createArchiveUploadSessionStore } from "../../../packages/adapters/src/drive/session-store";
+import { createDriveArchiveTransport } from "../../../packages/adapters/src/drive/transport";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import type {
   ArchiveObjectWork,
@@ -29,6 +32,24 @@ const cipher = createCredentialCipher({
       .replace(/\+/g, "-")
       .replace(/\//g, "_"),
   },
+});
+const rotationKeys = {
+  1: btoa(String.fromCharCode(...new Uint8Array(32).fill(11)))
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_"),
+  2: btoa(String.fromCharCode(...new Uint8Array(32).fill(12)))
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_"),
+};
+const newerCipher = createCredentialCipher({
+  activeVersion: 2,
+  keys: rotationKeys,
+});
+const oldActiveCipher = createCredentialCipher({
+  activeVersion: 1,
+  keys: rotationKeys,
 });
 const plan: ArchiveUploadPlan = {
   fileId: "synthetic-upload-file",
@@ -101,6 +122,119 @@ beforeAll(async () => {
     "synthetic-upload-foreign",
     "upload-foreign@example.test",
   );
+});
+
+async function rotatedReference() {
+  return {
+    ciphertext: await newerCipher.seal(
+      owner,
+      { entityId: work.lease.id, purpose: "archive-upload-session" },
+      {
+        url: "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=synthetic-new-key-session",
+        fileId: plan.fileId,
+        sha256: plan.sha256,
+      },
+    ),
+    keyVersion: 2,
+    expiresAt: Date.now() + 600000,
+  };
+}
+it("refuses an expired key-two upload session before decrypting or HTTP under an old active-key-one instance", async () => {
+  const sessions = createArchiveUploadSessionStore(db);
+  await sessions.save(
+    owner,
+    work.lease,
+    plan,
+    0,
+    await rotatedReference(),
+    fences,
+  );
+  await db
+    .prepare(
+      "UPDATE archive_upload_sessions SET expires_at=? WHERE user_id=? AND object_id=?",
+    )
+    .bind(Date.now() - 1, owner.userId, work.lease.id)
+    .run();
+  const before = await db
+    .prepare(
+      "SELECT * FROM archive_upload_sessions WHERE user_id=? AND object_id=?",
+    )
+    .bind(owner.userId, work.lease.id)
+    .first();
+  const http = vi.fn(async (request: Request) => {
+    if (request.method === "GET")
+      return Response.json({
+        id: plan.parentId,
+        mimeType: "application/vnd.google-apps.folder",
+        ownedByMe: true,
+        trashed: false,
+        appProperties: { workspace: plan.workspaceMarker, kind: "folder" },
+      });
+    return new Response(null, {
+      status: 200,
+      headers: {
+        Location:
+          "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=synthetic-old-key-replacement",
+      },
+    });
+  });
+  const decrypt = vi.spyOn(oldActiveCipher, "open");
+  const step = createDriveResumableWorkflow({
+    context: owner,
+    lease: work.lease,
+    credentials: fences,
+    sessions,
+    cipher: oldActiveCipher,
+    accessToken: "synthetic-rotated-token",
+    metadata: createDriveArchiveTransport(http),
+    transport: createDriveResumableTransport(http),
+  });
+  await expect(
+    step.uploadOriginal(
+      { ...plan, name: "synthetic.eml" },
+      new Uint8Array(plan.size),
+    ),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(decrypt).not.toHaveBeenCalled();
+  expect(http).not.toHaveBeenCalled();
+  expect(
+    await db
+      .prepare(
+        "SELECT * FROM archive_upload_sessions WHERE user_id=? AND object_id=?",
+      )
+      .bind(owner.userId, work.lease.id)
+      .first(),
+  ).toEqual(before);
+  decrypt.mockRestore();
+});
+it("rejects a session CAS key downgrade independently of the workflow while preserving same-key and upward rotation", async () => {
+  const sessions = createArchiveUploadSessionStore(db);
+  await expect(
+    sessions.save(owner, work.lease, plan, 0, await reference(), fences),
+  ).resolves.toMatchObject({ keyVersion: 1, version: 1 });
+  const initial = await sessions.save(
+    owner,
+    work.lease,
+    plan,
+    1,
+    await rotatedReference(),
+    fences,
+  );
+  expect(initial?.keyVersion).toBe(2);
+  const before = await sessions.read(owner, work.lease, plan, fences);
+  await expect(
+    sessions.save(owner, work.lease, plan, 2, await reference(), fences),
+  ).resolves.toBeNull();
+  expect(await sessions.read(owner, work.lease, plan, fences)).toEqual(before);
+  const sameKey = await sessions.save(
+    owner,
+    work.lease,
+    plan,
+    2,
+    await rotatedReference(),
+    fences,
+  );
+  expect(sameKey).toMatchObject({ keyVersion: 2, version: 3 });
 });
 beforeEach(async () => {
   await db.prepare("DELETE FROM archive_upload_sessions").run();

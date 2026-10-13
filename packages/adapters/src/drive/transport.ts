@@ -1,5 +1,6 @@
 import { ArchiveServiceError } from "@invoxim/core";
 import { z } from "zod";
+import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
 import {
   DriveArchiveError,
   type DriveArchiveTransport,
@@ -48,7 +49,7 @@ const originalSchema = folderSchema.extend({
     "image/png",
     "message/rfc822",
   ]),
-  size: z.number().int().min(1).max(maximumOriginalBytes),
+  size: z.number().int().min(1).max(MAX_ARCHIVE_ORIGINAL_BYTES),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
 });
 const metadataSchema = z.object({
@@ -86,7 +87,7 @@ async function abortable<T>(
   }
 }
 
-async function readJson(
+export async function readDriveJson(
   response: Response,
   signal: AbortSignal,
   deadline: number,
@@ -234,7 +235,7 @@ export function createDriveArchiveTransport(
       if (response.status === 404) return { status: 404, body: null };
       if (response.status === 409) return { status: 409, body: null };
       if (response.status === 429) throw new DriveArchiveError("rate_limited");
-      const body = await readJson(response, controller.signal, deadline);
+      const body = await readDriveJson(response, controller.signal, deadline);
       if (!response.ok) {
         const parsed = z
           .object({
@@ -326,6 +327,13 @@ export function createDriveArchiveTransport(
         throw new DriveArchiveError("invalid_response");
       return parsed.data.ids[0];
     },
+    async inspectFolder(accessToken, input) {
+      const parsed = folderSchema.safeParse(input);
+      if (!parsed.success) throw new DriveArchiveError("invalid_input");
+      const metadata = await inspect(accessToken, parsed.data.fileId);
+      if (metadata === null) throw new DriveArchiveError("folder_missing");
+      verifyFolder(metadata, parsed.data);
+    },
     async ensureFolder(accessToken, input) {
       const parsed = folderSchema.safeParse(input);
       if (!parsed.success) throw new DriveArchiveError("invalid_input");
@@ -365,6 +373,7 @@ export function createDriveArchiveTransport(
       if (
         !parsed.success ||
         !(originalBytes instanceof Uint8Array) ||
+        parsed.data.size > maximumOriginalBytes ||
         originalBytes.byteLength !== parsed.data.size
       )
         throw new DriveArchiveError("invalid_input");

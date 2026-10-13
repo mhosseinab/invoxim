@@ -155,7 +155,7 @@ export function createArchiveUploadSessionStore(
       .prepare(
         `INSERT INTO archive_upload_sessions(user_id,object_id,reference_ciphertext,key_version,version,expires_at,uploaded_bytes)
       SELECT ?,?,?,?,1,?,0 WHERE EXISTS(SELECT 1 FROM archive_objects WHERE ${current.sql}) AND (?=0 OR EXISTS(SELECT 1 FROM archive_upload_sessions WHERE user_id=? AND object_id=? AND version=?))
-      ON CONFLICT(user_id,object_id) DO UPDATE SET reference_ciphertext=excluded.reference_ciphertext,key_version=excluded.key_version,version=archive_upload_sessions.version+1,expires_at=excluded.expires_at,uploaded_bytes=0 WHERE archive_upload_sessions.version=? AND archive_upload_sessions.version<? RETURNING ${fields}`,
+      ON CONFLICT(user_id,object_id) DO UPDATE SET reference_ciphertext=excluded.reference_ciphertext,key_version=excluded.key_version,version=archive_upload_sessions.version+1,expires_at=excluded.expires_at,uploaded_bytes=0 WHERE archive_upload_sessions.version=? AND archive_upload_sessions.version<? AND archive_upload_sessions.key_version<=excluded.key_version RETURNING ${fields}`,
       )
       .bind(
         context.userId,

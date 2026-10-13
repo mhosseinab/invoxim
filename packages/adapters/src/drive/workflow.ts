@@ -14,6 +14,7 @@ import type {
   ArchiveWorkflowPorts,
   ArchiveWorkflowResult,
 } from "../../../core/src/archive/workflow-types";
+import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
 import { createOriginalMailReader } from "../documents/original-mail";
 import {
   ContentError,
@@ -25,11 +26,15 @@ import { createCredentialVault } from "../security/vault";
 import { createArchiveFolderStore } from "./folders";
 import { createArchiveObjectStore } from "./objects";
 import { createDriveCredentialRefresher } from "./refresh";
+import { createDriveResumableTransport } from "./resumable";
+import { createDriveResumableWorkflow } from "./resumable-workflow";
+import { createArchiveUploadSessionStore } from "./session-store";
 import { createDriveArchiveTransport } from "./transport";
 import { DriveArchiveError, type DriveHttpTransport } from "./types";
 
 export interface DriveArchiveWorkflowOptions {
   db: D1Database;
+  remainingStatements(): number;
   cipher: CredentialCipher;
   driveAuthorization(authorize: () => Promise<void>): ArchiveAuthorizationPort;
   refreshMailbox(
@@ -120,6 +125,13 @@ export function createDriveArchiveWorkflow(
       | undefined;
     let storage: ReturnType<typeof usable> | undefined;
     const ports: ArchiveWorkflowPorts = {
+      reserve(requiredStatements) {
+        const remaining = options.remainingStatements();
+        if (!Number.isSafeInteger(remaining) || remaining < 0 || remaining > 40)
+          throw new ArchiveServiceError("INVALID_INPUT");
+        // One fenced object-lease release and three queue settlement statements stay unspent.
+        return remaining >= requiredStatements + 4;
+      },
       objects: {
         ...objects,
         authorized: (owner, lease) => objects.authorized(owner, lease, fences),
@@ -225,18 +237,35 @@ export function createDriveArchiveWorkflow(
         }
         const accessToken = storage.accessToken;
         const expiresAt = storage.expiresAt;
+        const authorize = async () => {
+          await control.authorize();
+          if (expiresAt <= Date.now())
+            throw new ArchiveServiceError("RECONNECT_REQUIRED");
+        };
         const transport = createDriveArchiveTransport(
           options.driveHttp,
           10000,
           {
             signal: control.signal,
-            authorize: async () => {
-              await control.authorize();
-              if (expiresAt <= Date.now())
-                throw new ArchiveServiceError("RECONNECT_REQUIRED");
-            },
+            authorize,
           },
         );
+        const captured = fences;
+        if (!captured?.mailbox || !captured.storage)
+          throw new ArchiveServiceError("CONFLICT");
+        const resumable = createDriveResumableWorkflow({
+          context: owner,
+          lease: work.lease,
+          credentials: { mailbox: captured.mailbox, storage: captured.storage },
+          cipher: options.cipher,
+          sessions: createArchiveUploadSessionStore(options.db),
+          metadata: transport,
+          transport: createDriveResumableTransport(options.driveHttp, {
+            authorize,
+            signal: control.signal,
+          }),
+          accessToken,
+        });
         return {
           generateFileId: () => transport.generateFileId(accessToken),
           ensureFolder: (plan) =>
@@ -248,7 +277,13 @@ export function createDriveArchiveWorkflow(
           inspectOriginal: (plan) =>
             transport.inspectOriginal(accessToken, originalName(plan)),
           uploadOriginal: (plan, bytes) =>
-            transport.uploadOriginal(accessToken, originalName(plan), bytes),
+            plan.size > 5 * 1024 * 1024
+              ? resumable.uploadOriginal(originalName(plan), bytes)
+              : transport.uploadOriginal(
+                  accessToken,
+                  originalName(plan),
+                  bytes,
+                ),
         };
       },
       originals: {
@@ -325,7 +360,7 @@ export function createDriveArchiveWorkflow(
                     deadlineMs: 10000,
                   },
                 },
-                { fetcher },
+                { fetcher, archiveByteLimit: MAX_ARCHIVE_ORIGINAL_BYTES },
               ).read({
                 providerMessageId: work.providerMessageId,
                 signal: control.signal,

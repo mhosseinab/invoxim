@@ -6,6 +6,8 @@ import type {
   ArchiveUploadPlan,
 } from "./objects";
 
+export const MAX_ARCHIVE_ORIGINAL_BYTES = 16 * 1024 * 1024;
+
 /** Every external request must invoke authorize immediately before dispatch. */
 export interface ArchiveWorkflowControl {
   signal: AbortSignal;
@@ -38,9 +40,14 @@ export interface ArchiveWorkflowRemote {
   generateFileId(): Promise<string>;
   ensureFolder(plan: ArchiveFolderPlan): Promise<void>;
   inspectOriginal(plan: ArchiveUploadPlan): Promise<boolean>;
-  uploadOriginal(plan: ArchiveUploadPlan, bytes: Uint8Array): Promise<void>;
+  uploadOriginal(
+    plan: ArchiveUploadPlan,
+    bytes: Uint8Array,
+  ): Promise<void> | Promise<undefined | { status: "deferred" }>;
 }
 export interface ArchiveWorkflowPorts {
+  /** Adapter reserves its shared invocation's lease-release and queue-settlement headroom. */
+  reserve?(requiredStatements: number): boolean;
   objects: ArchiveObjectStore;
   folders: ArchiveFolderStore;
   originals: ArchiveWorkflowOriginalSource;
