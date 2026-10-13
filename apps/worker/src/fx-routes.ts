@@ -9,9 +9,17 @@ import {
   readAuthJson,
   verifyWorkspaceMutationToken,
 } from "@invoxim/adapters";
+import {
+  fxPeriodRequestSchema,
+  fxPeriodResponseSchema,
+} from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import type {
+  FxPeriodInput,
+  FxPeriodResult,
+} from "../../../packages/adapters/src/fx/period";
 import type {
   FxReportingPage,
   FxReportingPageInput,
@@ -29,6 +37,10 @@ import { createInvocationDatabase } from "./invocation-database";
 
 export interface FxRouteBindings extends AuthBindings, FxReferenceBindings {}
 export interface FxRouteService {
+  readPeriod?(
+    context: TenantContext,
+    input: FxPeriodInput,
+  ): Promise<FxPeriodResult>;
   readPage(
     context: TenantContext,
     input: FxReportingPageInput,
@@ -39,7 +51,11 @@ export interface FxRouteService {
   ): Promise<FxRevaluationPage>;
 }
 export interface FxRouteOptions {
-  service(db: D1Database, bindings: FxRouteBindings): FxRouteService | null;
+  service(
+    db: D1Database,
+    bindings: FxRouteBindings,
+    remainingStatements: () => number,
+  ): FxRouteService | null;
 }
 function error(status: number, code: string) {
   return Response.json(
@@ -154,7 +170,11 @@ export function createFxRoutes(options: FxRouteOptions) {
           response: error(403, "workspace_changed_or_expired"),
         } as const;
     }
-    const service = options.service(database.db, bindings);
+    const service = options.service(
+      database.db,
+      bindings,
+      database.remainingStatements,
+    );
     if (!service) return { response: error(503, "fx_not_configured") } as const;
     return { service, tenant: current.tenant, identity, secret: config.secret };
   }
@@ -208,6 +228,33 @@ export function createFxRoutes(options: FxRouteOptions) {
       return failure(cause);
     }
   }
+  app.post("/api/fx/reporting/period", async (c) => {
+    try {
+      const ready = await authorized(c.req.raw, c.env ?? {}, false);
+      if ("response" in ready) return ready.response;
+      if (new URL(c.req.url).search) return error(400, "invalid_request");
+      const parsed = fxPeriodRequestSchema.safeParse(
+        await readAuthJson(c.req.raw, 40960),
+      );
+      if (!parsed.success) return error(400, "invalid_request");
+      if (!ready.service.readPeriod) return error(503, "fx_not_configured");
+      const result = await ready.service.readPeriod(ready.tenant, {
+        filters: parsed.data.filters,
+        ...(parsed.data.stamp === undefined
+          ? {}
+          : { stamp: parsed.data.stamp }),
+        ...(parsed.data.continuation === undefined
+          ? {}
+          : { continuation: parsed.data.continuation }),
+        actorKey: ready.identity.sessionId,
+      });
+      return result.status === "stale"
+        ? error(409, "valuation_stale")
+        : json(fxPeriodResponseSchema.parse(result));
+    } catch (cause) {
+      return failure(cause);
+    }
+  });
   app.get("/api/fx/reporting", (c) => reporting(c, false, false));
   app.get("/api/fx/reporting/export", (c) => reporting(c, true, false));
   // POST supports large opaque cursors without relying on the deployment's URL length limit.

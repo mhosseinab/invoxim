@@ -5,12 +5,18 @@ import {
   type FxRateQuote,
   fxCalculationVersion,
   fxConversionPolicySchema,
-  fxConversionResultSchema,
   fxCurrencySchema,
   fxRateQuoteSchema,
   hasControlCharacters,
 } from "@invoxim/contracts";
 import { convertFxEntry, type TenantContext } from "@invoxim/core";
+import {
+  decodeFxValuation,
+  fxQuoteIdentity,
+  fxSnapshotHash,
+  type OwnedEntry,
+  type ValuationRow,
+} from "./period-valuation";
 export interface FxValuationKey {
   readonly entryId: string;
   readonly expectedProfileVersion: number;
@@ -37,32 +43,6 @@ export type FxValuationWriteResult =
       readonly valuationVersion: number;
       readonly result: FxConversionResult;
     };
-interface OwnedEntry {
-  id: string;
-  kind: "payment" | "refund";
-  amount_minor: string;
-  currency: string;
-  event_date: string;
-  version: number;
-}
-interface ValuationRow extends OwnedEntry {
-  profile_version: number;
-  profile_currency: string;
-  valuation_version: number | null;
-  status: "converted" | "unconverted" | null;
-  signed_minor: string | null;
-  basis: "identity" | "reference" | null;
-  reason: string | null;
-  rate_id: string | null;
-  source: string | null;
-  from_currency: string | null;
-  to_currency: string | null;
-  requested_date: string | null;
-  effective_date: string | null;
-  rate: string | null;
-  retrieved_at: number | null;
-  source_version: string | null;
-}
 function version(value: number, zero = false): boolean {
   return (
     Number.isSafeInteger(value) &&
@@ -97,28 +77,6 @@ function entry(row: OwnedEntry): FxEntry {
     eventDate: row.event_date,
   };
 }
-async function hash(value: unknown): Promise<string> {
-  return Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(JSON.stringify(value)),
-      ),
-    ),
-    (byte) => byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-function quoteIdentity(quote: FxRateQuote): unknown[] {
-  return [
-    quote.source,
-    quote.fromCurrency,
-    quote.toCurrency,
-    quote.requestedDate,
-    quote.effectiveDate,
-    quote.rate,
-    quote.version,
-  ];
-}
 async function safe<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
@@ -135,7 +93,7 @@ export function createFxValuationRepository(
   const parsed = fxConversionPolicySchema.safeParse(options.policy);
   if (!parsed.success) throw new Error("INVALID_FX_INPUT");
   const policy = parsed.data,
-    policyHash = hash([
+    policyHash = fxSnapshotHash([
       policy.source,
       policy.maxPriorAgeDays,
       fxCalculationVersion,
@@ -167,49 +125,7 @@ export function createFxValuationRepository(
     )
       return { status: "pending" };
     if (row.valuation_version === null) return { status: "pending" };
-    let quote: FxRateQuote | null = null;
-    if (row.rate_id !== null) {
-      const q = fxRateQuoteSchema.safeParse({
-        source: row.source,
-        fromCurrency: row.from_currency,
-        toCurrency: row.to_currency,
-        requestedDate: row.requested_date,
-        effectiveDate: row.effective_date,
-        rate: row.rate,
-        version: row.source_version,
-        retrievedAt: row.retrieved_at,
-      });
-      if (!q.success) throw new Error("CORRUPT_FX_VALUATION");
-      quote = q.data;
-      if ((await hash(quoteIdentity(quote))) !== row.rate_id)
-        throw new Error("CORRUPT_FX_VALUATION");
-    }
-    const persisted = fxConversionResultSchema.safeParse(
-      row.status === "unconverted" && quote === null
-        ? {
-            status: "unconverted",
-            entry: entry(row),
-            reportingCurrency: input.reportingCurrency,
-            reason: row.reason,
-            calculationVersion: fxCalculationVersion,
-          }
-        : convertFxEntry(entry(row), input.reportingCurrency, quote, policy),
-    );
-    if (!persisted.success) throw new Error("CORRUPT_FX_VALUATION");
-    const result = persisted.data;
-    if (
-      result.status !== row.status ||
-      (result.status === "converted" &&
-        (result.signedMinor !== row.signed_minor ||
-          result.basis !== row.basis)) ||
-      (result.status === "unconverted" && result.reason !== row.reason)
-    )
-      throw new Error("CORRUPT_FX_VALUATION");
-    return {
-      status: "valued",
-      valuationVersion: row.valuation_version,
-      result,
-    };
+    return decodeFxValuation(row, input.reportingCurrency, policy);
   }
   async function put(
     context: TenantContext,
@@ -251,7 +167,7 @@ export function createFxValuationRepository(
             checked.data.requestedDate === row.event_date
           ? checked.data
           : null;
-    const rateId = quote ? await hash(quoteIdentity(quote)) : null;
+    const rateId = quote ? await fxSnapshotHash(fxQuoteIdentity(quote)) : null;
     const policyKey = await policyHash;
     const keyValues = [
       context.userId,

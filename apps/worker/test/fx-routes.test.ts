@@ -368,3 +368,148 @@ it("Auth JSON default remains4KiB and explicit FX limit is bounded at40KiB", asy
     code: "invalid_request",
   });
 });
+it("FX-01/03/04: real signed-session revaluation of three cold foreign events fits the shared40-statement budget", async () => {
+  const f = await fixture("fx-route-cold-three");
+  await events(f, []);
+  const originals = [
+    {
+      id: "a-usd-payment",
+      kind: "payment",
+      amount: 10,
+      currency: "USD",
+      date: "2026-04-13",
+    },
+    {
+      id: "b-gbp-payment",
+      kind: "payment",
+      amount: 100,
+      currency: "GBP",
+      date: "2026-05-14",
+    },
+    {
+      id: "c-jpy-refund",
+      kind: "refund",
+      amount: 10,
+      currency: "JPY",
+      date: "2026-06-15",
+    },
+  ];
+  for (const event of originals)
+    await env.DB.prepare(
+      "INSERT INTO ledger_entries(id,user_id,purchase_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible,origin) VALUES(?,?,'purchase',?,?,?, ?,?,'user-confirmed-date',1,'user-confirmed')",
+    )
+      .bind(
+        event.id,
+        f.current.tenant.userId,
+        event.id,
+        event.kind,
+        event.amount,
+        event.currency,
+        event.date,
+      )
+      .run();
+  const source = "synthetic-cold-route-reference";
+  const lookups: {
+    fromCurrency: string;
+    toCurrency: string;
+    requestedDate: string;
+  }[] = [];
+  f.routes = createFxRoutes({
+    service: (db) =>
+      createFxReportingService(db, {
+        policy: { source, maxPriorAgeDays: 2 },
+        reader: {
+          async lookup(request) {
+            lookups.push(request);
+            const rate = request.fromCurrency === "GBP" ? "2" : "0.5";
+            return {
+              ...request,
+              source,
+              effectiveDate: request.requestedDate,
+              rate,
+              version: "synthetic-cold-v1",
+              retrievedAt: 0,
+            };
+          },
+        },
+      }),
+  });
+  const before = await page(f);
+  expect(before.pendingCount).toBe(3);
+  expect(lookups).toEqual([]);
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) AS total FROM fx_rates WHERE source=?",
+    )
+      .bind(source)
+      .first("total"),
+  ).toBe(0);
+  const meter = createInvocationDatabase(env.DB, 40);
+  const response = await f.routes.fetch(
+    new Request(`${f.config.origin}/api/fx/revalue`, {
+      method: "POST",
+      headers: {
+        Cookie: f.cookie,
+        Origin: f.config.origin,
+        "Content-Type": "application/json",
+        "X-Workspace-Token": before.mutationToken,
+      },
+      body: JSON.stringify(input),
+    }),
+    { ...f.bindings, DB: meter.db },
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    status: "current",
+    processed: 3,
+    nextCursor: null,
+  });
+  const executed = meter.executedStatements();
+  console.info(
+    "FX three cold events with real auth: native statements",
+    executed,
+  );
+  expect(executed).toBeLessThanOrEqual(40);
+  expect(lookups).toEqual([
+    { fromCurrency: "USD", toCurrency: "EUR", requestedDate: "2026-04-13" },
+    { fromCurrency: "GBP", toCurrency: "EUR", requestedDate: "2026-05-14" },
+    { fromCurrency: "JPY", toCurrency: "EUR", requestedDate: "2026-06-15" },
+  ]);
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) AS total FROM entry_valuations WHERE user_id=? AND status='converted'",
+    )
+      .bind(f.current.tenant.userId)
+      .first("total"),
+  ).toBe(3);
+  const current = await page(f);
+  expect(current.pendingCount).toBe(0);
+  expect(
+    current.entries.map((row) =>
+      row.status === "valued" && row.result.status === "converted"
+        ? row.result.signedMinor
+        : null,
+    ),
+  ).toEqual(["5", "200", "-500"]);
+  expect(current.pageSummary.signedMinor).toBe("-295");
+  const exportedResponse = await request(
+    f,
+    `/api/fx/reporting/export?${query}`,
+  );
+  expect(exportedResponse.status).toBe(200);
+  const exported = fxReportingExportSchema.parse(await exportedResponse.json());
+  expect(exported.rows).toEqual(current.entries);
+  expect(exported.pageSummary).toEqual(current.pageSummary);
+  expect(lookups).toHaveLength(3);
+  expect(
+    (
+      await env.DB.prepare(
+        "SELECT id,kind,CAST(amount_minor AS TEXT) AS amount,currency,event_date AS date FROM ledger_entries WHERE user_id=? ORDER BY id",
+      )
+        .bind(f.current.tenant.userId)
+        .all()
+    ).results,
+  ).toEqual(
+    originals.map((event) => ({ ...event, amount: String(event.amount) })),
+  );
+});

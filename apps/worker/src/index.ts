@@ -24,6 +24,8 @@ import {
 import { publicConfigSchema } from "@invoxim/contracts";
 import type { JobHandler } from "@invoxim/core";
 import { Hono } from "hono";
+import { createFxPeriodService } from "../../../packages/adapters/src/fx/period";
+import { createFxPeriodSigning } from "../../../packages/adapters/src/fx/period-signing";
 import { runtimeAiBindings } from "./ai-bindings";
 import { createAiRoutes } from "./ai-routes";
 import { createAuthRoutes } from "./auth-routes";
@@ -87,16 +89,27 @@ app.get("/api/public-config", (context) =>
 app.route(
   "/",
   createFxRoutes({
-    service(db, bindings) {
+    service(db, bindings, remainingStatements) {
       const configuration = fxReferenceConfiguration(bindings);
       if (!configuration) return null;
-      return createFxReportingService(db, {
-        policy: {
-          source: configuration.source,
-          maxPriorAgeDays: configuration.maxPriorAgeDays,
-        },
-        reader: createPublicReferenceRateReader(configuration),
+      const login = loginConfiguration(bindings);
+      if (!login) return null;
+      const policy = {
+        source: configuration.source,
+        maxPriorAgeDays: configuration.maxPriorAgeDays,
+      };
+      const period = createFxPeriodService(db, {
+        policy,
+        signing: createFxPeriodSigning(login.secret),
+        remainingStatements,
       });
+      return {
+        ...createFxReportingService(db, {
+          policy,
+          reader: createPublicReferenceRateReader(configuration),
+        }),
+        readPeriod: period.read,
+      };
     },
   }),
 );
@@ -215,7 +228,11 @@ function configuredJobs(
 // Preserve the established Hono API while adding the platform event entry points.
 const handleRequest = app.fetch;
 const worker = Object.assign(app, {
-  fetch(request: Request, bindings?: WorkerBindings, context?: ExecutionContext) {
+  fetch(
+    request: Request,
+    bindings?: WorkerBindings,
+    context?: ExecutionContext,
+  ) {
     return handleRequest(request, runtimeAiBindings(bindings ?? {}), context);
   },
   async scheduled(

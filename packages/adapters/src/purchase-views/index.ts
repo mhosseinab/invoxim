@@ -72,12 +72,12 @@ const cursorSchema = z.strictObject({
   id: purchaseViewSchema.shape.id,
   filter: z.string().max(64),
 });
-function checkedFilters(input: PurchaseFilters) {
+export function checkedFilters(input: PurchaseFilters) {
   const result = purchaseFiltersSchema.safeParse(input);
   if (!result.success) throw new PurchaseViewError("invalid_request");
   return result.data;
 }
-function conditions(tenant: TenantContext, filter: PurchaseFilters) {
+export function conditions(tenant: TenantContext, filter: PurchaseFilters) {
   const sql = [
     "p.user_id=?",
     "p.record_status!='merged'",
@@ -127,7 +127,7 @@ const metadataProjection = `p.id,p.merchant_raw AS merchant,p.document_date AS d
  (SELECT json_group_array(reason) FROM (SELECT DISTINCT r.reason FROM review_items r WHERE r.user_id=p.user_id AND r.purchase_id=p.id AND r.status='open' ORDER BY r.reason)) AS reviews`;
 const projection = `${metadataProjection},
  (SELECT json_group_array(json_object('id',e.id,'kind',e.kind,'minor',CAST(e.amount_minor AS TEXT),'currency',e.currency,'date',e.event_date,'dateBasis',e.date_basis,'eligible',e.eligible,'observationId',e.observation_id,'origin',e.origin,'version',e.version)) FROM (SELECT id,kind,amount_minor,currency,event_date,date_basis,eligible,observation_id,origin,version FROM ledger_entries entry WHERE entry.user_id=p.user_id AND entry.purchase_id=p.id ORDER BY entry.event_date,entry.id LIMIT 1001) e) AS events`;
-function matchesPeriod(
+export function matchesPeriod(
   event: Pick<EventRow, "date" | "currency">,
   filter?: PurchaseFilters,
 ) {
