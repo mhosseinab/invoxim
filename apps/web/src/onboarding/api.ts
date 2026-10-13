@@ -12,6 +12,7 @@ const safeCodes = new Set([
   "processing_review_required",
   "allowance_unavailable",
   "mailbox_reconnect_required",
+  "mailbox_api_disabled",
   "conflict",
   "unauthorized",
   "origin_required",

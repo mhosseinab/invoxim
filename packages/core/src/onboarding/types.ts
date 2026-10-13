@@ -12,7 +12,11 @@ export interface OnboardingSession {
   readonly loginEmail: string;
 }
 export type OnboardingImportSeed =
-  | { readonly provider: "gmail"; readonly historyAnchor: string }
+  | {
+      readonly provider: "gmail";
+      readonly historyAnchor: string;
+      readonly credentialFence?: { readonly credentialVersion: number };
+    }
   | { readonly provider: "outlook" };
 export interface OnboardingStartPreparationPort {
   prepare(
@@ -21,6 +25,8 @@ export interface OnboardingStartPreparationPort {
       provider: "gmail" | "outlook";
       connectionId: string;
       generation: number;
+      credentialVersion?: number;
+      scopes?: string;
     },
     signal: AbortSignal,
   ): Promise<OnboardingImportSeed>;
@@ -93,7 +99,8 @@ export class OnboardingError extends Error {
       | "PROCESSING_REVIEW_REQUIRED"
       | "UNAVAILABLE"
       | "BUDGET"
-      | "AUTH_REQUIRED",
+      | "AUTH_REQUIRED"
+      | "API_DISABLED",
   ) {
     super(code);
   }

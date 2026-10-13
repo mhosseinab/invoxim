@@ -347,6 +347,7 @@ export function createMailboxService(
     context: TenantContext,
     id: string,
     expectedGeneration?: number,
+    expectedCredentialVersion?: number,
   ) {
     const existing = await row(context, id);
     if (
@@ -355,6 +356,11 @@ export function createMailboxService(
         existing.generation !== expectedGeneration)
     )
       throw new MailboxError("RECONNECT_REQUIRED");
+    if (
+      expectedCredentialVersion !== undefined &&
+      existing.credential_version !== expectedCredentialVersion
+    )
+      throw new MailboxError("CONFLICT");
     const snapshot = await vault.read(
       context,
       { kind: "connection", id, generation: existing.generation },

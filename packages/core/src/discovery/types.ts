@@ -49,6 +49,19 @@ export interface DiscoveryProviderFactory {
     signal: AbortSignal,
   ): Promise<DiscoveryProviderPort>;
 }
+/** Server-reviewed credentials pinned before onboarding provider effects. */
+export interface OnboardingStartDiscoveryFactory extends DiscoveryProviderFactory {
+  openForStart(
+    context: TenantContext,
+    input: {
+      connectionId: string;
+      generation: number;
+      credentialVersion: number;
+      scopes: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{ provider: DiscoveryProviderPort; credentialVersion: number }>;
+}
 export interface DiscoveryProcessingSelection {
   readonly mode: "hosted" | "byok" | null;
   readonly settingsRevision: number;
@@ -93,7 +106,8 @@ export class DiscoveryError extends Error {
       | "SOURCE_UNAVAILABLE"
       | "HISTORY_EXPIRED"
       | "RATE_LIMITED"
-      | "AUTH_REQUIRED",
+      | "AUTH_REQUIRED"
+      | "API_DISABLED",
     readonly retryAfterMs?: number,
   ) {
     super(code);

@@ -193,6 +193,14 @@ export function ReviewImport({
           onIdentityChanged();
         } else if (
           error instanceof OnboardingRequestError &&
+          error.code === "mailbox_api_disabled"
+        ) {
+          setAttempt(null);
+          setAccepted(false);
+          setStale(true);
+          setMessage(text.mailboxApiDisabled);
+        } else if (
+          error instanceof OnboardingRequestError &&
           error.status === 409
         ) {
           setAttempt(null);

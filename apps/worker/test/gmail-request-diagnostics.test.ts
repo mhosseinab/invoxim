@@ -10,7 +10,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("records only the failed Gmail operation and HTTP status without reading provider error content", async () => {
+it("records only the failed Gmail operation and HTTP status without exposing provider error content", async () => {
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   let reads = 0;
   const body = new ReadableStream({
@@ -30,8 +30,9 @@ it("records only the failed Gmail operation and HTTP status without reading prov
   expect(warning).toHaveBeenCalledExactlyOnceWith("gmail_request_failed", {
     operation: "profile",
     status: 403,
+    reason: "UNKNOWN",
   });
-  // Stream construction may prefetch; the adapter never reads or logs its payload.
+  // Only an allowlisted reason may leave the transient provider response.
   expect(reads).toBeLessThanOrEqual(1);
   expect(JSON.stringify(warning.mock.calls)).not.toContain("private");
 });

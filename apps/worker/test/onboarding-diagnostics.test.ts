@@ -162,3 +162,37 @@ it("GET onboarding failures keep existing behavior without Start diagnostics", a
   ).toBe(503);
   expect(warn).not.toHaveBeenCalled();
 });
+
+it("Disabled Gmail API returns a specific nonretryable operator configuration error", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const { bindings, request } = await fixture(
+    "diagnostic-api-disabled",
+    new OnboardingError("API_DISABLED"),
+  );
+  const response = await createOnboardingRoutes().fetch(request(), bindings);
+  expect(response.status).toBe(503);
+  const body = (await response.json()) as {
+    error: {
+      code: string;
+      message: string;
+      requestId: string;
+      retryable: boolean;
+    };
+  };
+  expect(body.error).toMatchObject({
+    code: "mailbox_api_disabled",
+    message:
+      "Gmail API is disabled for this app. Enable it in the Google Cloud project before importing.",
+    retryable: false,
+  });
+  expect(warn.mock.calls).toEqual([
+    [
+      {
+        event: "onboarding_start_failed",
+        requestId: body.error.requestId,
+        errorType: "OnboardingError",
+        errorCode: "API_DISABLED",
+      },
+    ],
+  ]);
+});

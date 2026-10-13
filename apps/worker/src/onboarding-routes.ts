@@ -27,12 +27,13 @@ function error(
   code: string,
   retryable = status === 503,
   requestId: string = crypto.randomUUID(),
+  message = "Request unavailable",
 ) {
   return Response.json(
     {
       error: {
         code,
-        message: "Request unavailable",
+        message,
         requestId,
         retryable,
       },
@@ -78,6 +79,14 @@ function failure(cause: unknown, requestId?: string) {
       return error(429, "allowance_unavailable", false, requestId);
     case "AUTH_REQUIRED":
       return error(409, "mailbox_reconnect_required", false, requestId);
+    case "API_DISABLED":
+      return error(
+        503,
+        "mailbox_api_disabled",
+        false,
+        requestId,
+        "Gmail API is disabled for this app. Enable it in the Google Cloud project before importing.",
+      );
     case "UNAVAILABLE":
       return error(503, "processing_unavailable", true, requestId);
   }
@@ -95,6 +104,7 @@ function startDiagnostic(cause: unknown, requestId: string) {
       "UNAVAILABLE",
       "BUDGET",
       "AUTH_REQUIRED",
+      "API_DISABLED",
     ].includes(cause.code)
   ) {
     errorType = "OnboardingError";

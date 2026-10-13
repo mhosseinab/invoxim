@@ -33,6 +33,8 @@ export const onboardingCopy = {
     "Processing details are unavailable. Import cannot start until approved processing is configured.",
   configurationBlocked:
     "Import is not enabled on this service yet. Your inbox is connected; no new import has started.",
+  mailboxApiDisabled:
+    "Gmail API is disabled for this app. Enable it in the Google Cloud project before importing.",
   providerUnavailable:
     "The mailbox authorization could not be started. Your workspace is still available; retry only when you are ready.",
   progressTitle: "Your import",

@@ -825,3 +825,42 @@ for (const error of [
     ).toHaveCount(0);
   });
 }
+
+test("Disabled Gmail API shows the app configuration problem and prevents blind Start retry", async ({
+  page,
+}) => {
+  let starts = 0;
+  await fixtures(page, () => {
+    starts++;
+    return {
+      status: 503,
+      body: {
+        error: {
+          code: "mailbox_api_disabled",
+          retryable: false,
+          message: "synthetic-provider-response-must-not-be-copy",
+        },
+      },
+    };
+  });
+  await page.goto("/onboarding/review");
+  await page
+    .getByLabel(
+      "I authorize the displayed processing and hourly receipt checks.",
+      { exact: true },
+    )
+    .check();
+  await page.getByRole("button", { name: "Start import", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Gmail API is disabled for this app. Enable it in the Google Cloud project before importing.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Start import", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Retry the same Start request" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("alert")).not.toContainText("result is unknown");
+  await expect(page.getByRole("alert")).not.toContainText("Reconnect");
+  expect(starts).toBe(1);
+});

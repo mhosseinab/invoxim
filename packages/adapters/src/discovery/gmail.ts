@@ -76,6 +76,79 @@ const metadataSchema = z.object({
     })
     .optional(),
 });
+const forbiddenReasons = [
+  "SERVICE_DISABLED",
+  "accessNotConfigured",
+  "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+  "insufficientPermissions",
+  "rateLimitExceeded",
+  "userRateLimitExceeded",
+  "dailyLimitExceeded",
+  "domainPolicy",
+] as const;
+/** Provider error text is transient; only known reason codes leave this boundary. */
+async function forbiddenReason(
+  response: Response,
+  signal: AbortSignal,
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "UNKNOWN";
+  const bytes = new Uint8Array(8192);
+  let length = 0;
+  let chunks = 0;
+  let aborted: (() => void) | undefined;
+  const stopped = new Promise<never>((_, reject) => {
+    aborted = () => reject(new DiscoveryError("UNAVAILABLE"));
+    signal.addEventListener("abort", aborted, { once: true });
+    if (signal.aborted) aborted();
+  });
+  try {
+    while (true) {
+      const item = await Promise.race([reader.read(), stopped]);
+      if (item.done) break;
+      if (++chunks > 64 || length + item.value.byteLength > bytes.length)
+        return "UNKNOWN";
+      bytes.set(item.value, length);
+      length += item.value.byteLength;
+    }
+    const value = z
+      .object({
+        error: z.object({
+          errors: z
+            .array(z.object({ reason: z.string().max(80).optional() }))
+            .max(20)
+            .optional(),
+          details: z
+            .array(z.object({ reason: z.string().max(80).optional() }))
+            .max(20)
+            .optional(),
+        }),
+      })
+      .safeParse(
+        JSON.parse(
+          new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+            bytes.subarray(0, length),
+          ),
+        ),
+      );
+    if (!value.success) return "UNKNOWN";
+    const candidates = [
+      ...(value.data.error.details ?? []),
+      ...(value.data.error.errors ?? []),
+    ];
+    return (
+      forbiddenReasons.find((reason) =>
+        candidates.some((item) => item.reason === reason),
+      ) ?? "UNKNOWN"
+    );
+  } catch {
+    return "UNKNOWN";
+  } finally {
+    if (aborted) signal.removeEventListener("abort", aborted);
+    void reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
 /** Per-invocation approved token; endpoint/selection are server-owned constants. */
 export function createGmailDiscovery(
   accessToken: string,
@@ -111,11 +184,23 @@ export function createGmailDiscovery(
         redirect: "manual",
         signal: controller.signal,
       });
+      const reason =
+        response.status === 403
+          ? await forbiddenReason(response, controller.signal)
+          : undefined;
       if (!response.ok)
         console.warn("gmail_request_failed", {
           operation: path === "profile" ? "profile" : "discovery",
           status: response.status,
+          ...(reason ? { reason } : {}),
         });
+      if (reason === "SERVICE_DISABLED" || reason === "accessNotConfigured")
+        throw new DiscoveryError("API_DISABLED");
+      if (
+        reason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT" ||
+        reason === "insufficientPermissions"
+      )
+        throw new DiscoveryError("AUTH_REQUIRED");
       if (response.status === 404)
         throw new DiscoveryError(
           path === "history"
@@ -125,7 +210,15 @@ export function createGmailDiscovery(
               : "UNAVAILABLE",
         );
       if (response.status === 401) throw new DiscoveryError("AUTH_REQUIRED");
-      if (response.status === 429 || response.status === 503) {
+      if (
+        response.status === 429 ||
+        response.status === 503 ||
+        [
+          "rateLimitExceeded",
+          "userRateLimitExceeded",
+          "dailyLimitExceeded",
+        ].includes(reason ?? "")
+      ) {
         const value = response.headers.get("retry-after");
         const numeric = value !== null && /^[0-9]+$/.test(value);
         const delayMs = numeric

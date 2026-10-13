@@ -53,6 +53,8 @@ export function createOnboardingUsecases(options: {
             provider: ready.prepared.provider,
             connectionId: ready.prepared.connectionId,
             generation: ready.prepared.generation,
+            credentialVersion: ready.prepared.credentialVersion,
+            scopes: ready.prepared.scopes,
           },
           controller.signal,
         );
@@ -64,13 +66,32 @@ export function createOnboardingUsecases(options: {
               !/^[0-9]{1,100}$/.test(seed.historyAnchor)))
         )
           throw new OnboardingError("UNAVAILABLE");
+        const version =
+          seed.provider === "gmail"
+            ? seed.credentialFence?.credentialVersion
+            : undefined;
+        if (
+          version !== undefined &&
+          (!Number.isSafeInteger(version) ||
+            version < 0 ||
+            (version !== ready.prepared.credentialVersion &&
+              (ready.prepared.credentialVersion >= Number.MAX_SAFE_INTEGER ||
+                version !== ready.prepared.credentialVersion + 1)))
+        )
+          throw new OnboardingError("CONFLICT");
         return await options.repository.commitStart(
           session,
-          ready.prepared,
+          version === undefined
+            ? ready.prepared
+            : { ...ready.prepared, credentialVersion: version },
           seed,
         );
       } catch (cause) {
         if (cause instanceof OnboardingError) throw cause;
+        if (cause instanceof DiscoveryError && cause.code === "API_DISABLED")
+          throw new OnboardingError("API_DISABLED");
+        if (cause instanceof DiscoveryError && cause.code === "CONFLICT")
+          throw new OnboardingError("CONFLICT");
         if (
           cause instanceof DiscoveryError &&
           ["AUTH_REQUIRED", "UNAUTHORIZED"].includes(cause.code)
