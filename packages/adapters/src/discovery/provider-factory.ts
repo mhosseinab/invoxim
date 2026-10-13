@@ -3,6 +3,7 @@ import { DiscoveryError, MailboxError } from "@invoxim/core";
 import type { GmailConfiguration } from "../mailbox/configuration";
 import { createGmailAuthorization } from "../mailbox/gmail";
 import { createMailboxService } from "../mailbox/service";
+import { CredentialError } from "../security/cipher";
 import { createCredentialVault } from "../security/vault";
 import { createGmailDiscovery } from "./gmail";
 /** Receives the same invocation-guarded D1 handle as jobs and discovery. */
@@ -18,6 +19,7 @@ export function createGmailDiscoveryProviderFactory(
   );
   return {
     async open(context, input, signal) {
+      let stage: "credential_read" | "credential_refresh" = "credential_read";
       try {
         if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
         const target = {
@@ -34,6 +36,7 @@ export function createGmailDiscoveryProviderFactory(
         )
           throw new DiscoveryError("AUTH_REQUIRED");
         if (snapshot.secret.expiresAt <= Date.now() + 30000) {
+          stage = "credential_refresh";
           if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
           await mailbox.refresh(context, input.connectionId, input.generation);
           snapshot = await vault.read(context, target);
@@ -49,6 +52,15 @@ export function createGmailDiscoveryProviderFactory(
           throw new DiscoveryError("AUTH_REQUIRED");
         return createGmailDiscovery(snapshot.secret.accessToken);
       } catch (cause) {
+        console.warn("gmail_preparation_failed", {
+          stage,
+          code:
+            cause instanceof DiscoveryError ||
+            cause instanceof MailboxError ||
+            cause instanceof CredentialError
+              ? cause.code
+              : "UNEXPECTED",
+        });
         if (cause instanceof DiscoveryError) throw cause;
         if (
           cause instanceof MailboxError &&

@@ -26,13 +26,14 @@ function error(
   status: 400 | 401 | 403 | 409 | 413 | 415 | 429 | 503,
   code: string,
   retryable = status === 503,
+  requestId: string = crypto.randomUUID(),
 ) {
   return Response.json(
     {
       error: {
         code,
         message: "Request unavailable",
-        requestId: crypto.randomUUID(),
+        requestId,
         retryable,
       },
     },
@@ -59,26 +60,60 @@ function query(request: Request) {
   }
   return result;
 }
-function failure(cause: unknown) {
-  if (cause instanceof AuthRequestError) return error(cause.status, cause.code);
+function failure(cause: unknown, requestId?: string) {
+  if (cause instanceof AuthRequestError)
+    return error(cause.status, cause.code, false, requestId);
   if (!(cause instanceof OnboardingError))
-    return error(503, "processing_unavailable");
+    return error(503, "processing_unavailable", true, requestId);
   switch (cause.code) {
     case "UNAUTHORIZED":
-      return error(401, "unauthorized");
+      return error(401, "unauthorized", false, requestId);
     case "INVALID_REQUEST":
-      return error(400, "invalid_request");
+      return error(400, "invalid_request", false, requestId);
     case "CONFLICT":
-      return error(409, "conflict");
+      return error(409, "conflict", false, requestId);
     case "PROCESSING_REVIEW_REQUIRED":
-      return error(409, "processing_review_required");
+      return error(409, "processing_review_required", false, requestId);
     case "BUDGET":
-      return error(429, "allowance_unavailable");
+      return error(429, "allowance_unavailable", false, requestId);
     case "AUTH_REQUIRED":
-      return error(409, "mailbox_reconnect_required");
+      return error(409, "mailbox_reconnect_required", false, requestId);
     case "UNAVAILABLE":
-      return error(503, "processing_unavailable");
+      return error(503, "processing_unavailable", true, requestId);
   }
+}
+function startDiagnostic(cause: unknown, requestId: string) {
+  let errorType = "unexpected";
+  let errorCode = "UNEXPECTED";
+  if (
+    cause instanceof OnboardingError &&
+    [
+      "UNAUTHORIZED",
+      "INVALID_REQUEST",
+      "CONFLICT",
+      "PROCESSING_REVIEW_REQUIRED",
+      "UNAVAILABLE",
+      "BUDGET",
+      "AUTH_REQUIRED",
+    ].includes(cause.code)
+  ) {
+    errorType = "OnboardingError";
+    errorCode = cause.code;
+  } else if (
+    cause instanceof AuthRequestError &&
+    ["invalid_request", "unsupported_media_type", "request_too_large"].includes(
+      cause.code,
+    )
+  ) {
+    errorType = "AuthRequestError";
+    errorCode = cause.code;
+  }
+  console.warn({
+    event: "onboarding_start_failed",
+    requestId,
+    errorType,
+    errorCode,
+  });
 }
 export function createOnboardingRoutes() {
   const app = new Hono<{ Bindings: OnboardingBindings }>();
@@ -172,7 +207,9 @@ export function createOnboardingRoutes() {
         ),
       );
     } catch (cause) {
-      return failure(cause);
+      const requestId = crypto.randomUUID();
+      startDiagnostic(cause, requestId);
+      return failure(cause, requestId);
     }
   });
   return app;

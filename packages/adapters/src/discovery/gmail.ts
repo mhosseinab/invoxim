@@ -111,6 +111,11 @@ export function createGmailDiscovery(
         redirect: "manual",
         signal: controller.signal,
       });
+      if (!response.ok)
+        console.warn("gmail_request_failed", {
+          operation: path === "profile" ? "profile" : "discovery",
+          status: response.status,
+        });
       if (response.status === 404)
         throw new DiscoveryError(
           path === "history"
