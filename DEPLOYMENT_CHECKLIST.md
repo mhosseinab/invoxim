@@ -103,3 +103,5 @@ Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser log
 - [ ] Publish only the built Pages `dist` and Worker runtime bundle; keep private `.production` inventories and local Worker debug maps outside publication. Do not enable source-map uploads without a separate reviewed change. Local guard results do not inspect an older deployed build.
 
 Latest remote check: migrations list exited0 with no pending migrations; journal records0001–0006 and checked auth tables exist. This is read-only verification, not approval or execution of a new migration. Endpoint recheck and actual Google button initiation passed; callback/session/logout remains open. See `evidence/implementation/deployed-login-endpoint-recheck-20261013.md`.
+
+- [ ] Redeploy Pages with the reviewed signed-out onboarding visual increment and check desktop/mobile live. Its 28 synthetic login/onboarding regressions, scoped build and independent screenshot review passed; the remote page has not been changed by this patch.

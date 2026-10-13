@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mockPrivateWorkspace } from "./private-fixture";
 
@@ -69,16 +70,42 @@ test("T29 fresh anonymous onboarding uses neutral sign-in recovery copy", async 
     route.fulfill({ json: publicConfig }),
   );
   await page.goto("/onboarding");
-  await expect(page.getByRole("alert")).toHaveText(
-    "Sign in to continue to your private workspace.",
-  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Signing in creates your private workspace. It does not connect your inbox.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Continue with Google" }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "Sign in to continue to your private workspace.",
-  );
+  await expect(
+    page.getByRole("button", { name: "Retry", exact: true }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({
+    path: "/tmp/invoxim-signin-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  const google = page.getByRole("button", { name: "Continue with Google" });
+  await google.focus();
+  await expect(google).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "Explore the example", exact: true }).last(),
+  ).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: "/tmp/invoxim-signin-mobile.png",
+    fullPage: true,
+  });
 });
 
 for (const path of ["/home", "/purchases", "/connections"]) {
@@ -175,5 +202,24 @@ test("T29 delayed anonymous capability response cannot replace a refreshed priva
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Workspace unavailable", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("T29 onboarding load failure offers explicit recovery without starting authorization", async ({
+  page,
+}) => {
+  let reads = 0;
+  await page.route("**/api/me", (route) => {
+    reads++;
+    return route.fulfill({ status: 503, json: { error: "UNAVAILABLE" } });
+  });
+  await page.goto("/onboarding");
+  await expect(page.getByRole("alert")).toContainText(
+    "Onboarding is unavailable right now.",
+  );
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect.poll(() => reads).toBe(2);
+  await expect(
+    page.getByRole("button", { name: "Continue with Google" }),
   ).toHaveCount(0);
 });

@@ -7,7 +7,7 @@ import {
   publicConfigSchema,
 } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BrandMark } from "../icons";
+import { BrandMark, Icon } from "../icons";
 import {
   assertPrivateIdentity,
   PrivateLoadError,
@@ -22,6 +22,7 @@ import {
 import { onboardingCopy as text } from "./copy";
 import { ImportProgress } from "./progress";
 import { ReviewImport } from "./review";
+import "./signin.css";
 
 type Workspace = { profile: ProfileView; data: OnboardingResponse };
 export function OnboardingPage({
@@ -223,7 +224,9 @@ export function OnboardingPage({
       ? text.pageMailboxAuthorizationWasNotCompletedNothing
       : null;
   return (
-    <div className="onboarding-app private-app">
+    <div
+      className={`onboarding-app private-app${!workspace ? " onboarding-signin" : ""}`}
+    >
       <a className="skip" href="#content">
         {text.pageSkipToContent}
       </a>
@@ -240,24 +243,59 @@ export function OnboardingPage({
       </header>
       <main ref={main} id="content" className="onboarding-page">
         {loading && <p role="status">{text.loading}</p>}
-        {error && <p role="alert">{error}</p>}
+        {workspace && error && <p role="alert">{error}</p>}
         {!workspace && !loading && (
-          <section className="private-panel">
-            <h1>{text.loginTitle}</h1>
-            {loginReady && (
-              <button
-                className="primary"
-                type="button"
-                disabled={busy}
-                onClick={() => void login()}
-              >
-                {text.pageContinueWithGoogle}
-              </button>
+          <section className="signin-card" aria-labelledby="signin-title">
+            <span className="signin-mark" aria-hidden="true">
+              <BrandMark />
+            </span>
+            <p className="signin-eyebrow">{text.signinEyebrow}</p>
+            <h1 id="signin-title">{text.loginTitle}</h1>
+            <p className="signin-introduction">{text.signinIntroduction}</p>
+            {error && error !== text.signedOut && (
+              <p className="signin-error" role="alert">
+                {error}
+              </p>
             )}
-            <a href="/demo">{text.pageExploreTheExample}</a>
-            <button type="button" onClick={() => void load()}>
-              {text.pageRetry}
-            </button>
+            {!loginReady && error === text.signedOut && (
+              <p className="signin-error" role="status">
+                {text.signinUnavailable}
+              </p>
+            )}
+            <div className="signin-actions">
+              {loginReady && (
+                <button
+                  className="primary signin-google"
+                  type="button"
+                  disabled={busy}
+                  aria-busy={busy}
+                  aria-describedby="signin-permission"
+                  onClick={() => void login()}
+                >
+                  {busy
+                    ? text.signinOpeningGoogle
+                    : text.pageContinueWithGoogle}
+                </button>
+              )}
+              <a className="signin-example" href="/demo">
+                {text.pageExploreTheExample}
+                <span aria-hidden="true"> →</span>
+              </a>
+              {(!loginReady || error === text.unavailable) && (
+                <button
+                  className="signin-retry"
+                  type="button"
+                  onClick={() => void load()}
+                >
+                  {text.pageRetry}
+                </button>
+              )}
+            </div>
+            <div className="signin-permission" id="signin-permission">
+              <Icon name="lock" />
+              <p>{text["login.explanation"]}</p>
+            </div>
+            <p className="signin-next">{text.signinNext}</p>
           </section>
         )}
         {workspace && data && (

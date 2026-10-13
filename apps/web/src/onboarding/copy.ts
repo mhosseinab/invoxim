@@ -1,6 +1,13 @@
 import { copy } from "../copy";
 export const onboardingCopy = {
   ...copy,
+  signinEyebrow: "YOUR PURCHASE RECORDS",
+  signinIntroduction: "Find receipts and keep your purchase history together.",
+  signinNext:
+    "After signing in, you choose which inbox to connect and what to import.",
+  signinUnavailable:
+    "Sign-in is unavailable right now. You can still explore the example.",
+  signinOpeningGoogle: "Opening Google…",
   loading: "Loading your workspace…",
   unavailable:
     "Onboarding is unavailable right now. Existing records and the example remain available.",
