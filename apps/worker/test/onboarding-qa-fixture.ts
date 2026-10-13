@@ -15,6 +15,7 @@ import { aiConfiguration } from "../../../packages/adapters/src/ai/configuration
 import { createOnboardingImportPreparation } from "../../../packages/adapters/src/onboarding/import-preparation";
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const fixtureDatabase = env.DB;
 const db = fixtureDatabase;
@@ -72,6 +73,7 @@ export function configuredAi(
   privacyUrl = "https://policies.example.invalid/synthetic-a",
 ) {
   const result = aiConfiguration({
+    ...syntheticClassificationBindings,
     AI_ENABLED: "true",
     AI_REGISTRY_JSON: JSON.stringify([
       {

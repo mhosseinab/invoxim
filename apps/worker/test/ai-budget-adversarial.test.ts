@@ -25,6 +25,7 @@ import { createAiProviderFactory } from "../../../packages/adapters/src/ai/provi
 import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const fixtureDatabase = env.DB;
 const db = fixtureDatabase;
@@ -582,6 +583,7 @@ it.each([
       ],
     };
     const configuration = aiConfiguration({
+      ...syntheticClassificationBindings,
       AI_ENABLED: "true",
       AI_REGISTRY_JSON: JSON.stringify([registry]),
       AI_HOSTED_DESTINATION: price.destinationId,

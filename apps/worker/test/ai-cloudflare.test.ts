@@ -12,6 +12,7 @@ import {
   chatReservationUnits,
   createChatCompletionsExtractor,
 } from "../../../packages/adapters/src/ai/http";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const modelId = "@cf/openai/gpt-oss-20b";
 // Synthetic approvals/prices for tests only; never an operator policy approval.
@@ -156,6 +157,7 @@ it("AI-03 environment selects Cloudflare hosted funding while keeping the regist
     }),
   };
   const hosted = aiConfiguration({
+    ...syntheticClassificationBindings,
     ...base,
     AI_HOSTED_DESTINATION: destinationInput.id,
     AI_HOSTED_MODEL: modelId,
@@ -166,7 +168,10 @@ it("AI-03 environment selects Cloudflare hosted funding while keeping the regist
     modelId,
     key: "synthetic-operator-key",
   });
-  const byokOnly = aiConfiguration(base);
+  const byokOnly = aiConfiguration({
+    ...syntheticClassificationBindings,
+    ...base,
+  });
   expect(byokOnly?.hosted).toBeNull();
   expect(byokOnly?.destinations[0]?.models[0]?.id).toBe(modelId);
 });

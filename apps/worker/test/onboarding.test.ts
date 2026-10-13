@@ -5,6 +5,7 @@ import { beforeAll, expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import { aiConfiguration } from "../../../packages/adapters/src/ai/configuration";
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const session = {
   tenant: { userId: "onboard-login-a", authority: "session" } as TenantContext,
@@ -81,6 +82,7 @@ it("ONBOARD-04 login A and owned mailbox B remain distinct and read-only before 
 const at = Date.parse("2026-10-01T12:00:00Z");
 function inference() {
   const value = aiConfiguration({
+    ...syntheticClassificationBindings,
     AI_ENABLED: "true",
     AI_REGISTRY_JSON: JSON.stringify([
       {

@@ -9,6 +9,7 @@ import {
   chatReservationUnits,
   createChatCompletionsExtractor,
 } from "../../../packages/adapters/src/ai/http";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const preset = JSON.parse(presetText);
 // Replace unapproved public placeholders with explicitly synthetic test approvals.
@@ -50,11 +51,18 @@ it("AI-03 Abacus default preparation stays inactive and unapproved until reviewe
     "CREDENTIAL_KEYRING",
   ]);
   expect(aiDestinationSchema.safeParse(preset.registry[0]).success).toBe(false);
-  expect(aiConfiguration({ ...bindings, ...preset.variables })).toBeNull();
+  expect(
+    aiConfiguration({
+      ...syntheticClassificationBindings,
+      ...bindings,
+      ...preset.variables,
+    }),
+  ).toBeNull();
 });
 
 it("AI-03 Abacus hosted funding reuses AI_HOSTED_KEY and BYOK keeps the same fixed destination", () => {
   const configured = aiConfiguration({
+    ...syntheticClassificationBindings,
     ...bindings,
     ...preset.variables,
     AI_ENABLED: "true",
@@ -68,12 +76,23 @@ it("AI-03 Abacus hosted funding reuses AI_HOSTED_KEY and BYOK keeps the same fix
   expect(configured?.destinations[0]?.endpoint).toBe(
     "https://routellm.abacus.ai/v1/chat/completions",
   );
-  expect(aiConfiguration(bindings)?.hosted).toBeNull();
   expect(
-    aiConfiguration(bindings)?.destinations[0]?.models.map((model) => model.id),
+    aiConfiguration({ ...syntheticClassificationBindings, ...bindings })
+      ?.hosted,
+  ).toBeNull();
+  expect(
+    aiConfiguration({
+      ...syntheticClassificationBindings,
+      ...bindings,
+    })?.destinations[0]?.models.map((model) => model.id),
   ).toEqual(["gpt-6-luna"]);
   expect(
-    aiConfiguration({ ...bindings, ...preset.variables, AI_ENABLED: "true" }),
+    aiConfiguration({
+      ...syntheticClassificationBindings,
+      ...bindings,
+      ...preset.variables,
+      AI_ENABLED: "true",
+    }),
   ).toBeNull();
 });
 

@@ -17,6 +17,7 @@ import { createAiSettingsService } from "../../../packages/adapters/src/ai/setti
 import { createCredentialVault } from "../../../packages/adapters/src/security/vault";
 import { createAiRoutes } from "../src/ai-routes";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const db = env.DB;
 
@@ -76,6 +77,7 @@ const config: ApprovedAiConfig = {
 };
 it("AI-03 tenant settings refuse an unowned inactive workspace before returning configuration", async () => {
   const configuration = aiConfiguration({
+    ...syntheticClassificationBindings,
     AI_ENABLED: "true",
     AI_BUDGET_JSON: JSON.stringify({
       dailyDocuments: 10,
@@ -214,6 +216,7 @@ it("AI-03 encrypted BYOK settings remain masked and tenant scoped; concurrent CA
       .run();
   }
   const configuration = aiConfiguration({
+    ...syntheticClassificationBindings,
     AI_ENABLED: "true",
     AI_REGISTRY_JSON: JSON.stringify([destination]),
     AI_BUDGET_JSON: JSON.stringify({
@@ -337,6 +340,7 @@ it("AI-04 removed operator credentials cannot remain configured hosted readiness
     .bind(id)
     .run();
   const bindings = {
+    ...syntheticClassificationBindings,
     AI_ENABLED: "true",
     AI_REGISTRY_JSON: JSON.stringify([destination]),
     AI_BUDGET_JSON: JSON.stringify({
@@ -353,12 +357,16 @@ it("AI-04 removed operator credentials cannot remain configured hosted readiness
     }),
   };
   const configured = aiConfiguration({
+    ...syntheticClassificationBindings,
     ...bindings,
     AI_HOSTED_DESTINATION: destination.id,
     AI_HOSTED_MODEL: config.modelId,
     AI_HOSTED_KEY: "synthetic-operator-key",
   });
-  const removed = aiConfiguration(bindings);
+  const removed = aiConfiguration({
+    ...syntheticClassificationBindings,
+    ...bindings,
+  });
   if (!configured || !removed) throw new Error("fixture");
   const tenant = { userId: id, authority: "session" } as TenantContext;
   expect(
@@ -391,6 +399,7 @@ it("AI-04 approved BYOK factory decrypts only the current tenant key into a sele
     .bind(id)
     .run();
   const configuration = aiConfiguration({
+    ...syntheticClassificationBindings,
     AI_ENABLED: "true",
     AI_REGISTRY_JSON: JSON.stringify([destination]),
     AI_BUDGET_JSON: JSON.stringify({
@@ -472,6 +481,7 @@ it("AI-03/05 real signed-session synthetic probe uses native encrypted settings 
   );
   const cookie = `__Secure-better-auth.session_token=${encodeURIComponent(`${session.token}.${btoa(String.fromCharCode(...new Uint8Array(signature)))}`)}`;
   const bindings = {
+    ...syntheticClassificationBindings,
     DB: env.DB,
     AUTH_ENABLED: "true",
     AUTH_ORIGIN: login.origin,

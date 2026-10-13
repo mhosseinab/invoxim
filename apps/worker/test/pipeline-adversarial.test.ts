@@ -20,6 +20,7 @@ import {
 } from "../../../packages/adapters/src/security/cipher";
 import { planLedgerIngestion } from "../../../packages/core/src/ledger/plan";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const db = env.DB;
 
@@ -108,7 +109,10 @@ function configuration() {
     AI_HOSTED_KEY: "synthetic-hosted-key",
   };
   const mail = gmailConfiguration(bindings),
-    inference = aiConfiguration(bindings);
+    inference = aiConfiguration({
+      ...syntheticClassificationBindings,
+      ...bindings,
+    });
   if (!mail || !inference)
     throw new Error("Invalid positive-control configuration");
   return { mail, inference };

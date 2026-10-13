@@ -13,6 +13,7 @@ import { createAiProbeService } from "../../../packages/adapters/src/ai/provider
 import { createAiSettingsService } from "../../../packages/adapters/src/ai/settings";
 import { createAiRoutes } from "../src/ai-routes";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { syntheticClassificationBindings } from "./classification-fixture";
 
 const db = env.DB;
 
@@ -301,6 +302,7 @@ const aiPolicy = {
 };
 function hostedConfiguration() {
   const result = aiConfiguration({
+    ...syntheticClassificationBindings,
     AI_ENABLED: "true",
     AI_REGISTRY_JSON: JSON.stringify([destination]),
     AI_HOSTED_DESTINATION: destination.id,
@@ -582,6 +584,7 @@ async function cookieFor(name: string) {
 }
 function routeBindings(name: string) {
   return {
+    ...syntheticClassificationBindings,
     DB: env.DB,
     AUTH_ENABLED: "true",
     AUTH_ORIGIN: authOrigin,

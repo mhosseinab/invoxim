@@ -44,14 +44,14 @@ it("CLEF-02 parses configured classification and rejects a missing binding", () 
   expect(aiConfiguration(bindings)).toMatchObject({ classification });
   expect(aiConfiguration({ ...bindings, AI: undefined })).toBeNull();
 });
-it("CLEF-02 disabling classification preserves the existing inference configuration", () => {
+it("CLEF-02 disabling mandatory classification makes processing unavailable", () => {
   expect(
     aiConfiguration({
       ...bindings,
       AI: undefined,
       AI_CLASSIFICATION_ENABLED: "false",
     }),
-  ).not.toBeNull();
+  ).toBeNull();
 });
 it("CLEF-02 adding or changing a classifier invalidates previous processing consent", async () => {
   const destination = aiDestinationSchema.parse(preset.registry[0]);
