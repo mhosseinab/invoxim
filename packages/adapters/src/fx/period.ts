@@ -29,6 +29,21 @@ export interface FxPeriodInput {
   continuation?: string;
   stamp?: string;
 }
+/** Internal fence only: callers must never treat these fields as authority. */
+export interface FxReportReadSnapshot {
+  readonly stamp: string;
+  readonly reportingCurrency: string;
+  readonly filters: PurchaseFilters;
+  readonly actorKey: string;
+}
+export interface FxReportReadInput {
+  filters: PurchaseFilters;
+  actorKey: string;
+  stamp: string;
+}
+export type FxReportReadResult =
+  | { status: "stale" }
+  | { status: "current"; snapshot: FxReportReadSnapshot };
 export type { FxPeriodSummary } from "@invoxim/contracts";
 export type FxPeriodResult =
   | { status: "stale" }
@@ -79,6 +94,15 @@ const inputSchema = z.strictObject({
   actorKey: identifier,
   stamp: token.optional(),
   continuation: token.optional(),
+});
+const reportReadInputSchema = z.strictObject({
+  filters: purchaseFiltersSchema,
+  actorKey: identifier,
+  stamp: token,
+});
+const reportReadSnapshotSchema = z.strictObject({
+  ...reportReadInputSchema.shape,
+  reportingCurrency: profileSchema.shape.currency,
 });
 function canonicalFilters(filters: PurchaseFilters): PurchaseFilters {
   return Object.fromEntries(
@@ -140,6 +164,96 @@ export function createFxPeriodService(
     if (payload.length > 12288) throw new Error("INVALID_FX_INPUT");
     return token.parse(await options.signing.sign(payload));
   }
+  function currentTime(): number {
+    const now = clock();
+    if (
+      !Number.isSafeInteger(now) ||
+      now < 0 ||
+      now > Number.MAX_SAFE_INTEGER - 900000
+    )
+      throw new Error("INVALID_FX_INPUT");
+    return now;
+  }
+  async function validateStamp(
+    context: TenantContext,
+    filters: PurchaseFilters,
+    actorKey: string,
+    stamp: string | undefined,
+    now: number,
+  ) {
+    const expected = stamp ? await unpack(stamp, stampSchema) : null;
+    const key = await policyHash;
+    if (
+      expected &&
+      (expected.tenant !== context.userId ||
+        expected.actor !== actorKey ||
+        !same(canonicalFilters(expected.filters), filters) ||
+        expected.policy !== key ||
+        expected.expiresAt <= now)
+    )
+      throw new Error("INVALID_FX_INPUT");
+    return { expected, key };
+  }
+  async function beginRead(
+    context: TenantContext,
+    value: FxReportReadInput,
+  ): Promise<FxReportReadResult> {
+    const checked = reportReadInputSchema.safeParse(value);
+    if (!checked.success) throw new Error("INVALID_FX_INPUT");
+    const input = checked.data;
+    const filters = canonicalFilters(input.filters);
+    const { expected } = await validateStamp(
+      context,
+      filters,
+      input.actorKey,
+      input.stamp,
+      currentTime(),
+    );
+    if (!expected) throw new Error("INVALID_FX_INPUT");
+    if (options.remainingStatements() < 1)
+      throw new Error("FX_PERIOD_READ_LIMIT");
+    const current = await profile(context);
+    if (!current || !same(expected.profile, current))
+      return { status: "stale" };
+    return {
+      status: "current",
+      snapshot: {
+        stamp: input.stamp,
+        reportingCurrency: expected.profile.currency,
+        filters: canonicalFilters(expected.filters),
+        actorKey: expected.actor,
+      },
+    };
+  }
+  async function assertCurrent(
+    context: TenantContext,
+    value: FxReportReadSnapshot,
+  ): Promise<boolean> {
+    const checked = reportReadSnapshotSchema.safeParse(value);
+    if (!checked.success) throw new Error("INVALID_FX_INPUT");
+    const snapshot = checked.data;
+    const { expected } = await validateStamp(
+      context,
+      canonicalFilters(snapshot.filters),
+      snapshot.actorKey,
+      snapshot.stamp,
+      currentTime(),
+    );
+    if (!expected || snapshot.reportingCurrency !== expected.profile.currency)
+      throw new Error("INVALID_FX_INPUT");
+    if (options.remainingStatements() < 1)
+      throw new Error("FX_PERIOD_READ_LIMIT");
+    const current = await profile(context);
+    return current !== null && same(expected.profile, current);
+  }
+  function rethrow(error: unknown): never {
+    if (
+      error instanceof Error &&
+      ["INVALID_FX_INPUT", "FX_PERIOD_READ_LIMIT"].includes(error.message)
+    )
+      throw error;
+    throw new Error("FX_PERIOD_UNAVAILABLE");
+  }
   async function read(
     context: TenantContext,
     value: FxPeriodInput,
@@ -148,13 +262,7 @@ export function createFxPeriodService(
     if (!checked.success) throw new Error("INVALID_FX_INPUT");
     const input = checked.data,
       filters = canonicalFilters(input.filters),
-      now = clock();
-    if (
-      !Number.isSafeInteger(now) ||
-      now < 0 ||
-      now > Number.MAX_SAFE_INTEGER - 900000
-    )
-      throw new Error("INVALID_FX_INPUT");
+      now = currentTime();
     let state = emptySummary(),
       after = "",
       stamp = input.stamp;
@@ -166,17 +274,13 @@ export function createFxPeriodService(
       state = continuation.summary;
       after = continuation.after;
     }
-    const expected = stamp ? await unpack(stamp, stampSchema) : null;
-    const key = await policyHash;
-    if (
-      expected &&
-      (expected.tenant !== context.userId ||
-        expected.actor !== input.actorKey ||
-        !same(canonicalFilters(expected.filters), filters) ||
-        expected.policy !== key ||
-        expected.expiresAt <= now)
-    )
-      throw new Error("INVALID_FX_INPUT");
+    const { expected, key } = await validateStamp(
+      context,
+      filters,
+      input.actorKey,
+      stamp,
+      now,
+    );
     if (options.remainingStatements() < 3)
       throw new Error("FX_PERIOD_READ_LIMIT");
     const initial = await profile(context);
@@ -290,12 +394,27 @@ export function createFxPeriodService(
       try {
         return await read(context, input);
       } catch (error) {
-        if (
-          error instanceof Error &&
-          ["INVALID_FX_INPUT", "FX_PERIOD_READ_LIMIT"].includes(error.message)
-        )
-          throw error;
-        throw new Error("FX_PERIOD_UNAVAILABLE");
+        rethrow(error);
+      }
+    },
+    async beginRead(
+      context: TenantContext,
+      input: FxReportReadInput,
+    ): Promise<FxReportReadResult> {
+      try {
+        return await beginRead(context, input);
+      } catch (error) {
+        rethrow(error);
+      }
+    },
+    async assertCurrent(
+      context: TenantContext,
+      snapshot: FxReportReadSnapshot,
+    ): Promise<boolean> {
+      try {
+        return await assertCurrent(context, snapshot);
+      } catch (error) {
+        rethrow(error);
       }
     },
   };
