@@ -81,6 +81,11 @@
       "name": "product-presentation-and-onboarding",
       "path": ".agents/skills/product-presentation-and-onboarding/SKILL.md",
       "description": "Build truthful presentation and a consent-safe, resumable first-value flow."
+    },
+    {
+      "name": "gh-issue-reporting",
+      "path": ".agents/skills/gh-issue-reporting/SKILL.md",
+      "description": "File prioritized, categorized GitHub issues with gh using the project issue blueprint."
     }
   ],
   "roles": [
@@ -93,7 +98,8 @@
         "plan-and-orchestrate",
         "architecture-and-scope",
         "code-review-and-release",
-        "product-presentation-and-onboarding"
+        "product-presentation-and-onboarding",
+        "gh-issue-reporting"
       ]
     },
     {
@@ -139,7 +145,8 @@
         "tdd-and-property-testing",
         "systematic-debugging",
         "code-review-and-release",
-        "product-presentation-and-onboarding"
+        "product-presentation-and-onboarding",
+        "gh-issue-reporting"
       ]
     },
     {
@@ -230,7 +237,8 @@
         "code-review-and-release",
         "architecture-and-scope",
         "security-and-privacy",
-        "product-presentation-and-onboarding"
+        "product-presentation-and-onboarding",
+        "gh-issue-reporting"
       ]
     }
   ]
