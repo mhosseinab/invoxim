@@ -43,7 +43,7 @@ const planSchema = z.strictObject({
 });
 // This correlated predicate is repeated on every lease/plan/commit mutation.
 // Reconnecting to the same displayed address cannot revive an older authorization.
-const current = `EXISTS(
+const admission = `EXISTS(
  SELECT 1 FROM profiles p
  JOIN documents d ON d.user_id=p.user_id AND d.id=archive_objects.document_id
  JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id
@@ -63,7 +63,17 @@ const current = `EXISTS(
  AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file'))
  AND (a.enabled=1 AND a.version=archive_objects.settings_version AND a.connection_id=c.id AND a.connection_generation=c.generation AND a.disclosure_version=1)
 )`;
-const leaseGuard = `(user_id=? AND id=? AND state='pending') AND (lease_id=? AND fence=? AND lease_expires_at=? AND lease_expires_at>?) AND ${current}`;
+// Logical cancellation stops execution immediately, before bounded lease cleanup.
+// Explicit re-admission uses its own run authority and atomically replaces ownership.
+const current = `${admission} AND NOT EXISTS(
+ SELECT 1 FROM archive_dispatch canceled_dispatch
+ JOIN archive_backfill_runs canceled_run
+ ON canceled_run.user_id=canceled_dispatch.user_id AND canceled_run.id=canceled_dispatch.backfill_run_id
+ WHERE canceled_dispatch.user_id=archive_objects.user_id AND canceled_dispatch.object_id=archive_objects.id
+ AND canceled_run.state='canceled'
+)`;
+const leaseOwnership = `(user_id=? AND id=? AND state='pending') AND (lease_id=? AND fence=? AND lease_expires_at=? AND lease_expires_at>?)`;
+const leaseGuard = `${leaseOwnership} AND ${current}`;
 
 function credentialGuard(value: ArchiveCredentialFences | undefined) {
   if (!value) return { sql: "", values: [] as (string | number)[] };
@@ -339,7 +349,7 @@ export function createArchiveObjectStore(
   ): Promise<boolean> {
     const result = await db
       .prepare(
-        `UPDATE archive_objects SET lease_id=NULL,lease_expires_at=0 WHERE ${leaseGuard}`,
+        `UPDATE archive_objects SET lease_id=NULL,lease_expires_at=0 WHERE ${leaseOwnership} AND ${admission}`,
       )
       .bind(...leaseArguments(context, lease))
       .run();
@@ -382,7 +392,12 @@ export function archiveObjectAuthorization(
   };
 }
 
-/** Read-only correlated authority for queue admission; caller keeps the tenant/object predicates. */
+/** Correlated execution authority; caller keeps the tenant/object predicates. */
 export function archiveObjectEligibilitySql(): string {
   return current;
+}
+
+/** Base authority only for fenced, explicitly approved backfill re-admission. */
+export function archiveObjectAdmissionSql(): string {
+  return admission;
 }

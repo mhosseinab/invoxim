@@ -11,6 +11,9 @@ export interface ArchiveBackfillView extends ArchiveBackfillSelection {
   snapshotCount: number;
   cursorOrdinal: number;
   hasMore: boolean;
+  /** Admission positions visited, including unavailable members; never a count of saved originals. */
+  processedCount: number;
+  continuationAvailable: boolean;
   state: "pending" | "admission_complete" | "canceled";
   revision: number;
 }
@@ -40,6 +43,11 @@ export interface ArchiveBackfillStore {
     runId: string,
   ): Promise<ArchiveBackfillLease | null>;
   admitPage(lease: ArchiveBackfillLease): Promise<ArchiveBackfillPage>;
+  advance(lease: ArchiveBackfillLease): Promise<ArchiveBackfillView>;
+  cleanupCanceled(
+    context: TenantContext,
+    runId: string,
+  ): Promise<{ cleaned: number; done: boolean }>;
   cancel(
     session: ArchiveSession,
     runId: string,

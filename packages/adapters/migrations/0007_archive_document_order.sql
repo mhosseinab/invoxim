@@ -10,6 +10,7 @@ CREATE TABLE archive_document_order (
  FOREIGN KEY(user_id,document_id) REFERENCES documents(user_id,id) ON DELETE CASCADE
 );
 CREATE INDEX archive_document_order_owner ON archive_document_order(user_id,sequence);
+CREATE INDEX archive_dispatch_backfill_cleanup ON archive_dispatch(user_id,backfill_run_id,status,queue_id);
 
 INSERT INTO archive_document_order(user_id,document_id)
  SELECT user_id,id FROM documents ORDER BY user_id,id;
