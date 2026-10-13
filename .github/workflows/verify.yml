@@ -2,7 +2,7 @@ name: Foundation verification
 on:
   push:
     branches:
-      - main-
+      - main
   pull_request:
 permissions:
   contents: read
