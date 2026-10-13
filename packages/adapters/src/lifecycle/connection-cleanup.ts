@@ -138,10 +138,12 @@ export async function cleanupConnection(db: D1Database, item: Item) {
     }
   }
   const result = await db
-    .prepare(prefix + query)
+    .prepare(`${prefix}${query} RETURNING 1 AS applied`)
     .bind(...scope, ...extra, ...guardArgs)
-    .run();
-  if (item.stage === 2 ? result.meta.changes === 0 : result.meta.changes < 100)
+    .all<{ applied: number }>();
+  if (
+    item.stage === 2 ? result.results.length === 0 : result.results.length < 100
+  )
     await db
       .prepare(
         "UPDATE lifecycle_deletions SET stage=stage+1 WHERE user_id=? AND scope='connection' AND target_id=? AND request_id=? AND stage=?",

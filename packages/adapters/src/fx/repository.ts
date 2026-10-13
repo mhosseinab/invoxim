@@ -312,7 +312,7 @@ export function createFxValuationRepository(
     statements.push(
       db
         .prepare(
-          `INSERT INTO entry_valuations(user_id,entry_id,reporting_currency,profile_version,entry_version,calculation_version,policy_hash,policy_source,max_prior_age_days,original_kind,original_minor,original_currency,original_event_date,status,signed_minor,basis,reason,rate_id,version,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard} AND ${ratePresent} ON CONFLICT(user_id,entry_id,reporting_currency,profile_version,entry_version,calculation_version,policy_hash) DO UPDATE SET status=excluded.status,signed_minor=excluded.signed_minor,basis=excluded.basis,reason=excluded.reason,rate_id=excluded.rate_id,version=excluded.version,updated_at=excluded.updated_at WHERE entry_valuations.version=?`,
+          `INSERT INTO entry_valuations(user_id,entry_id,reporting_currency,profile_version,entry_version,calculation_version,policy_hash,policy_source,max_prior_age_days,original_kind,original_minor,original_currency,original_event_date,status,signed_minor,basis,reason,rate_id,version,updated_at) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard} AND ${ratePresent} ON CONFLICT(user_id,entry_id,reporting_currency,profile_version,entry_version,calculation_version,policy_hash) DO UPDATE SET status=excluded.status,signed_minor=excluded.signed_minor,basis=excluded.basis,reason=excluded.reason,rate_id=excluded.rate_id,version=excluded.version,updated_at=excluded.updated_at WHERE entry_valuations.version=? RETURNING 1 AS applied`,
         )
         .bind(
           ...keyValues,
@@ -335,7 +335,7 @@ export function createFxValuationRepository(
         ),
     );
     const committed = await db.batch(statements);
-    if (committed.at(-1)?.meta.changes !== 1) {
+    if (committed.at(-1)?.results.length !== 1) {
       const state = await db
         .prepare(`SELECT ${guard} AS live,${ratePresent} AS rate_present`)
         .bind(...guardValues, ...(rateId ? [rateId] : []))

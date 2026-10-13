@@ -255,18 +255,16 @@ export function createCredentialVault(
           ? "UPDATE connections SET credential_ciphertext=NULL,credential_key_version=NULL,credential_version=credential_version+1,generation=generation+1,state='disconnected',scheduling_state='paused' WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND state='connected' AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')"
           : "UPDATE ai_settings SET encrypted_key=NULL,key_version=NULL,credential_version=credential_version+1,generation=generation+1,status='deleted' WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND status='active' AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')";
       return (
-        (
-          await db
-            .prepare(sql)
-            .bind(
-              context.userId,
-              target.id,
-              target.generation,
-              expectedVersion,
-              context.userId,
-            )
-            .run()
-        ).meta.changes === 1
+        (await db
+          .prepare(`${sql} RETURNING 1 AS applied`)
+          .bind(
+            context.userId,
+            target.id,
+            target.generation,
+            expectedVersion,
+            context.userId,
+          )
+          .first<{ applied: number }>()) !== null
       );
     },
   };

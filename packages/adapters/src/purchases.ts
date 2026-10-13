@@ -71,7 +71,7 @@ export function createPurchaseRepository(db: D1Database) {
         throw new Error("INVALID_EDIT");
       const result = await db
         .prepare(
-          "UPDATE purchases SET merchant_raw=?,merchant_normalized=?,version=version+1 WHERE user_id=? AND id=? AND version=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+          "UPDATE purchases SET merchant_raw=?,merchant_normalized=?,version=version+1 WHERE user_id=? AND id=? AND version=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING 1 AS applied",
         )
         .bind(
           merchant,
@@ -81,17 +81,17 @@ export function createPurchaseRepository(db: D1Database) {
           expectedVersion,
           context.userId,
         )
-        .run();
-      return result.meta.changes === 1;
+        .first<{ applied: number }>();
+      return result !== null;
     },
     async delete(context: TenantContext, id: string, expectedVersion: number) {
       const result = await db
         .prepare(
-          "DELETE FROM purchases WHERE user_id=? AND id=? AND version=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+          "DELETE FROM purchases WHERE user_id=? AND id=? AND version=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING 1 AS applied",
         )
         .bind(context.userId, id, expectedVersion, context.userId)
-        .run();
-      return result.meta.changes === 1;
+        .first<{ applied: number }>();
+      return result !== null;
     },
     async totals(context: TenantContext, currency: string) {
       minorDigits(currency);

@@ -100,11 +100,11 @@ export function createLifecycleCleanup(
         const owner = table === "account" ? "userId" : "user_id";
         const removed = await db
           .prepare(
-            `DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${owner}=? LIMIT 100) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='deleting') AND EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=? AND scope='account' AND stage=? AND journal_ack=1)`,
+            `DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${owner}=? LIMIT 100) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='deleting') AND EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=? AND scope='account' AND stage=? AND journal_ack=1) RETURNING 1 AS applied`,
           )
           .bind(item.user_id, item.user_id, item.user_id, item.stage)
-          .run();
-        if (removed.meta.changes < 100)
+          .all<{ applied: number }>();
+        if (removed.results.length < 100)
           await db
             .prepare(
               "UPDATE lifecycle_deletions SET stage=stage+1 WHERE user_id=? AND scope='account' AND stage=? AND journal_ack=1",
