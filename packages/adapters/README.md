@@ -1,0 +1,9 @@
+# Persistence adapters
+
+Persistence retains the established native D1 query pattern and Better Auth 1.7.7's Drizzle adapter (`drizzle-orm` 0.45.4). Explicit parameterized SQL keeps tenant ownership, conditional lease/consent writes and native atomic batches reviewable. Worker invocation wrappers enforce the shared statement budget, including authentication queries. The owner reverted the Prisma experiment; no Prisma runtime, generated client, schema/config or direct dependency remains.
+
+The active Wrangler migration directory contains one empty-database baseline: `0001_initial.sql`. It preserves all 47 application tables, 46 explicit indexes and the three required scheduler cursor seeds from the original sequence. Native CHECKs, composite tenant FKs, partial indexes and INTEGER auth millisecond storage remain authoritative. `src/auth-schema.ts` retains the verified Better Auth mapping.
+
+The former 19 migrations live only under `apps/worker/test/migrations/historical` for explicit populated compatibility tests. Ordinary fixtures use the baseline. Never replay the baseline against a populated database. Follow [the non-destructive transition checklist](../../evidence/implementation/baseline-transition-checklist.md) and obtain deployment authority before any remote migration. No database reset or deployment has been performed by this refactor.
+
+The completed Prisma experiments and their actual RED/GREEN results remain historical evidence under `evidence/implementation`; they do not describe the current persistence stack. Baseline and restored-native verification remain in progress until the required final checks and review finish. The reviewed folder metadata, lifecycle cleanup and refresh race fixes are preserved; the full T18 upload coordinator remains unfinished.

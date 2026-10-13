@@ -1,0 +1,45 @@
+{
+  "name": "invoxim",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": "24.21.0",
+    "pnpm": "12.6.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "format:check": "prettier --check package.json MANUAL_TASKS.md DEPLOYMENT_CHECKLIST.md pnpm-workspace.yaml turbo.json tsconfig.base.json eslint.config.mjs biome.json .vscode apps tools/implementation .github/workflows packages --no-error-on-unmatched-pattern",
+    "lint": "eslint apps tools/implementation eslint.config.mjs packages --no-error-on-unmatched-pattern",
+    "typecheck": "turbo run typecheck",
+    "test:unit": "node --test tools/implementation/*.test.mjs && turbo run test:unit",
+    "test:integration": "turbo run test:integration",
+    "check:boundaries": "node tools/implementation/check-boundaries.mjs",
+    "build": "turbo run build",
+    "verify": "pnpm check:boundaries && pnpm check:secrets && pnpm check:dependency-policy && pnpm format:check && pnpm lint:biome && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm build && pnpm test:e2e",
+    "test:contracts": "pnpm --filter @invoxim/contracts test:unit",
+    "test:security": "node tools/implementation/security-gates.mjs security-tests",
+    "test:e2e": "pnpm --filter @invoxim/web exec playwright test --config playwright.config.ts",
+    "test:a11y": "pnpm --filter @invoxim/web exec playwright test --config playwright.config.ts --grep \"accessibility\"",
+    "test:mutation": "node tools/implementation/not-implemented.mjs test:mutation",
+    "test:eval:offline": "pnpm --filter @invoxim/core exec vitest run test/extraction-eval.test.ts --silent=false",
+    "test:eval:live": "node tools/implementation/not-implemented.mjs test:eval:live",
+    "check:secrets": "node tools/implementation/security-gates.mjs secrets",
+    "check:dependency-policy": "node tools/implementation/security-gates.mjs deps",
+    "check:deps": "pnpm check:dependency-policy && pnpm audit --json",
+    "db:check": "pnpm --filter @invoxim/worker exec vitest run test/database.test.ts test/database-adversarial.test.ts test/pipeline-database.test.ts test/lifecycle.test.ts test/lifecycle-adversarial.test.ts",
+    "verify:release": "node tools/implementation/not-implemented.mjs verify:release",
+    "lint:biome": "biome check . --error-on-warnings"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.19.2",
+    "eslint": "10.12.0",
+    "prettier": "3.8.3",
+    "turbo": "2.11.7",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "@biomejs/biome": "2.5.15"
+  }
+}

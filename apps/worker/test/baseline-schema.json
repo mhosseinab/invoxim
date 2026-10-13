@@ -1,0 +1,560 @@
+[
+  {
+    "type": "index",
+    "name": "account_provider_identity",
+    "tbl_name": "account",
+    "sql": "CREATE UNIQUE INDEX account_provider_identity ON \"account\"(providerId, accountId)"
+  },
+  {
+    "type": "index",
+    "name": "accounts_user",
+    "tbl_name": "account",
+    "sql": "CREATE INDEX accounts_user ON \"account\"(userId)"
+  },
+  {
+    "type": "index",
+    "name": "ai_events_tenant_cooldown",
+    "tbl_name": "usage_events",
+    "sql": "CREATE INDEX ai_events_tenant_cooldown ON usage_events(user_id,destination_id,model_id,cooldown_until DESC)"
+  },
+  {
+    "type": "index",
+    "name": "ai_events_tenant_state",
+    "tbl_name": "usage_events",
+    "sql": "CREATE INDEX ai_events_tenant_state ON usage_events(user_id,state)"
+  },
+  {
+    "type": "index",
+    "name": "ai_extractions_document_completed",
+    "tbl_name": "ai_extractions",
+    "sql": "CREATE INDEX ai_extractions_document_completed ON ai_extractions(user_id,document_id,run_key) WHERE completed_at IS NOT NULL"
+  },
+  {
+    "type": "index",
+    "name": "archive_objects_pending",
+    "tbl_name": "archive_objects",
+    "sql": "CREATE INDEX archive_objects_pending ON archive_objects(user_id,state,lease_expires_at,id)"
+  },
+  {
+    "type": "index",
+    "name": "connections_due",
+    "tbl_name": "connections",
+    "sql": "CREATE INDEX connections_due ON connections(scheduling_state,next_sync_at,user_id,id)"
+  },
+  {
+    "type": "index",
+    "name": "connections_tenant_due",
+    "tbl_name": "connections",
+    "sql": "CREATE INDEX connections_tenant_due ON connections(user_id,scheduling_state,next_sync_at,id)"
+  },
+  {
+    "type": "index",
+    "name": "consents_connection_background",
+    "tbl_name": "processing_consents",
+    "sql": "CREATE INDEX consents_connection_background ON processing_consents(user_id,connection_id,accepted_at DESC,id) WHERE revoked_at IS NULL AND background_authorized=1"
+  },
+  {
+    "type": "index",
+    "name": "correction_audit_entity",
+    "tbl_name": "correction_audit",
+    "sql": "CREATE INDEX correction_audit_entity ON correction_audit(user_id,entity_kind,entity_id,created_at,id)"
+  },
+  {
+    "type": "index",
+    "name": "discovery_jobs_source",
+    "tbl_name": "discovery_source_jobs",
+    "sql": "CREATE INDEX discovery_jobs_source ON discovery_source_jobs(user_id,source_message_id)"
+  },
+  {
+    "type": "index",
+    "name": "discovery_sources_run",
+    "tbl_name": "discovery_run_sources",
+    "sql": "CREATE INDEX discovery_sources_run ON discovery_run_sources(user_id,import_run_id,candidate_kind,source_message_id)"
+  },
+  {
+    "type": "index",
+    "name": "documents_pipeline_index",
+    "tbl_name": "documents",
+    "sql": "CREATE UNIQUE INDEX documents_pipeline_index ON documents(user_id,source_message_id,pipeline_index) WHERE pipeline_index IS NOT NULL"
+  },
+  {
+    "type": "index",
+    "name": "documents_tenant_hash",
+    "tbl_name": "documents",
+    "sql": "CREATE INDEX documents_tenant_hash ON documents(user_id,content_hash)"
+  },
+  {
+    "type": "index",
+    "name": "entry_valuations_current",
+    "tbl_name": "entry_valuations",
+    "sql": "CREATE INDEX entry_valuations_current ON entry_valuations(user_id,entry_id,profile_version,entry_version,reporting_currency,calculation_version,policy_hash)"
+  },
+  {
+    "type": "index",
+    "name": "fx_rates_public_lookup",
+    "tbl_name": "fx_rates",
+    "sql": "CREATE INDEX fx_rates_public_lookup ON fx_rates(source,from_currency,to_currency,effective_date DESC)"
+  },
+  {
+    "type": "index",
+    "name": "jobs_dispatchable",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX jobs_dispatchable ON jobs(user_id,priority,dispatch_at,id) WHERE status IN ('ready','retry_wait')"
+  },
+  {
+    "type": "index",
+    "name": "jobs_due",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX jobs_due ON jobs(status,dispatch_at,user_id,id)"
+  },
+  {
+    "type": "index",
+    "name": "jobs_global_leases",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX jobs_global_leases ON jobs(status,lease_expires_at,id)"
+  },
+  {
+    "type": "index",
+    "name": "jobs_pending_sync",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX jobs_pending_sync ON jobs(user_id,connection_id,connection_generation,id) WHERE type='sync' AND status IN ('ready','leased','retry_wait')"
+  },
+  {
+    "type": "index",
+    "name": "jobs_tenant_leases",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX jobs_tenant_leases ON jobs(user_id,status,lease_expires_at,id)"
+  },
+  {
+    "type": "index",
+    "name": "jobs_tenant_ready",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX jobs_tenant_ready ON jobs(user_id,status,priority,dispatch_at,id)"
+  },
+  {
+    "type": "index",
+    "name": "jobs_tenant_recovery",
+    "tbl_name": "jobs",
+    "sql": "CREATE INDEX jobs_tenant_recovery ON jobs(user_id,id,status)"
+  },
+  {
+    "type": "index",
+    "name": "ledger_entries_observation",
+    "tbl_name": "ledger_entries",
+    "sql": "CREATE INDEX ledger_entries_observation ON ledger_entries(user_id,observation_id,id)"
+  },
+  {
+    "type": "index",
+    "name": "ledger_entries_purchase",
+    "tbl_name": "ledger_entries",
+    "sql": "CREATE INDEX ledger_entries_purchase ON ledger_entries(user_id,purchase_id,id)"
+  },
+  {
+    "type": "index",
+    "name": "ledger_tenant_currency_id",
+    "tbl_name": "ledger_entries",
+    "sql": "CREATE INDEX ledger_tenant_currency_id ON ledger_entries(user_id,currency,id)"
+  },
+  {
+    "type": "index",
+    "name": "ledger_tenant_date",
+    "tbl_name": "ledger_entries",
+    "sql": "CREATE INDEX ledger_tenant_date ON ledger_entries(user_id,event_date,id)"
+  },
+  {
+    "type": "index",
+    "name": "lifecycle_cleanup_pending",
+    "tbl_name": "lifecycle_deletions",
+    "sql": "CREATE INDEX lifecycle_cleanup_pending ON lifecycle_deletions(scope,journal_ack,deleted_at,user_id)"
+  },
+  {
+    "type": "index",
+    "name": "manual_evidence_document",
+    "tbl_name": "manual_purchase_evidence",
+    "sql": "CREATE INDEX manual_evidence_document ON manual_purchase_evidence(user_id,document_id,purchase_id)"
+  },
+  {
+    "type": "index",
+    "name": "oauth_states_owner_hash",
+    "tbl_name": "oauth_states",
+    "sql": "CREATE UNIQUE INDEX oauth_states_owner_hash ON oauth_states(user_id,state_hash)"
+  },
+  {
+    "type": "index",
+    "name": "oauth_states_tenant_expiry",
+    "tbl_name": "oauth_states",
+    "sql": "CREATE INDEX oauth_states_tenant_expiry ON oauth_states(user_id,expires_at,state_hash)"
+  },
+  {
+    "type": "index",
+    "name": "observations_invoice_reference",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX observations_invoice_reference ON observations(user_id,merchant_key,invoice_ref) WHERE invoice_ref IS NOT NULL"
+  },
+  {
+    "type": "index",
+    "name": "observations_order_reference",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX observations_order_reference ON observations(user_id,merchant_key,order_ref) WHERE order_ref IS NOT NULL"
+  },
+  {
+    "type": "index",
+    "name": "observations_tenant_review",
+    "tbl_name": "observations",
+    "sql": "CREATE INDEX observations_tenant_review ON observations(user_id,review_state,id)"
+  },
+  {
+    "type": "index",
+    "name": "onboarding_run_interval",
+    "tbl_name": "import_runs",
+    "sql": "CREATE INDEX onboarding_run_interval ON import_runs(user_id,connection_id,onboarding_interval_key,started_at)"
+  },
+  {
+    "type": "index",
+    "name": "outlook_inventory_pending",
+    "tbl_name": "outlook_inventory_states",
+    "sql": "CREATE INDEX outlook_inventory_pending ON outlook_inventory_states(user_id,connection_id,generation,state,scope_key)"
+  },
+  {
+    "type": "index",
+    "name": "profiles_schedule_page",
+    "tbl_name": "profiles",
+    "sql": "CREATE INDEX profiles_schedule_page ON profiles(status,user_id)"
+  },
+  {
+    "type": "index",
+    "name": "purchases_invoice_reference",
+    "tbl_name": "purchases",
+    "sql": "CREATE INDEX purchases_invoice_reference ON purchases(user_id,merchant_normalized,invoice_ref) WHERE invoice_ref IS NOT NULL"
+  },
+  {
+    "type": "index",
+    "name": "purchases_order_reference",
+    "tbl_name": "purchases",
+    "sql": "CREATE INDEX purchases_order_reference ON purchases(user_id,merchant_normalized,order_ref) WHERE order_ref IS NOT NULL"
+  },
+  {
+    "type": "index",
+    "name": "purchases_tenant_date",
+    "tbl_name": "purchases",
+    "sql": "CREATE INDEX purchases_tenant_date ON purchases(user_id,document_date DESC,id)"
+  },
+  {
+    "type": "index",
+    "name": "purchases_tenant_merchant",
+    "tbl_name": "purchases",
+    "sql": "CREATE INDEX purchases_tenant_merchant ON purchases(user_id,merchant_normalized,id)"
+  },
+  {
+    "type": "index",
+    "name": "review_items_tenant_purchase",
+    "tbl_name": "review_items",
+    "sql": "CREATE INDEX review_items_tenant_purchase ON review_items(user_id,purchase_id,id)"
+  },
+  {
+    "type": "index",
+    "name": "review_items_tenant_status",
+    "tbl_name": "review_items",
+    "sql": "CREATE INDEX review_items_tenant_status ON review_items(user_id,status,blocking_scope,id)"
+  },
+  {
+    "type": "index",
+    "name": "sessions_tenant_identity",
+    "tbl_name": "session",
+    "sql": "CREATE UNIQUE INDEX sessions_tenant_identity ON \"session\"(userId,id)"
+  },
+  {
+    "type": "index",
+    "name": "sessions_user",
+    "tbl_name": "session",
+    "sql": "CREATE INDEX sessions_user ON \"session\"(userId)"
+  },
+  {
+    "type": "index",
+    "name": "usage_global_blocked",
+    "tbl_name": "usage_buckets",
+    "sql": "CREATE INDEX usage_global_blocked ON usage_buckets(scope,blocked)"
+  },
+  {
+    "type": "table",
+    "name": "account",
+    "tbl_name": "account",
+    "sql": "CREATE TABLE \"account\" (\"id\" TEXT PRIMARY KEY NOT NULL,\n\"accountId\" TEXT NOT NULL,\n\"providerId\" TEXT NOT NULL,\n\"userId\" TEXT NOT NULL REFERENCES \"user\"(\"id\") ON DELETE CASCADE,\n\"accessToken\" TEXT,\n\"refreshToken\" TEXT,\n\"idToken\" TEXT,\n\"accessTokenExpiresAt\" INTEGER,\n\"refreshTokenExpiresAt\" INTEGER,\n\"scope\" TEXT,\n\"password\" TEXT,\n\"createdAt\" INTEGER NOT NULL,\n\"updatedAt\" INTEGER NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "ai_extractions",
+    "tbl_name": "ai_extractions",
+    "sql": "CREATE TABLE ai_extractions (\n user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,run_key TEXT NOT NULL,\n purpose TEXT NOT NULL CHECK(purpose IN ('extraction','synthetic-test')),document_id TEXT,session_id TEXT,\n content_hash TEXT NOT NULL,extraction_version TEXT NOT NULL,config_fingerprint TEXT NOT NULL,\n mode TEXT NOT NULL CHECK(mode IN ('hosted','byok')),destination_id TEXT NOT NULL,model_id TEXT NOT NULL,config_version TEXT NOT NULL,settings_revision INTEGER NOT NULL,\n generation INTEGER NOT NULL,credential_version INTEGER NOT NULL,reservation_nonce TEXT NOT NULL,\n result_json TEXT CHECK(result_json IS NULL OR (json_valid(result_json) AND length(result_json)<=65536)),\n completed_at INTEGER,created_at INTEGER NOT NULL,\n PRIMARY KEY(user_id,run_key),\n FOREIGN KEY(user_id,document_id) REFERENCES documents(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,session_id) REFERENCES \"session\"(userId,id) ON DELETE CASCADE,\n CHECK((purpose='extraction' AND document_id IS NOT NULL AND session_id IS NULL) OR (purpose='synthetic-test' AND document_id IS NULL AND session_id IS NOT NULL)),\n CHECK((result_json IS NULL AND completed_at IS NULL) OR (result_json IS NOT NULL AND completed_at IS NOT NULL))\n)"
+  },
+  {
+    "type": "table",
+    "name": "ai_settings",
+    "tbl_name": "ai_settings",
+    "sql": "CREATE TABLE ai_settings (\n user_id TEXT PRIMARY KEY REFERENCES profiles(user_id) ON DELETE CASCADE,\n id TEXT NOT NULL DEFAULT 'primary' CHECK(id='primary'),\n encrypted_key TEXT, key_version INTEGER, credential_version INTEGER NOT NULL DEFAULT 0 CHECK(credential_version>=0),\n generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0), status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','deleted')), mode TEXT CHECK(mode IN ('hosted','byok')), provider_id TEXT, model_id TEXT, config_version TEXT, revision INTEGER NOT NULL DEFAULT 0 CHECK(typeof(revision)='integer' AND revision>=0 AND revision<=2147483646), consent_version INTEGER NOT NULL DEFAULT 0 CHECK(typeof(consent_version)='integer' AND consent_version>=0 AND consent_version<=2147483646 AND ((mode IS NULL AND provider_id IS NULL AND model_id IS NULL AND config_version IS NULL) OR (mode IS NOT NULL AND provider_id IS NOT NULL AND model_id IS NOT NULL AND config_version IS NOT NULL AND length(provider_id) BETWEEN 1 AND 120 AND length(model_id) BETWEEN 1 AND 120 AND length(config_version) BETWEEN 1 AND 120))),\n UNIQUE(user_id,id),\n CHECK((encrypted_key IS NULL AND key_version IS NULL) OR (encrypted_key IS NOT NULL AND key_version IS NOT NULL AND key_version>0))\n)"
+  },
+  {
+    "type": "table",
+    "name": "archive_folders",
+    "tbl_name": "archive_folders",
+    "sql": "CREATE TABLE archive_folders (\n user_id TEXT NOT NULL, connection_id TEXT NOT NULL,\n storage_subject TEXT NOT NULL CHECK(length(storage_subject) BETWEEN 1 AND 256),\n planned_file_id TEXT NOT NULL CHECK(length(planned_file_id) BETWEEN 1 AND 128 AND planned_file_id NOT GLOB '*[^A-Za-z0-9_-]*'),\n workspace_marker TEXT NOT NULL CHECK(length(workspace_marker) BETWEEN 16 AND 96 AND workspace_marker NOT GLOB '*[^A-Za-z0-9_-]*'),\n state TEXT NOT NULL DEFAULT 'planned' CHECK(state IN ('planned','ready')), verified_at INTEGER,\n lease_id TEXT, lease_expires_at INTEGER NOT NULL DEFAULT 0,\n lease_settings_version INTEGER, lease_generation INTEGER,\n fence INTEGER NOT NULL DEFAULT 0 CHECK(typeof(fence)='integer' AND fence BETWEEN 0 AND 9007199254740991),\n PRIMARY KEY(user_id,connection_id),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id),\n CHECK((state='planned' AND verified_at IS NULL) OR (state='ready' AND verified_at IS NOT NULL AND typeof(verified_at)='integer' AND verified_at BETWEEN 0 AND 9007199254740991)),\n CHECK((lease_id IS NULL AND lease_expires_at=0 AND lease_settings_version IS NULL AND lease_generation IS NULL) OR\n (lease_id IS NOT NULL AND length(lease_id) BETWEEN 1 AND 256 AND typeof(lease_expires_at)='integer' AND lease_expires_at BETWEEN 1 AND 9007199254740991 AND lease_settings_version IS NOT NULL AND typeof(lease_settings_version)='integer' AND lease_settings_version BETWEEN 1 AND 2147483646 AND lease_generation IS NOT NULL AND typeof(lease_generation)='integer' AND lease_generation BETWEEN 1 AND 9007199254740991 AND fence>0))\n)"
+  },
+  {
+    "type": "table",
+    "name": "archive_objects",
+    "tbl_name": "archive_objects",
+    "sql": "CREATE TABLE archive_objects (\n id TEXT NOT NULL, user_id TEXT NOT NULL,\n document_id TEXT NOT NULL, source_message_id TEXT NOT NULL, provider_message_id TEXT NOT NULL,\n part_key TEXT NOT NULL, document_hash TEXT NOT NULL, document_mime TEXT NOT NULL, document_size INTEGER NOT NULL,\n mailbox_connection_id TEXT NOT NULL, mailbox_generation INTEGER NOT NULL,\n storage_connection_id TEXT NOT NULL, storage_generation INTEGER NOT NULL, storage_subject TEXT NOT NULL,\n settings_version INTEGER NOT NULL CHECK(typeof(settings_version)='integer' AND settings_version BETWEEN 1 AND 2147483646),\n state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','archived')),\n planned_file_id TEXT, parent_id TEXT, workspace_marker TEXT, original_mime TEXT, original_size INTEGER, original_sha256 TEXT,\n remote_id TEXT, archived_at INTEGER,\n lease_id TEXT, lease_expires_at INTEGER NOT NULL DEFAULT 0,\n fence INTEGER NOT NULL DEFAULT 0 CHECK(typeof(fence)='integer' AND fence BETWEEN 0 AND 9007199254740991),\n PRIMARY KEY(user_id,id), UNIQUE(user_id,document_id,storage_connection_id),\n FOREIGN KEY(user_id,document_id) REFERENCES documents(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,storage_connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n CHECK(typeof(mailbox_generation)='integer' AND mailbox_generation>0 AND typeof(storage_generation)='integer' AND storage_generation>0),\n CHECK((lease_id IS NULL AND lease_expires_at=0) OR (lease_id IS NOT NULL AND typeof(lease_expires_at)='integer' AND lease_expires_at BETWEEN 1 AND 9007199254740991 AND fence>0)),\n CHECK((planned_file_id IS NULL AND parent_id IS NULL AND workspace_marker IS NULL AND original_mime IS NULL AND original_size IS NULL AND original_sha256 IS NULL) OR\n (planned_file_id IS NOT NULL AND length(planned_file_id) BETWEEN 1 AND 256 AND parent_id IS NOT NULL AND length(parent_id) BETWEEN 1 AND 256 AND workspace_marker IS NOT NULL AND length(workspace_marker) BETWEEN 1 AND 120 AND original_mime IS NOT NULL AND original_mime IN ('application/pdf','image/jpeg','image/png','message/rfc822') AND original_size IS NOT NULL AND typeof(original_size)='integer' AND original_size BETWEEN 1 AND 9007199254740991 AND original_sha256 IS NOT NULL AND length(original_sha256)=64 AND original_sha256 NOT GLOB '*[^0-9a-f]*')),\n CHECK((state='pending' AND remote_id IS NULL AND archived_at IS NULL) OR (state='archived' AND remote_id IS NOT NULL AND planned_file_id IS NOT NULL AND remote_id=planned_file_id AND typeof(archived_at)='integer' AND archived_at>=0 AND lease_id IS NULL))\n)"
+  },
+  {
+    "type": "table",
+    "name": "archive_settings",
+    "tbl_name": "archive_settings",
+    "sql": "CREATE TABLE archive_settings (\n user_id TEXT PRIMARY KEY REFERENCES profiles(user_id) ON DELETE CASCADE,\n enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),\n version INTEGER NOT NULL DEFAULT 1 CHECK(typeof(version)='integer' AND version BETWEEN 1 AND 2147483646),\n connection_id TEXT, connection_generation INTEGER,\n disclosure_version INTEGER, accepted_at INTEGER,\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id),\n CHECK((enabled=0 AND connection_id IS NULL AND connection_generation IS NULL AND disclosure_version IS NULL AND accepted_at IS NULL) OR\n (enabled=1 AND connection_id IS NOT NULL AND connection_generation IS NOT NULL AND typeof(connection_generation)='integer' AND connection_generation>0 AND disclosure_version IS NOT NULL AND typeof(disclosure_version)='integer' AND disclosure_version=1 AND accepted_at IS NOT NULL AND typeof(accepted_at)='integer' AND accepted_at BETWEEN 0 AND 9007199254740991))\n)"
+  },
+  {
+    "type": "table",
+    "name": "connections",
+    "tbl_name": "connections",
+    "sql": "CREATE TABLE connections (\n id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n kind TEXT NOT NULL CHECK(kind IN ('mailbox','storage')), provider TEXT NOT NULL,\n provider_subject TEXT NOT NULL, display_address TEXT NOT NULL,\n state TEXT NOT NULL DEFAULT 'connected', generation INTEGER NOT NULL DEFAULT 1 CHECK(generation>0),\n scopes TEXT NOT NULL DEFAULT '[]', credential_ciphertext TEXT, credential_key_version INTEGER,\n next_sync_at INTEGER, scheduling_state TEXT NOT NULL DEFAULT 'awaiting_import' CHECK(scheduling_state IN ('awaiting_import','active','paused')), credential_version INTEGER NOT NULL DEFAULT 0 CHECK(credential_version>=0 AND ((credential_ciphertext IS NULL AND credential_key_version IS NULL) OR (credential_ciphertext IS NOT NULL AND credential_key_version IS NOT NULL AND credential_key_version>0))), manual_sync_at INTEGER, PRIMARY KEY(user_id,id), UNIQUE(user_id,kind,provider,provider_subject)\n)"
+  },
+  {
+    "type": "table",
+    "name": "correction_audit",
+    "tbl_name": "correction_audit",
+    "sql": "CREATE TABLE correction_audit (\n id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,entity_kind TEXT NOT NULL,entity_id TEXT NOT NULL,action TEXT NOT NULL,field TEXT,\n before_json TEXT NOT NULL CHECK(json_valid(before_json) AND length(before_json)<=1000),after_json TEXT NOT NULL CHECK(json_valid(after_json) AND length(after_json)<=1000),created_at INTEGER NOT NULL,\n PRIMARY KEY(user_id,id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "correction_commands",
+    "tbl_name": "correction_commands",
+    "sql": "CREATE TABLE correction_commands (\n user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,route TEXT NOT NULL,key TEXT NOT NULL,body_hash TEXT NOT NULL,executor TEXT NOT NULL,\n result_json TEXT NOT NULL CHECK(json_valid(result_json) AND length(result_json)<=65536),created_at INTEGER NOT NULL,\n PRIMARY KEY(user_id,route,key)\n)"
+  },
+  {
+    "type": "table",
+    "name": "discovery_run_sources",
+    "tbl_name": "discovery_run_sources",
+    "sql": "CREATE TABLE discovery_run_sources (\n user_id TEXT NOT NULL,import_run_id TEXT NOT NULL,source_message_id TEXT NOT NULL,candidate_kind TEXT NOT NULL CHECK(candidate_kind IN ('matched','unknown')),\n PRIMARY KEY(user_id,import_run_id,source_message_id),\n FOREIGN KEY(user_id,import_run_id) REFERENCES import_runs(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,source_message_id) REFERENCES source_messages(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "discovery_seen_refs",
+    "tbl_name": "discovery_seen_refs",
+    "sql": "CREATE TABLE discovery_seen_refs (\n user_id TEXT NOT NULL,sync_state_id TEXT NOT NULL,provider_message_id TEXT NOT NULL,candidate_kind TEXT NOT NULL CHECK(candidate_kind IN ('matched','unknown','excluded')),\n PRIMARY KEY(user_id,sync_state_id,provider_message_id),\n FOREIGN KEY(user_id,sync_state_id) REFERENCES sync_states(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "discovery_source_jobs",
+    "tbl_name": "discovery_source_jobs",
+    "sql": "CREATE TABLE discovery_source_jobs (\n user_id TEXT NOT NULL,job_id TEXT NOT NULL,source_message_id TEXT NOT NULL, pipeline_stage TEXT NOT NULL DEFAULT 'parse' CHECK(pipeline_stage IN ('parse','infer','reconcile')), document_index INTEGER NOT NULL DEFAULT 0 CHECK(typeof(document_index)='integer' AND document_index BETWEEN 0 AND 63), extraction_fingerprint TEXT CHECK(extraction_fingerprint IS NULL OR (length(extraction_fingerprint)=64 AND extraction_fingerprint NOT GLOB '*[^0-9a-f]*')),\n PRIMARY KEY(user_id,job_id),\n FOREIGN KEY(user_id,job_id) REFERENCES jobs(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,source_message_id) REFERENCES source_messages(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "documents",
+    "tbl_name": "documents",
+    "sql": "CREATE TABLE documents (\n id TEXT NOT NULL, user_id TEXT NOT NULL, source_message_id TEXT NOT NULL, part_key TEXT NOT NULL,\n content_hash TEXT NOT NULL, mime TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length>=0 AND byte_length<=4194304),\n document_date TEXT, parse_state TEXT NOT NULL DEFAULT 'discovered', pipeline_index INTEGER CHECK(pipeline_index IS NULL OR (typeof(pipeline_index)='integer' AND pipeline_index BETWEEN 0 AND 63)), parser_version TEXT CHECK(parser_version IS NULL OR length(parser_version) BETWEEN 1 AND 120), parse_code TEXT CHECK(parse_code IS NULL OR length(parse_code) BETWEEN 1 AND 80), PRIMARY KEY(user_id,id),\n UNIQUE(user_id,source_message_id,part_key),\n FOREIGN KEY(user_id,source_message_id) REFERENCES source_messages(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "entry_valuations",
+    "tbl_name": "entry_valuations",
+    "sql": "CREATE TABLE entry_valuations (\n user_id TEXT NOT NULL,\n entry_id TEXT NOT NULL,\n reporting_currency TEXT NOT NULL CHECK(length(reporting_currency)=3 AND reporting_currency NOT GLOB '*[^A-Z]*'),\n profile_version INTEGER NOT NULL CHECK(typeof(profile_version)='integer' AND profile_version BETWEEN 1 AND 2147483646),\n entry_version INTEGER NOT NULL CHECK(typeof(entry_version)='integer' AND entry_version BETWEEN 1 AND 2147483646),\n calculation_version TEXT NOT NULL CHECK(calculation_version='fx-v1'),\n policy_hash TEXT NOT NULL CHECK(length(policy_hash)=64 AND policy_hash NOT GLOB '*[^0-9a-f]*'),\n policy_source TEXT NOT NULL CHECK(length(policy_source) BETWEEN 1 AND 80),\n max_prior_age_days INTEGER NOT NULL CHECK(typeof(max_prior_age_days)='integer' AND max_prior_age_days BETWEEN 0 AND 31),\n original_kind TEXT NOT NULL CHECK(original_kind IN ('payment','refund')),\n original_minor INTEGER NOT NULL CHECK(typeof(original_minor)='integer' AND original_minor BETWEEN 0 AND 9000000000000),\n original_currency TEXT NOT NULL,\n original_event_date TEXT NOT NULL,\n status TEXT NOT NULL CHECK(status IN ('converted','unconverted')),\n signed_minor TEXT CHECK(signed_minor IS NULL OR (typeof(signed_minor)='text' AND (signed_minor='0' OR (signed_minor NOT GLOB '*[^0-9]*' AND substr(signed_minor,1,1) BETWEEN '1' AND '9' AND length(signed_minor)<=19 AND (length(signed_minor)<19 OR signed_minor<='9223372036854775807')) OR (substr(signed_minor,1,1)='-' AND substr(signed_minor,2) NOT GLOB '*[^0-9]*' AND substr(signed_minor,2,1) BETWEEN '1' AND '9' AND length(signed_minor)<=20 AND (length(signed_minor)<20 OR substr(signed_minor,2)<='9223372036854775807'))))),\n basis TEXT CHECK(basis IN ('identity','reference')),\n reason TEXT CHECK(reason IN ('rate_missing','currency_unsupported','rate_future','rate_stale','quote_mismatch','source_mismatch','invalid_quote','magnitude_overflow')),\n rate_id TEXT REFERENCES fx_rates(id),\n version INTEGER NOT NULL CHECK(typeof(version)='integer' AND version BETWEEN 1 AND 2147483646),\n updated_at INTEGER NOT NULL CHECK(typeof(updated_at)='integer' AND updated_at BETWEEN 0 AND 9007199254740991),\n PRIMARY KEY(user_id,entry_id,reporting_currency,profile_version,entry_version,calculation_version,policy_hash),\n FOREIGN KEY(user_id,entry_id) REFERENCES ledger_entries(user_id,id) ON DELETE CASCADE,\n CHECK((status='converted' AND signed_minor IS NOT NULL AND basis IS NOT NULL AND reason IS NULL AND ((basis='identity' AND rate_id IS NULL AND original_currency=reporting_currency) OR (basis='reference' AND rate_id IS NOT NULL AND original_currency<>reporting_currency))) OR (status='unconverted' AND signed_minor IS NULL AND basis IS NULL AND reason IS NOT NULL)),\n CHECK(status='unconverted' OR (original_kind='payment' AND substr(signed_minor,1,1)<>'-') OR (original_kind='refund' AND (signed_minor='0' OR substr(signed_minor,1,1)='-')))\n)"
+  },
+  {
+    "type": "table",
+    "name": "field_overrides",
+    "tbl_name": "field_overrides",
+    "sql": "CREATE TABLE field_overrides (\n user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,entity_kind TEXT NOT NULL CHECK(entity_kind IN ('purchase','entry')),entity_id TEXT NOT NULL,field TEXT NOT NULL,\n original_value_json TEXT NOT NULL CHECK(json_valid(original_value_json) AND length(original_value_json)<=1000),value_json TEXT NOT NULL CHECK(json_valid(value_json) AND length(value_json)<=1000),revision INTEGER NOT NULL CHECK(revision>0),\n PRIMARY KEY(user_id,entity_kind,entity_id,field)\n)"
+  },
+  {
+    "type": "table",
+    "name": "fx_rates",
+    "tbl_name": "fx_rates",
+    "sql": "CREATE TABLE fx_rates (\n id TEXT PRIMARY KEY CHECK(length(id)=64 AND id NOT GLOB '*[^0-9a-f]*'),\n source TEXT NOT NULL CHECK(length(source) BETWEEN 1 AND 80),\n from_currency TEXT NOT NULL CHECK(length(from_currency)=3 AND from_currency NOT GLOB '*[^A-Z]*'),\n to_currency TEXT NOT NULL CHECK(length(to_currency)=3 AND to_currency NOT GLOB '*[^A-Z]*'),\n requested_date TEXT NOT NULL CHECK(length(requested_date)=10),\n effective_date TEXT NOT NULL CHECK(length(effective_date)=10),\n rate TEXT NOT NULL CHECK(length(rate) BETWEEN 1 AND 31 AND rate NOT GLOB '*[^0-9.]*' AND substr(rate,1,1) BETWEEN '0' AND '9' AND substr(rate,-1,1) BETWEEN '0' AND '9' AND length(rate)-length(replace(rate,'.',''))<=1 AND replace(rate,'.','') GLOB '*[1-9]*' AND (substr(rate,1,1)<>'0' OR substr(rate,2,1)='.') AND CASE WHEN instr(rate,'.')=0 THEN length(rate)<=12 ELSE instr(rate,'.')<=13 AND length(rate)-instr(rate,'.') BETWEEN 1 AND 18 END),\n retrieved_at INTEGER NOT NULL CHECK(typeof(retrieved_at)='integer' AND retrieved_at BETWEEN 0 AND 9007199254740991),\n source_version TEXT NOT NULL CHECK(length(source_version) BETWEEN 1 AND 80),\n UNIQUE(source,from_currency,to_currency,requested_date,effective_date,source_version)\n)"
+  },
+  {
+    "type": "table",
+    "name": "hosted_ai_cooldowns",
+    "tbl_name": "hosted_ai_cooldowns",
+    "sql": "CREATE TABLE hosted_ai_cooldowns (\n destination_id TEXT NOT NULL CHECK(length(destination_id) BETWEEN 1 AND 120),\n model_id TEXT NOT NULL CHECK(length(model_id) BETWEEN 1 AND 120),\n cooldown_until INTEGER NOT NULL CHECK(typeof(cooldown_until)='integer' AND cooldown_until>=0 AND cooldown_until<=9007199254740991),\n PRIMARY KEY(destination_id,model_id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "import_runs",
+    "tbl_name": "import_runs",
+    "sql": "CREATE TABLE import_runs (\n id TEXT NOT NULL, user_id TEXT NOT NULL, connection_id TEXT NOT NULL, consent_id TEXT NOT NULL,\n connection_generation INTEGER NOT NULL, frozen_start TEXT NOT NULL, frozen_cutoff TEXT NOT NULL,\n timezone TEXT NOT NULL, request_fingerprint TEXT NOT NULL, stage TEXT NOT NULL DEFAULT 'queued',\n discovered_count INTEGER NOT NULL DEFAULT 0 CHECK(discovered_count>=0),\n processed_count INTEGER NOT NULL DEFAULT 0 CHECK(processed_count>=0), first_usable_at INTEGER,\n started_at INTEGER NOT NULL, completed_at INTEGER, pause_reason TEXT, query_mode TEXT NOT NULL DEFAULT 'filtered' CHECK(query_mode IN ('filtered','broad')), onboarding_start_date TEXT CHECK(onboarding_start_date IS NULL OR (length(onboarding_start_date)=10 AND onboarding_start_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')), onboarding_end_date TEXT CHECK(onboarding_end_date IS NULL OR (length(onboarding_end_date)=10 AND onboarding_end_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')), onboarding_reporting_currency TEXT CHECK(onboarding_reporting_currency IS NULL OR onboarding_reporting_currency IN ('EUR','USD','GBP','CHF','JPY','KWD')), onboarding_interval_key TEXT CHECK(onboarding_interval_key IS NULL OR (length(onboarding_interval_key)=64 AND onboarding_interval_key NOT GLOB '*[^0-9a-f]*')),\n PRIMARY KEY(user_id,id), UNIQUE(user_id,id,connection_id), UNIQUE(user_id,request_fingerprint),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,consent_id,connection_id) REFERENCES processing_consents(user_id,id,connection_id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "jobs",
+    "tbl_name": "jobs",
+    "sql": "CREATE TABLE jobs (\n id TEXT NOT NULL, user_id TEXT NOT NULL, connection_id TEXT NOT NULL, sync_state_id TEXT, consent_id TEXT NOT NULL,\n connection_generation INTEGER NOT NULL, type TEXT NOT NULL, dedupe_key TEXT NOT NULL,\n status TEXT NOT NULL CHECK(status IN ('ready','leased','retry_wait','paused_budget','paused_auth','completed','terminal','canceled')),\n dispatch_at INTEGER NOT NULL, retry_count INTEGER NOT NULL DEFAULT 0, lease_id TEXT, lease_expires_at INTEGER,\n fence INTEGER NOT NULL DEFAULT 0 CHECK(fence>=0), outcome_code TEXT, priority INTEGER NOT NULL DEFAULT 1 CHECK(priority IN (0,1,2)), dispatched_at INTEGER,\n PRIMARY KEY(user_id,id), UNIQUE(id), UNIQUE(user_id,dedupe_key),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,sync_state_id,connection_id) REFERENCES sync_states(user_id,id,connection_id),\n FOREIGN KEY(user_id,consent_id,connection_id) REFERENCES processing_consents(user_id,id,connection_id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "ledger_entries",
+    "tbl_name": "ledger_entries",
+    "sql": "CREATE TABLE \"ledger_entries\" (\n id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n purchase_id TEXT,observation_id TEXT,business_event_key TEXT NOT NULL,\n kind TEXT NOT NULL CHECK(kind IN ('payment','refund')),amount_minor INTEGER NOT NULL CHECK(typeof(amount_minor)='integer' AND amount_minor>=0 AND amount_minor<=9000000000000),\n currency TEXT NOT NULL,event_date TEXT NOT NULL,date_basis TEXT NOT NULL,\n eligible INTEGER NOT NULL CHECK(eligible IN (0,1)),version INTEGER NOT NULL DEFAULT 1 CHECK(typeof(version)='integer' AND version BETWEEN 1 AND 2147483646),\n origin TEXT NOT NULL DEFAULT 'source' CHECK(origin IN ('source','user-confirmed')),\n PRIMARY KEY(user_id,id),UNIQUE(user_id,business_event_key),\n FOREIGN KEY(user_id,purchase_id) REFERENCES purchases(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,observation_id) REFERENCES observations(user_id,id),\n CHECK((origin='source' AND observation_id IS NOT NULL) OR (origin='user-confirmed' AND observation_id IS NULL AND purchase_id IS NOT NULL))\n)"
+  },
+  {
+    "type": "table",
+    "name": "ledger_match_decisions",
+    "tbl_name": "ledger_match_decisions",
+    "sql": "CREATE TABLE ledger_match_decisions (\n user_id TEXT NOT NULL,content_hash TEXT NOT NULL,segment_index INTEGER NOT NULL CHECK(segment_index BETWEEN 0 AND 9),purchase_id TEXT NOT NULL,decision TEXT NOT NULL CHECK(decision IN ('same-purchase','different-purchase')),\n PRIMARY KEY(user_id,content_hash,segment_index,purchase_id),\n FOREIGN KEY(user_id,purchase_id) REFERENCES purchases(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "lifecycle_commands",
+    "tbl_name": "lifecycle_commands",
+    "sql": "CREATE TABLE lifecycle_commands (\n user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n route TEXT NOT NULL,key TEXT NOT NULL,body_hash TEXT NOT NULL,executor TEXT NOT NULL,\n result_json TEXT NOT NULL CHECK(json_valid(result_json) AND length(result_json)<=2000),\n created_at INTEGER NOT NULL,\n PRIMARY KEY(user_id,route,key)\n)"
+  },
+  {
+    "type": "table",
+    "name": "lifecycle_deletions",
+    "tbl_name": "lifecycle_deletions",
+    "sql": "CREATE TABLE lifecycle_deletions (\n user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n scope TEXT NOT NULL CHECK(scope IN ('account','connection')),target_id TEXT NOT NULL,\n request_id TEXT NOT NULL,deleted_at INTEGER NOT NULL,stage INTEGER NOT NULL DEFAULT 0 CHECK(stage>=0),\n journal_ack INTEGER NOT NULL DEFAULT 0 CHECK(journal_ack IN (0,1)),\n PRIMARY KEY(user_id,scope,target_id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "mailbox_oauth_intents",
+    "tbl_name": "mailbox_oauth_intents",
+    "sql": "CREATE TABLE mailbox_oauth_intents (\n user_id TEXT NOT NULL, state_hash TEXT NOT NULL, connection_id TEXT,\n connection_generation INTEGER, credential_version INTEGER,\n PRIMARY KEY(user_id,state_hash),\n FOREIGN KEY(user_id,state_hash) REFERENCES oauth_states(user_id,state_hash) ON DELETE CASCADE,\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n CHECK((connection_id IS NULL AND connection_generation IS NULL AND credential_version IS NULL) OR\n (connection_id IS NOT NULL AND connection_generation IS NOT NULL AND credential_version IS NOT NULL AND connection_generation>0 AND credential_version>=0))\n)"
+  },
+  {
+    "type": "table",
+    "name": "mailbox_refresh_leases",
+    "tbl_name": "mailbox_refresh_leases",
+    "sql": "CREATE TABLE mailbox_refresh_leases (\n user_id TEXT NOT NULL, connection_id TEXT NOT NULL,\n lease_id TEXT, lease_expires_at INTEGER NOT NULL DEFAULT 0,\n connection_generation INTEGER NOT NULL CHECK(connection_generation>0),\n credential_version INTEGER NOT NULL CHECK(credential_version>=0),\n fence INTEGER NOT NULL CHECK(fence>0 AND fence<=9007199254740991),\n PRIMARY KEY(user_id,connection_id),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n CHECK((lease_id IS NULL AND lease_expires_at=0) OR (lease_id IS NOT NULL AND lease_expires_at>0))\n)"
+  },
+  {
+    "type": "table",
+    "name": "manual_purchase_evidence",
+    "tbl_name": "manual_purchase_evidence",
+    "sql": "CREATE TABLE manual_purchase_evidence (\n user_id TEXT NOT NULL,purchase_id TEXT NOT NULL,document_id TEXT NOT NULL,\n PRIMARY KEY(user_id,purchase_id,document_id),\n FOREIGN KEY(user_id,purchase_id) REFERENCES purchases(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,document_id) REFERENCES documents(user_id,id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "oauth_states",
+    "tbl_name": "oauth_states",
+    "sql": "CREATE TABLE oauth_states (\n state_hash TEXT PRIMARY KEY CHECK(length(state_hash)=64),\n user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n session_id TEXT NOT NULL, purpose TEXT NOT NULL CHECK(purpose IN ('mailbox','storage')),\n provider TEXT NOT NULL CHECK(provider IN ('google','microsoft')), callback TEXT NOT NULL,\n pkce_ciphertext TEXT, pkce_key_version INTEGER, nonce TEXT,\n created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL CHECK(expires_at>created_at AND expires_at<=created_at+600000), consumed_at INTEGER,\n FOREIGN KEY(user_id,session_id) REFERENCES \"session\"(userId,id) ON DELETE CASCADE,\n CHECK((consumed_at IS NULL AND pkce_ciphertext IS NOT NULL AND pkce_key_version IS NOT NULL AND pkce_key_version>0 AND nonce IS NOT NULL) OR\n (consumed_at IS NOT NULL AND pkce_ciphertext IS NULL AND pkce_key_version IS NULL AND nonce IS NULL))\n)"
+  },
+  {
+    "type": "table",
+    "name": "observations",
+    "tbl_name": "observations",
+    "sql": "CREATE TABLE observations (\n id TEXT NOT NULL, user_id TEXT NOT NULL, document_id TEXT NOT NULL, segment_index INTEGER NOT NULL CHECK(segment_index>=0),\n extraction_fingerprint TEXT NOT NULL, extraction_version INTEGER NOT NULL,\n evidence_code TEXT NOT NULL CHECK(evidence_code IN ('explicitly-paid','completed-refund','invoice-only','manual-confirmation','unknown')),\n normalized_fields TEXT NOT NULL CHECK(length(normalized_fields)<=4000 AND json_valid(normalized_fields) AND COALESCE(json_type(normalized_fields,'$.schemaVersion')='integer' AND json_extract(normalized_fields,'$.schemaVersion')=1,0) AND json_remove(normalized_fields,'$.schemaVersion','$.merchant','$.date','$.totalMinor','$.currency')='{}'),\n review_state TEXT NOT NULL CHECK(review_state IN ('accepted','needs_review')), structured_fields TEXT CHECK(structured_fields IS NULL OR (length(structured_fields)<=12000 AND json_valid(structured_fields) AND COALESCE(json_type(structured_fields,'$.schemaVersion')='integer' AND json_extract(structured_fields,'$.schemaVersion')=1,0) AND json_remove(structured_fields,'$.schemaVersion','$.documentType','$.record')='{}' AND json_type(structured_fields,'$.record')='object' AND json_remove(json_extract(structured_fields,'$.record'),'$.merchant','$.documentDate','$.eventDate','$.currency','$.total','$.tax','$.invoiceNumber','$.orderReference','$.paymentReference','$.refundReference','$.category','$.paymentEvidence','$.refundEvidence','$.paymentMethodHint','$.recurringCadence','$.paymentAmount','$.refundAmount','$.storeCreditAmount','$.provenance')='{}')), merchant_key TEXT, invoice_ref TEXT, order_ref TEXT,\n PRIMARY KEY(user_id,id), UNIQUE(user_id,document_id,segment_index,extraction_fingerprint),\n FOREIGN KEY(user_id,document_id) REFERENCES documents(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "onboarding_commands",
+    "tbl_name": "onboarding_commands",
+    "sql": "CREATE TABLE onboarding_commands (\n user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n key_hash TEXT NOT NULL CHECK(length(key_hash)=64 AND key_hash NOT GLOB '*[^0-9a-f]*'),\n body_hash TEXT NOT NULL CHECK(length(body_hash)=64 AND body_hash NOT GLOB '*[^0-9a-f]*'),\n import_run_id TEXT,\n result_json TEXT NOT NULL CHECK(length(result_json)<=1000 AND json_valid(result_json)),\n created_at INTEGER NOT NULL CHECK(typeof(created_at)='integer' AND created_at>=0),\n PRIMARY KEY(user_id,key_hash),\n FOREIGN KEY(user_id,import_run_id) REFERENCES import_runs(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "outlook_folders",
+    "tbl_name": "outlook_folders",
+    "sql": "CREATE TABLE outlook_folders (\n user_id TEXT NOT NULL, connection_id TEXT NOT NULL, generation INTEGER NOT NULL CHECK(generation>0),\n folder_id TEXT NOT NULL CHECK(length(folder_id) BETWEEN 1 AND 256),\n parent_folder_id TEXT CHECK(parent_folder_id IS NULL OR length(parent_folder_id) BETWEEN 1 AND 256),\n child_folder_count INTEGER NOT NULL CHECK(typeof(child_folder_count)='integer' AND child_folder_count BETWEEN 0 AND 100000),\n is_hidden INTEGER NOT NULL CHECK(is_hidden IN (0,1)),\n PRIMARY KEY(user_id,connection_id,generation,folder_id),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "outlook_inventory_states",
+    "tbl_name": "outlook_inventory_states",
+    "sql": "CREATE TABLE outlook_inventory_states (\n user_id TEXT NOT NULL, connection_id TEXT NOT NULL, generation INTEGER NOT NULL CHECK(generation>0),\n scope_key TEXT NOT NULL CHECK(length(scope_key) BETWEEN 1 AND 263),\n parent_folder_id TEXT CHECK(parent_folder_id IS NULL OR length(parent_folder_id) BETWEEN 1 AND 256),\n version INTEGER NOT NULL CHECK(version BETWEEN 1 AND 2147483646),\n next_link TEXT CHECK(next_link IS NULL OR length(next_link) BETWEEN 1 AND 4096),\n state TEXT NOT NULL CHECK(state IN ('pending','complete')),\n commit_id TEXT NOT NULL CHECK(length(commit_id)=36),\n PRIMARY KEY(user_id,connection_id,generation,scope_key),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "processing_consents",
+    "tbl_name": "processing_consents",
+    "sql": "CREATE TABLE processing_consents (\n id TEXT NOT NULL, user_id TEXT NOT NULL, connection_id TEXT NOT NULL,\n disclosure_version INTEGER NOT NULL, inference_destination TEXT NOT NULL, parser_destination TEXT NOT NULL,\n ai_settings_revision INTEGER NOT NULL, accepted_at INTEGER NOT NULL, revoked_at INTEGER,\n background_authorized INTEGER NOT NULL CHECK(background_authorized IN (0,1)), query_mode TEXT NOT NULL DEFAULT 'filtered' CHECK(query_mode IN ('filtered','broad')), accepted_configuration_digest TEXT CHECK(accepted_configuration_digest IS NULL OR (length(accepted_configuration_digest)=64 AND accepted_configuration_digest NOT GLOB '*[^0-9a-f]*')), disclosure_digest TEXT CHECK(disclosure_digest IS NULL OR (length(disclosure_digest)=64 AND disclosure_digest NOT GLOB '*[^0-9a-f]*')),\n PRIMARY KEY(user_id,id), UNIQUE(user_id,id,connection_id),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "profiles",
+    "tbl_name": "profiles",
+    "sql": "CREATE TABLE profiles (\n user_id TEXT PRIMARY KEY REFERENCES \"user\"(id) ON DELETE CASCADE,\n status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','deleting')),\n reporting_currency TEXT NOT NULL DEFAULT 'EUR', timezone TEXT NOT NULL DEFAULT 'UTC',\n onboarding_version INTEGER NOT NULL DEFAULT 1, onboarding_completed_at INTEGER,\n created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL\n, version INTEGER NOT NULL DEFAULT 1 CHECK(version > 0 AND version <= 2147483646), job_recovery_cursor TEXT NOT NULL DEFAULT '')"
+  },
+  {
+    "type": "table",
+    "name": "purchase_evidence",
+    "tbl_name": "purchase_evidence",
+    "sql": "CREATE TABLE purchase_evidence (\n user_id TEXT NOT NULL, purchase_id TEXT NOT NULL, observation_id TEXT NOT NULL, relationship TEXT NOT NULL,\n PRIMARY KEY(user_id,purchase_id,observation_id), UNIQUE(user_id,observation_id),\n FOREIGN KEY(user_id,purchase_id) REFERENCES purchases(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,observation_id) REFERENCES observations(user_id,id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "purchase_merges",
+    "tbl_name": "purchase_merges",
+    "sql": "CREATE TABLE purchase_merges (\n id TEXT NOT NULL,user_id TEXT NOT NULL,target_id TEXT NOT NULL,source_id TEXT NOT NULL,target_version INTEGER NOT NULL,source_version INTEGER NOT NULL,\n moved_json TEXT NOT NULL CHECK(json_valid(moved_json) AND length(moved_json)<=2097152),active INTEGER NOT NULL CHECK(active IN (0,1)),\n PRIMARY KEY(user_id,id),\n FOREIGN KEY(user_id,target_id) REFERENCES purchases(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,source_id) REFERENCES purchases(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "purchases",
+    "tbl_name": "purchases",
+    "sql": "CREATE TABLE purchases (\n id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n merchant_raw TEXT NOT NULL, merchant_normalized TEXT NOT NULL, invoice_ref TEXT, order_ref TEXT,\n document_date TEXT NOT NULL, total_minor INTEGER CHECK(total_minor IS NULL OR (typeof(total_minor)='integer' AND total_minor>=0 AND total_minor<=9000000000000)),\n currency TEXT, category TEXT NOT NULL DEFAULT 'other',\n payment_state TEXT NOT NULL CHECK(payment_state IN ('unknown','unpaid','partially_paid','paid')),\n fulfillment_state TEXT NOT NULL DEFAULT 'unknown', record_status TEXT NOT NULL DEFAULT 'active',\n version INTEGER NOT NULL DEFAULT 1 CHECK(version>0), lifecycle_delete_connection_id TEXT, lifecycle_recompute_connection_id TEXT, origin TEXT NOT NULL DEFAULT 'source' CHECK(origin IN ('source','user-supplied')), PRIMARY KEY(user_id,id)\n)"
+  },
+  {
+    "type": "table",
+    "name": "review_items",
+    "tbl_name": "review_items",
+    "sql": "CREATE TABLE \"review_items\" (\n id TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,\n document_id TEXT,observation_id TEXT,purchase_id TEXT,\n reason TEXT NOT NULL CHECK(reason IN ('extraction-review','incomplete-financial-facts','unknown-payment','ambiguous-event','event-conflict','invoice-conflict','purchase-conflict','possible-duplicate','unmatched-refund','refund-exceeds-payment','refund-currency-mismatch','credit-note-completion','mixed-tender','document-review','payment-allocation-review')),\n blocking_scope TEXT NOT NULL CHECK(blocking_scope IN ('financial','operational')),\n status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved','dismissed')),\n created_at INTEGER NOT NULL CHECK(typeof(created_at)='integer' AND created_at>=0),\n version INTEGER NOT NULL DEFAULT 1 CHECK(typeof(version)='integer' AND version BETWEEN 1 AND 2147483646),\n missing_fields_json TEXT CHECK(missing_fields_json IS NULL OR (length(missing_fields_json)<=100 AND json_valid(missing_fields_json) AND json_type(missing_fields_json)='array' AND json_array_length(missing_fields_json) BETWEEN 1 AND 4 AND (json_array_length(missing_fields_json)<=0 OR (json_type(missing_fields_json,'$[0]')='text' AND json_extract(missing_fields_json,'$[0]') IN ('merchant','currency','total','documentDate'))) AND (json_array_length(missing_fields_json)<=1 OR (json_type(missing_fields_json,'$[1]')='text' AND json_extract(missing_fields_json,'$[1]') IN ('merchant','currency','total','documentDate'))) AND (json_array_length(missing_fields_json)<=2 OR (json_type(missing_fields_json,'$[2]')='text' AND json_extract(missing_fields_json,'$[2]') IN ('merchant','currency','total','documentDate'))) AND (json_array_length(missing_fields_json)<=3 OR (json_type(missing_fields_json,'$[3]')='text' AND json_extract(missing_fields_json,'$[3]') IN ('merchant','currency','total','documentDate'))) AND (json_array_length(missing_fields_json)<=1 OR json_extract(missing_fields_json,'$[0]') IS NOT json_extract(missing_fields_json,'$[1]')) AND (json_array_length(missing_fields_json)<=2 OR json_extract(missing_fields_json,'$[0]') IS NOT json_extract(missing_fields_json,'$[2]')) AND (json_array_length(missing_fields_json)<=3 OR json_extract(missing_fields_json,'$[0]') IS NOT json_extract(missing_fields_json,'$[3]')) AND (json_array_length(missing_fields_json)<=2 OR json_extract(missing_fields_json,'$[1]') IS NOT json_extract(missing_fields_json,'$[2]')) AND (json_array_length(missing_fields_json)<=3 OR json_extract(missing_fields_json,'$[1]') IS NOT json_extract(missing_fields_json,'$[3]')) AND (json_array_length(missing_fields_json)<=3 OR json_extract(missing_fields_json,'$[2]') IS NOT json_extract(missing_fields_json,'$[3]')))),\n CHECK(document_id IS NOT NULL OR(reason='payment-allocation-review' AND purchase_id IS NOT NULL AND observation_id IS NULL)),\n PRIMARY KEY(user_id,id),\n FOREIGN KEY(user_id,document_id) REFERENCES documents(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,observation_id) REFERENCES observations(user_id,id),\n FOREIGN KEY(user_id,purchase_id) REFERENCES purchases(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "scheduler_cursors",
+    "tbl_name": "scheduler_cursors",
+    "sql": "CREATE TABLE scheduler_cursors(kind TEXT PRIMARY KEY CHECK(kind IN ('dispatch','schedule','recovery')),last_user_id TEXT NOT NULL DEFAULT '',version INTEGER NOT NULL DEFAULT 0)"
+  },
+  {
+    "type": "table",
+    "name": "session",
+    "tbl_name": "session",
+    "sql": "CREATE TABLE \"session\" (\"id\" TEXT PRIMARY KEY NOT NULL,\n\"expiresAt\" INTEGER NOT NULL,\n\"token\" TEXT NOT NULL UNIQUE,\n\"createdAt\" INTEGER NOT NULL,\n\"updatedAt\" INTEGER NOT NULL,\n\"ipAddress\" TEXT,\n\"userAgent\" TEXT,\n\"userId\" TEXT NOT NULL REFERENCES \"user\"(\"id\") ON DELETE CASCADE)"
+  },
+  {
+    "type": "table",
+    "name": "source_messages",
+    "tbl_name": "source_messages",
+    "sql": "CREATE TABLE source_messages (\n id TEXT NOT NULL, user_id TEXT NOT NULL, connection_id TEXT NOT NULL, provider_message_id TEXT NOT NULL,\n received_at INTEGER NOT NULL, processing_status TEXT NOT NULL DEFAULT 'discovered', generation INTEGER NOT NULL, available INTEGER NOT NULL DEFAULT 1 CHECK(available IN (0,1)),\n PRIMARY KEY(user_id,id), UNIQUE(user_id,connection_id,provider_message_id),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "storage_oauth_intents",
+    "tbl_name": "storage_oauth_intents",
+    "sql": "CREATE TABLE storage_oauth_intents (\n user_id TEXT NOT NULL, state_hash TEXT NOT NULL, connection_id TEXT,\n connection_generation INTEGER, credential_version INTEGER,\n archive_settings_version INTEGER NOT NULL CHECK(typeof(archive_settings_version)='integer' AND archive_settings_version BETWEEN 0 AND 2147483646),\n PRIMARY KEY(user_id,state_hash),\n FOREIGN KEY(user_id,state_hash) REFERENCES oauth_states(user_id,state_hash) ON DELETE CASCADE,\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n CHECK((connection_id IS NULL AND connection_generation IS NULL AND credential_version IS NULL) OR\n (connection_id IS NOT NULL AND connection_generation IS NOT NULL AND credential_version IS NOT NULL AND typeof(connection_generation)='integer' AND connection_generation>0 AND typeof(credential_version)='integer' AND credential_version>=0))\n)"
+  },
+  {
+    "type": "table",
+    "name": "storage_refresh_leases",
+    "tbl_name": "storage_refresh_leases",
+    "sql": "CREATE TABLE storage_refresh_leases (\n user_id TEXT NOT NULL, connection_id TEXT NOT NULL,\n lease_id TEXT, lease_expires_at INTEGER NOT NULL DEFAULT 0,\n connection_generation INTEGER NOT NULL CHECK(typeof(connection_generation)='integer' AND connection_generation>0),\n credential_version INTEGER NOT NULL CHECK(typeof(credential_version)='integer' AND credential_version>=0),\n fence INTEGER NOT NULL CHECK(typeof(fence)='integer' AND fence>0 AND fence<=9007199254740991),\n PRIMARY KEY(user_id,connection_id),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n CHECK(typeof(lease_expires_at)='integer' AND ((lease_id IS NULL AND lease_expires_at=0) OR (lease_id IS NOT NULL AND lease_expires_at>0 AND lease_expires_at<=9007199254740991)))\n)"
+  },
+  {
+    "type": "table",
+    "name": "sync_states",
+    "tbl_name": "sync_states",
+    "sql": "CREATE TABLE sync_states (\n id TEXT NOT NULL, user_id TEXT NOT NULL, connection_id TEXT NOT NULL, import_run_id TEXT,\n scope_key TEXT NOT NULL, sync_kind TEXT NOT NULL CHECK(sync_kind IN ('backfill','incremental')),\n run_key TEXT NOT NULL, slice_key TEXT NOT NULL CHECK(slice_key IN ('recent','older','live')),\n frozen_start TEXT, frozen_cutoff TEXT, page_token TEXT, history_cursor TEXT, last_discovery_at INTEGER,\n stage TEXT NOT NULL DEFAULT 'queued', discovery_version INTEGER NOT NULL DEFAULT 0 CHECK(discovery_version>=0 AND discovery_version<=9007199254740991), query_mode TEXT NOT NULL DEFAULT 'filtered' CHECK(query_mode IN ('filtered','broad')), pending_ids TEXT, pending_deleted_ids TEXT, pending_next_token TEXT, pending_history_id TEXT, enumerated_count INTEGER NOT NULL DEFAULT 0 CHECK(enumerated_count>=0), matched_count INTEGER NOT NULL DEFAULT 0 CHECK(matched_count>=0), unknown_count INTEGER NOT NULL DEFAULT 0 CHECK(unknown_count>=0), retry_at INTEGER, coverage_code TEXT NOT NULL DEFAULT 'filtered_query' CHECK(coverage_code IN ('filtered_query','broad_metadata','candidate_unknown','recovering_history')), recovery_anchor TEXT, consecutive_failures INTEGER NOT NULL DEFAULT 0 CHECK(consecutive_failures>=0 AND consecutive_failures<=5), history_reset_count INTEGER NOT NULL DEFAULT 0 CHECK(history_reset_count>=0), PRIMARY KEY(user_id,id), UNIQUE(user_id,id,connection_id),\n UNIQUE(user_id,connection_id,scope_key,sync_kind,run_key,slice_key),\n CHECK((sync_kind='incremental' AND import_run_id IS NULL AND run_key='live' AND slice_key='live') OR\n (sync_kind='backfill' AND import_run_id IS NOT NULL AND run_key=import_run_id AND slice_key IN ('recent','older') AND frozen_start IS NOT NULL AND frozen_cutoff IS NOT NULL)),\n FOREIGN KEY(user_id,connection_id) REFERENCES connections(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,import_run_id,connection_id) REFERENCES import_runs(user_id,id,connection_id) ON DELETE CASCADE\n)"
+  },
+  {
+    "type": "table",
+    "name": "usage_buckets",
+    "tbl_name": "usage_buckets",
+    "sql": "CREATE TABLE usage_buckets (\n scope TEXT NOT NULL CHECK(scope IN ('tenant','global')),owner_key TEXT NOT NULL,user_id TEXT REFERENCES profiles(user_id) ON DELETE CASCADE,\n period_kind TEXT NOT NULL CHECK(period_kind IN ('day','month')),period_start TEXT NOT NULL,\n documents INTEGER NOT NULL DEFAULT 0 CHECK(typeof(documents)='integer' AND documents>=0 AND documents<=9000000000000),\n reserved_units INTEGER NOT NULL DEFAULT 0 CHECK(typeof(reserved_units)='integer' AND reserved_units>=0 AND reserved_units<=9000000000000),\n spent_units INTEGER NOT NULL DEFAULT 0 CHECK(typeof(spent_units)='integer' AND spent_units>=0 AND spent_units<=9000000000000),\n reserved_usd_micros INTEGER NOT NULL DEFAULT 0 CHECK(typeof(reserved_usd_micros)='integer' AND reserved_usd_micros>=0 AND reserved_usd_micros<=9000000000000),\n spent_usd_micros INTEGER NOT NULL DEFAULT 0 CHECK(typeof(spent_usd_micros)='integer' AND spent_usd_micros>=0 AND spent_usd_micros<=9000000000000),\n blocked INTEGER NOT NULL DEFAULT 0 CHECK(blocked IN (0,1)),\n PRIMARY KEY(scope,owner_key,period_kind,period_start),\n CHECK((scope='tenant' AND user_id IS NOT NULL AND owner_key=user_id) OR (scope='global' AND user_id IS NULL AND owner_key='operator'))\n)"
+  },
+  {
+    "type": "table",
+    "name": "usage_events",
+    "tbl_name": "usage_events",
+    "sql": "CREATE TABLE usage_events (\n user_id TEXT NOT NULL,attempt_id TEXT NOT NULL,run_key TEXT NOT NULL,attempt_number INTEGER NOT NULL CHECK(attempt_number IN (1,2)),\n purpose TEXT NOT NULL CHECK(purpose IN ('extraction','synthetic-test')),job_id TEXT,session_id TEXT,\n mode TEXT NOT NULL CHECK(mode IN ('hosted','byok')),destination_id TEXT NOT NULL,model_id TEXT NOT NULL,\n price_snapshot TEXT NOT NULL CHECK(json_valid(price_snapshot) AND length(price_snapshot)<=4096),\n day_start TEXT NOT NULL,month_start TEXT NOT NULL,\n reserved_units INTEGER NOT NULL CHECK(typeof(reserved_units)='integer' AND reserved_units>0 AND reserved_units<=9000000000000),\n reserved_usd_micros INTEGER NOT NULL CHECK(typeof(reserved_usd_micros)='integer' AND reserved_usd_micros>=0 AND reserved_usd_micros<=9000000000000),\n actual_units TEXT,actual_usd_micros TEXT,usage_json TEXT CHECK(usage_json IS NULL OR (json_valid(usage_json) AND length(usage_json)<=256)),\n state TEXT NOT NULL CHECK(state IN ('reserved','sent','known','uncertain','not-sent','overrun')),\n reservation_nonce TEXT NOT NULL,settlement_nonce TEXT,cooldown_until INTEGER,created_at INTEGER NOT NULL,settled_at INTEGER,\n PRIMARY KEY(user_id,attempt_id),UNIQUE(user_id,run_key,attempt_number),\n FOREIGN KEY(user_id,run_key) REFERENCES ai_extractions(user_id,run_key) ON DELETE CASCADE,\n FOREIGN KEY(user_id,job_id) REFERENCES jobs(user_id,id) ON DELETE CASCADE,\n FOREIGN KEY(user_id,session_id) REFERENCES \"session\"(userId,id) ON DELETE CASCADE,\n CHECK((purpose='extraction' AND job_id IS NOT NULL AND session_id IS NULL) OR (purpose='synthetic-test' AND job_id IS NULL AND session_id IS NOT NULL)),\n CHECK(actual_units IS NULL OR (typeof(actual_units)='text' AND length(actual_units) BETWEEN 1 AND 32 AND actual_units NOT GLOB '*[^0-9]*')),\n CHECK(actual_usd_micros IS NULL OR (typeof(actual_usd_micros)='text' AND length(actual_usd_micros) BETWEEN 1 AND 32 AND actual_usd_micros NOT GLOB '*[^0-9]*'))\n)"
+  },
+  {
+    "type": "table",
+    "name": "user",
+    "tbl_name": "user",
+    "sql": "CREATE TABLE \"user\" (\"id\" TEXT PRIMARY KEY NOT NULL,\n\"name\" TEXT NOT NULL,\n\"email\" TEXT NOT NULL UNIQUE,\n\"emailVerified\" INTEGER NOT NULL,\n\"image\" TEXT,\n\"createdAt\" INTEGER NOT NULL,\n\"updatedAt\" INTEGER NOT NULL)"
+  },
+  {
+    "type": "table",
+    "name": "verification",
+    "tbl_name": "verification",
+    "sql": "CREATE TABLE \"verification\" (\"id\" TEXT PRIMARY KEY NOT NULL,\n\"identifier\" TEXT NOT NULL,\n\"value\" TEXT NOT NULL,\n\"expiresAt\" INTEGER NOT NULL,\n\"createdAt\" INTEGER NOT NULL,\n\"updatedAt\" INTEGER NOT NULL)"
+  }
+]

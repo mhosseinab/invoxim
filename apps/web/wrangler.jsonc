@@ -1,0 +1,11 @@
+{
+  "name": "invoxim-web",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-10-11",
+  "services": [
+    {
+      "binding": "API",
+      "service": "invoxim-api",
+    },
+  ],
+}

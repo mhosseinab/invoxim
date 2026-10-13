@@ -1,0 +1,22 @@
+{
+  "name": "invoxim-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "vars": {
+    "AUTH_ENABLED": "false",
+    "CORRECTIONS_ENABLED": "false",
+    "AI_ENABLED": "false",
+    "EXTRACTION_ENABLED": "false",
+    "GMAIL_ENABLED": "false",
+    "OUTLOOK_ENABLED": "false",
+    "DRIVE_ENABLED": "false",
+    "FX_REFERENCE_ENABLED": "false",
+    "GMAIL_DISCOVERY_ENABLED": "false",
+    "JOBS_ENABLED": "false",
+    "LIFECYCLE_ENABLED": "false",
+    "LIFECYCLE_GOOGLE_REVOCATION_ENABLED": "false",
+    "JOBS_QUERY_LIMIT": "40",
+  },
+}

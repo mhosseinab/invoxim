@@ -1,0 +1,23 @@
+{
+  "name": "@invoxim/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build && wrangler pages functions build functions --outdir dist/_worker.js"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "@invoxim/core": "workspace:*",
+    "@invoxim/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "8.3.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@cloudflare/workers-types": "5.20261006.1",
+    "wrangler": "4.149.0"
+  }
+}

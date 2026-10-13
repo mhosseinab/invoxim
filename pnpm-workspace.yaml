@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+ignoreScripts: true
+allowBuilds:
+  "esbuild@0.28.2": false
+  "workerd@1.20261006.1": false

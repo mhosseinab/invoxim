@@ -28,59 +28,35 @@
         "additionalProperties": false,
         "properties": {
           "merchant": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "maxLength": 200
           },
           "documentDate": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date"
           },
           "eventDate": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "format": "date"
           },
           "currency": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "pattern": "^[A-Z]{3}$"
           },
           "total": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
           },
           "tax": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
           },
           "invoiceNumber": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "maxLength": 160
           },
           "orderReference": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "maxLength": 160
           },
           "category": {
@@ -102,19 +78,10 @@
             ]
           },
           "paymentEvidence": {
-            "enum": [
-              "explicitly-paid",
-              "explicitly-unpaid",
-              "unknown"
-            ]
+            "enum": ["explicitly-paid", "explicitly-unpaid", "unknown"]
           },
           "refundEvidence": {
-            "enum": [
-              "completed",
-              "pending",
-              "none",
-              "unknown"
-            ]
+            "enum": ["completed", "pending", "none", "unknown"]
           },
           "paymentMethodHint": {
             "enum": [
@@ -127,12 +94,7 @@
             ]
           },
           "recurringCadence": {
-            "enum": [
-              "monthly",
-              "yearly",
-              "other",
-              "unknown"
-            ]
+            "enum": ["monthly", "yearly", "other", "unknown"]
           },
           "evidence": {
             "type": "array",
@@ -155,7 +117,9 @@
                     "recurring",
                     "paymentAmount",
                     "refundAmount",
-                    "storeCreditAmount"
+                    "storeCreditAmount",
+                    "paymentReference",
+                    "refundReference"
                   ]
                 },
                 "inputPartId": {
@@ -167,34 +131,33 @@
                   "maxLength": 400
                 }
               },
-              "required": [
-                "field",
-                "inputPartId",
-                "quote"
-              ]
+              "required": ["field", "inputPartId", "quote"]
             },
             "maxItems": 20
           },
           "paymentAmount": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
           },
           "refundAmount": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
           },
           "storeCreditAmount": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "pattern": "^(0|[1-9][0-9]{0,12})(\\.[0-9]{1,3})?$"
+          },
+          "paymentReference": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+          },
+          "refundReference": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
           }
         },
         "required": [
@@ -236,11 +199,6 @@
       "maxItems": 12
     }
   },
-  "required": [
-    "schemaVersion",
-    "documentType",
-    "records",
-    "warnings"
-  ],
+  "required": ["schemaVersion", "documentType", "records", "warnings"],
   "description": "Untrusted transient model response. Schema validity does not establish evidence, payment, currency validity, correct arithmetic, or persistence eligibility. Strip evidence quotes before storage."
 }

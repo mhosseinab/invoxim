@@ -1,0 +1,62 @@
+import { connectionsResponseSchema } from "@invoxim/contracts";
+import type { TenantContext } from "@invoxim/core";
+
+interface ConnectionRow {
+  id: string;
+  kind: string;
+  provider: string;
+  display_address: string;
+  state: string;
+  generation: number;
+  credential_version: number;
+  credential_ciphertext: string | null;
+  credential_key_version: number | null;
+  scheduling_state: string;
+  archiving_enabled: number;
+}
+/** Current tenant metadata only; viewing or unlinking a grant does not require a provider to be enabled. */
+export function createConnectionsViewRepository(db: D1Database) {
+  return {
+    async list(context: TenantContext) {
+      const storageSchema = await db
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type='table' AND name='archive_settings' LIMIT 1",
+        )
+        .first();
+      const archived = storageSchema
+        ? "EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=c.user_id AND a.enabled=1 AND a.connection_id=c.id AND a.connection_generation=c.generation)"
+        : "0";
+      const result = await db
+        .prepare(
+          `SELECT c.id,c.kind,c.provider,c.display_address,c.state,c.generation,c.credential_version,c.credential_ciphertext,c.credential_key_version,c.scheduling_state,${archived} AS archiving_enabled FROM connections c WHERE c.user_id=? AND ((c.kind='mailbox' AND c.provider IN('gmail','outlook')) OR (c.kind='storage' AND c.provider='google-drive')) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ORDER BY CASE c.state WHEN 'disconnected' THEN 1 ELSE 0 END,c.id LIMIT 11`,
+        )
+        .bind(context.userId, context.userId)
+        .all<ConnectionRow>();
+      return connectionsResponseSchema.parse({
+        connections: result.results.slice(0, 10).map((row) => {
+          const configured =
+            row.state === "connected" &&
+            row.credential_ciphertext !== null &&
+            row.credential_key_version !== null;
+          const common = {
+            id: row.id,
+            kind: row.kind,
+            provider: row.provider,
+            address: row.display_address,
+            state: row.state,
+            generation: row.generation,
+            credentialVersion: row.credential_version,
+            configured,
+          };
+          return row.kind === "storage"
+            ? {
+                ...common,
+                archivingEnabled: configured && row.archiving_enabled === 1,
+              }
+            : { ...common, schedulingState: row.scheduling_state };
+        }),
+        hasMore: result.results.length > 10,
+      });
+    },
+  };
+}

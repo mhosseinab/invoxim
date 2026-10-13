@@ -1,0 +1,135 @@
+import { targetObservations } from "./graph";
+
+interface BaseItem {
+  readonly user_id: string;
+  readonly target_id: string;
+  readonly request_id: string;
+  readonly stage: number;
+}
+export type M1CleanupItem =
+  | (BaseItem & { readonly scope: "account"; readonly deleted_at: number })
+  | (BaseItem & { readonly scope: "connection" });
+const leaves = [
+  "archive_objects",
+  "archive_folders",
+  "entry_valuations",
+  "outlook_inventory_states",
+  "outlook_folders",
+  "archive_settings",
+  "storage_oauth_intents",
+  "storage_refresh_leases",
+] as const;
+type Leaf = (typeof leaves)[number];
+function current(item: M1CleanupItem): {
+  text: string;
+  values: (string | number)[];
+} {
+  if (item.scope === "account")
+    return {
+      text: "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='deleting') AND EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=? AND scope='account' AND target_id=? AND request_id=? AND stage=? AND deleted_at=? AND journal_ack=1)",
+      values: [
+        item.user_id,
+        item.user_id,
+        item.target_id,
+        item.request_id,
+        item.stage,
+        item.deleted_at,
+      ],
+    };
+  return {
+    text: "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AND EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND state='disconnected') AND EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=? AND scope='connection' AND target_id=? AND request_id=? AND stage=?)",
+    values: [
+      item.user_id,
+      item.user_id,
+      item.target_id,
+      item.user_id,
+      item.target_id,
+      item.request_id,
+      item.stage,
+    ],
+  };
+}
+function predicate(
+  table: Leaf,
+  item: M1CleanupItem,
+): { text: string; values: (string | number)[] } {
+  if (item.scope === "account") return { text: "1", values: [] };
+  if (table === "archive_objects")
+    return {
+      text: "(v.mailbox_connection_id=? OR v.storage_connection_id=?)",
+      values: [item.target_id, item.target_id],
+    };
+  if (table !== "entry_valuations")
+    return { text: "v.connection_id=?", values: [item.target_id] };
+  if (item.stage < 6) return { text: "0", values: [] };
+  return {
+    text: `EXISTS(SELECT 1 FROM ledger_entries l WHERE l.user_id=v.user_id AND l.id=v.entry_id AND l.origin='source' AND ((l.eligible=0 AND l.observation_id IN(${targetObservations})) OR EXISTS(SELECT 1 FROM purchases p WHERE p.user_id=l.user_id AND p.id=l.purchase_id AND p.lifecycle_delete_connection_id=?)))`,
+    values: [item.user_id, item.target_id, item.target_id],
+  };
+}
+/** Before legacy parent erasure, drain one new leaf table without changing integer stages. */
+export async function cleanupM1Leaves(
+  db: D1Database,
+  item: M1CleanupItem,
+): Promise<boolean> {
+  try {
+    const available = (
+      await db
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('archive_objects','archive_folders','entry_valuations','outlook_inventory_states','outlook_folders','archive_settings','storage_oauth_intents','storage_refresh_leases') LIMIT 8",
+        )
+        .all<{ name: string }>()
+    ).results;
+    const present = leaves.filter((name) =>
+      available.some((row) => row.name === name),
+    );
+    if (present.length === 0) return false;
+    const guard = current(item),
+      argumentsList: (string | number)[] = [],
+      queries: string[] = [];
+    for (const table of present) {
+      const scope = predicate(table, item);
+      queries.push(
+        `(SELECT json_object('leaf','${table}','ids',json_group_array(CAST(rowid AS TEXT))) FROM(SELECT v.rowid AS rowid FROM ${table} v WHERE v.user_id=? AND ${scope.text} AND ${guard.text} LIMIT 100) HAVING COUNT(*)>0)`,
+      );
+      argumentsList.push(item.user_id, ...scope.values, ...guard.values);
+    }
+    // A changed request/profile must stop this unit, not fall through to legacy parent erasure.
+    queries.push(
+      `(SELECT json_object('leaf','blocked','ids',json('[]')) WHERE NOT (${guard.text}))`,
+    );
+    argumentsList.push(...guard.values);
+    const selected = await db
+      .prepare(
+        `SELECT json_extract(value,'$.leaf') AS leaf,json_extract(value,'$.ids') AS ids FROM json_each(json_array(${queries.join(",")})) WHERE value IS NOT NULL ORDER BY CAST(key AS INTEGER) LIMIT 1`,
+      )
+      .bind(...argumentsList)
+      .first<{ leaf: string; ids: string }>();
+    if (!selected) return false;
+    if (selected.leaf === "blocked") return true;
+    const table = leaves.find((name) => name === selected.leaf);
+    if (!table) throw new Error("INVALID_LEAF");
+    const ids: unknown = JSON.parse(selected.ids);
+    if (
+      !Array.isArray(ids) ||
+      ids.length < 1 ||
+      ids.length > 100 ||
+      !ids.every(
+        (value) => typeof value === "string" && /^-?[0-9]{1,19}$/.test(value),
+      )
+    )
+      throw new Error("INVALID_LEAF");
+    const scope = predicate(table, item);
+    const mutation =
+      table === "archive_settings" && item.scope === "connection"
+        ? `UPDATE archive_settings AS v SET enabled=0,version=CASE WHEN version<2147483646 THEN version+1 ELSE version END,connection_id=NULL,connection_generation=NULL,disclosure_version=NULL,accepted_at=NULL WHERE v.user_id=? AND v.rowid IN(SELECT value FROM json_each(?)) AND ${scope.text} AND ${guard.text}`
+        : `DELETE FROM ${table} AS v WHERE v.user_id=? AND v.rowid IN(SELECT value FROM json_each(?)) AND ${scope.text} AND ${guard.text}`;
+    await db
+      .prepare(mutation)
+      .bind(item.user_id, selected.ids, ...scope.values, ...guard.values)
+      .run();
+    return true;
+  } catch {
+    throw new Error("M1_LEAF_CLEANUP_UNAVAILABLE");
+  }
+}

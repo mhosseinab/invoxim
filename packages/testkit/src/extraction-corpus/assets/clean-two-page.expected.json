@@ -1,0 +1,14 @@
+{
+  "synthetic": true,
+  "pages": 2,
+  "pageTextMustContain": [
+    ["Corpus Shop", "Subtotal EUR 100.00", "Tax EUR 20.00"],
+    ["Total EUR 120.00", "Paid by card EUR 120.00"]
+  ],
+  "expectedFinancialFacts": {
+    "currency": "EUR",
+    "totalMinor": 12000,
+    "taxMinor": 2000,
+    "paymentMinor": 12000
+  }
+}

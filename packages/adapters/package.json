@@ -1,0 +1,21 @@
+{
+  "name": "@invoxim/adapters",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@invoxim/core": "workspace:*",
+    "@invoxim/contracts": "workspace:*",
+    "better-auth": "1.7.7",
+    "zod": "4.3.6",
+    "unpdf": "1.8.1",
+    "drizzle-orm": "0.45.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261006.1"
+  }
+}

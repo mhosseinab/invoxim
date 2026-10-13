@@ -1,0 +1,298 @@
+import type {
+  ProfileView,
+  PurchaseCoverage,
+  PurchaseDetail,
+  PurchaseListResponse,
+  PurchaseSummary,
+  PurchaseView,
+} from "@invoxim/contracts";
+import type { Page } from "@playwright/test";
+export const history: PurchaseView = {
+  id: "qa-history",
+  origin: "source",
+  recordStatus: "active",
+  merchant: "QA history",
+  date: "2026-01-10",
+  invoiceReference: "QA-I1",
+  orderReference: "QA-O1",
+  category: "shopping",
+  currency: "EUR",
+  documentTotalMinor: "12000",
+  paymentState: "paid",
+  version: 1,
+  evidenceCount: 3,
+  reviewReasons: [],
+  lifecycle: [
+    {
+      currency: "EUR",
+      paidMinor: "12000",
+      refundedMinor: "3000",
+      netMinor: "9000",
+    },
+  ],
+  period: [
+    {
+      currency: "EUR",
+      paidMinor: "0",
+      refundedMinor: "3000",
+      netMinor: "-3000",
+    },
+  ],
+};
+export const question: PurchaseView = {
+  ...history,
+  id: "qa-question",
+  merchant: "QA question invoice",
+  date: "2026-10-10",
+  invoiceReference: "QA-I2",
+  orderReference: null,
+  documentTotalMinor: "8000",
+  paymentState: "unknown",
+  evidenceCount: 1,
+  reviewReasons: ["unknown-payment"],
+  lifecycle: [],
+  period: [],
+};
+export const coverage: PurchaseCoverage = {
+  readyPurchaseCount: 2,
+  openReviewCount: 1,
+  connections: [
+    {
+      id: "qa-mailbox",
+      address: "qa-mail@example.invalid",
+      provider: "gmail",
+      state: "connected",
+      schedulingState: "active",
+      pendingJobs: 3,
+      pausedJobs: 1,
+      failedJobs: 0,
+      imports: [
+        {
+          id: "qa-import",
+          from: "2025-10-01T00:00:00Z",
+          to: "2026-10-01T00:00:00Z",
+          stage: "extracting_older",
+          pauseReason: "budget",
+          completedAt: null,
+          discoveredSources: 80,
+          processedSources: 20,
+        },
+      ],
+    },
+  ],
+};
+const detail: PurchaseDetail = {
+  manualEvidence: [],
+  purchase: history,
+  ledgerEntries: [
+    {
+      id: "qa-pay",
+      observationId: "qa-paid",
+      origin: "source",
+      version: 1,
+      kind: "payment",
+      minor: "12000",
+      currency: "EUR",
+      date: "2026-01-10",
+      dateBasis: "explicit-event-date",
+      eligible: true,
+    },
+    {
+      id: "qa-refund",
+      observationId: "qa-refunded",
+      origin: "source",
+      version: 1,
+      kind: "refund",
+      minor: "3000",
+      currency: "EUR",
+      date: "2026-10-10",
+      dateBasis: "explicit-event-date",
+      eligible: true,
+    },
+  ],
+  timeline: [
+    {
+      observationId: "qa-paid",
+      documentId: "qa-paid-document",
+      documentType: "receipt",
+      relationship: "document",
+      evidenceCode: "explicitly-paid",
+      reviewState: "accepted",
+      date: "2026-01-10",
+      paymentEvidence: "explicitly-paid",
+      refundEvidence: "none",
+      source: {
+        mailboxId: "qa-mailbox",
+        provider: "gmail",
+        originalAvailable: false,
+        reason: "retrieval_not_implemented",
+      },
+      events: [
+        {
+          id: "qa-pay",
+          kind: "payment",
+          minor: "12000",
+          currency: "EUR",
+          date: "2026-01-10",
+          dateBasis: "explicit-event-date",
+          eligible: true,
+        },
+      ],
+    },
+    {
+      observationId: "qa-pending",
+      documentId: "qa-pending-document",
+      documentType: "refund",
+      relationship: "document",
+      evidenceCode: "unknown",
+      reviewState: "accepted",
+      date: "2026-10-10",
+      paymentEvidence: "unknown",
+      refundEvidence: "pending",
+      source: {
+        mailboxId: "qa-mailbox",
+        provider: "gmail",
+        originalAvailable: false,
+        reason: "source_deleted",
+      },
+      events: [],
+    },
+    {
+      observationId: "qa-refunded",
+      documentId: "qa-refund-document",
+      documentType: "refund",
+      relationship: "document",
+      evidenceCode: "completed-refund",
+      reviewState: "accepted",
+      date: "2026-10-10",
+      paymentEvidence: "unknown",
+      refundEvidence: "completed",
+      source: {
+        mailboxId: "qa-mailbox",
+        provider: "gmail",
+        originalAvailable: false,
+        reason: "retrieval_not_implemented",
+      },
+      events: [
+        {
+          id: "qa-refund",
+          kind: "refund",
+          minor: "3000",
+          currency: "EUR",
+          date: "2026-10-10",
+          dateBasis: "explicit-event-date",
+          eligible: true,
+        },
+      ],
+    },
+  ],
+};
+export interface PrivateFixtureState {
+  owner: "a" | "b";
+  status: number;
+  beforeList?: () => Promise<void>;
+  requests: Array<{ path: string; query: string; method: string }>;
+}
+export async function mockPrivateWorkspace(
+  page: Page,
+): Promise<PrivateFixtureState> {
+  const state: PrivateFixtureState = { owner: "a", status: 200, requests: [] };
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    state.requests.push({
+      path: url.pathname,
+      query: url.search,
+      method: route.request().method(),
+    });
+    const send = (body: unknown, status = 200) =>
+      route.fulfill({
+        status,
+        contentType: "application/json",
+        headers: { "Cache-Control": "no-store" },
+        body: JSON.stringify(body),
+      });
+    if (url.pathname === "/api/public-config")
+      return send({ error: { code: "unavailable" } }, 503);
+    if (state.status !== 200)
+      return send({ error: { code: "unavailable" } }, state.status);
+    const profile: ProfileView = {
+      user: {
+        id: `qa-private-${state.owner}`,
+        name: `QA ${state.owner}`,
+        email: `qa-private-${state.owner}@example.invalid`,
+      },
+      settings: { timezone: "UTC", reportingCurrency: "EUR", version: 1 },
+      onboarding: { completedAt: null },
+      capabilities: { mailProviders: [], driveArchive: false },
+      valuation: { status: "not_configured" },
+    };
+    if (url.pathname === "/api/me") return send(profile);
+    if (url.pathname === "/api/purchases/coverage") return send(coverage);
+    if (url.pathname === "/api/purchase-reviews")
+      return send({
+        reviews: [
+          {
+            id: "qa-currency-review",
+            documentId: "qa-unlinked-document",
+            purchaseId: null,
+            reason: "incomplete-financial-facts",
+            missingFields: ["currency"],
+          },
+        ],
+        hasMore: false,
+      });
+    const rows =
+      state.owner === "a"
+        ? [history, question]
+        : [
+            {
+              ...history,
+              id: "qa-other",
+              merchant: "QA other owner",
+              documentTotalMinor: "99900",
+              lifecycle: [
+                {
+                  currency: "EUR",
+                  paidMinor: "99900",
+                  refundedMinor: "0",
+                  netMinor: "99900",
+                },
+              ],
+            },
+          ];
+    if (url.pathname === "/api/purchases") {
+      if (state.beforeList) await state.beforeList();
+      const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      const list: PurchaseListResponse = {
+        rows: rows.filter((row) => row.merchant.toLowerCase().includes(q)),
+        nextCursor: null,
+        dateBasis: "document-or-event",
+      };
+      return send(list);
+    }
+    if (url.pathname === "/api/purchases/summary") {
+      const summary: PurchaseSummary = {
+        totals: [
+          {
+            currency: "EUR",
+            paidMinor: "0",
+            refundedMinor: "3000",
+            netMinor: "-3000",
+          },
+        ],
+        dateBasis: "event",
+        recordCount: 2,
+        unpaidCount: 0,
+        unknownCount: 1,
+        reviewCount: 1,
+        excludedEntryCount: 0,
+        missingCurrencyCount: 0,
+        conversion: "not_configured",
+      };
+      return send(summary);
+    }
+    if (url.pathname === "/api/purchases/qa-history") return send(detail);
+    return send({ error: { code: "not_found" } }, 404);
+  });
+  return state;
+}

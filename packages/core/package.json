@@ -1,0 +1,18 @@
+{
+  "name": "@invoxim/core",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "vitest": "5.0.3",
+    "fast-check": "4.10.2"
+  },
+  "dependencies": {
+    "@invoxim/contracts": "workspace:*"
+  }
+}

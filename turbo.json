@@ -1,0 +1,38 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "test:unit": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    }
+  },
+  "globalPassThroughEnv": [
+    "WRANGLER_LOG_PATH",
+    "WRANGLER_REGISTRY_PATH",
+    "WRANGLER_SEND_METRICS",
+    "PLAYWRIGHT_BROWSERS_PATH"
+  ],
+  "globalDependencies": [
+    "tsconfig.base.json",
+    "eslint.config.mjs",
+    ".node-version",
+    "contracts/**",
+    "test-design/**"
+  ]
+}
