@@ -1,0 +1,424 @@
+$ pnpm check:boundaries && pnpm check:secrets && pnpm check:dependency-policy && pnpm format:check && pnpm lint:biome && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm build && pnpm test:e2e
+$ node tools/implementation/check-boundaries.mjs
+Package boundaries valid (6 concrete packages).
+$ node tools/implementation/security-gates.mjs secrets
+{"scannedFiles":2125,"skippedBinaryFiles":39,"bytes":8863428,"findings":[]}
+$ node tools/implementation/security-gates.mjs deps
+{"manifests":7,"findings":[]}
+$ prettier --check package.json MANUAL_TASKS.md DEPLOYMENT_CHECKLIST.md pnpm-workspace.yaml turbo.json tsconfig.base.json eslint.config.mjs biome.json .vscode apps tools/implementation .github/workflows packages --no-error-on-unmatched-pattern
+Checking formatting...
+All matched files use Prettier code style!
+$ biome check . --error-on-warnings
+Checked 343 files in 116ms. No fixes applied.
+$ eslint apps tools/implementation eslint.config.mjs packages --no-error-on-unmatched-pattern
+$ turbo run typecheck
+
+   • turbo 2.11.7
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/testkit, @invoxim/web, @invoxim/worker
+   • Running typecheck in 6 packages
+   • Remote caching disabled
+
+@invoxim/contracts:typecheck: cache hit, replaying logs e5c655c46edabad5
+@invoxim/contracts:typecheck: $ tsc --noEmit
+@invoxim/core:typecheck: cache hit, replaying logs 913ddbbdee89c9fc
+@invoxim/core:typecheck: $ tsc --noEmit
+@invoxim/adapters:typecheck: cache miss, executing d1721dec26193392
+@invoxim/web:typecheck: cache hit, replaying logs c16910938b282188
+@invoxim/web:typecheck: $ tsc --noEmit
+@invoxim/adapters:typecheck: $ tsc --noEmit
+@invoxim/worker:typecheck: cache miss, executing 3860b1075d9cb22a
+@invoxim/worker:typecheck: $ tsc --noEmit
+
+ Tasks:    5 successful, 5 total
+Cached:    3 cached, 5 total
+  Time:    7.084s 
+
+$ node --test tools/implementation/*.test.mjs && turbo run test:unit
+✔ verification and CI cannot omit the pinned Biome gate (0.804041ms)
+✔ actual Biome rejects non-null assertions in test files (127.920927ms)
+✔ actual Biome rejects control-character regex diagnostics (43.861438ms)
+✔ FOUND-03 allows web/contracts and worker/core/adapters (0.955741ms)
+✔ FOUND-03 rejects unknown workspace dependency (0.209055ms)
+✔ FOUND-03 rejects cycles (0.171215ms)
+✔ FOUND-03 rejects infrastructure in core and production testkit (0.676036ms)
+✔ FOUND-03 rejects relative cross-layer bypass and undeclared imports (0.124079ms)
+✔ FOUND-03 CLI checks relative and workspace-subpath imports including re-exports (200.263751ms)
+✔ FOUND-03 CLI rejects import types, import-equals and declared external infrastructure (186.571819ms)
+✔ untracked source and tests are scanned without Git and credential values/filenames are redacted (6.725589ms)
+✔ synthetic assignment exemption is narrow and never exempts structured keys (0.344845ms)
+✔ symlinks and exceeded scan bounds fail closed (1.675827ms)
+✔ generated dependencies skipped, evidence and untracked implementation retained (1.200472ms)
+✔ exact multi-document lock accepted; drift, ranges, missing integrity and extra deps rejected (1.273817ms)
+✔ actual workspace pinned lock and integrated CI/security gates remain executable (8.155704ms)
+✔ quoted secrets that resemble variable expressions remain secrets (0.268444ms)
+✔ environment credentials and private keys fail regardless of fixture markers (0.177958ms)
+✔ workspace links must resolve the named package; unsupported lock versions fail closed (0.467421ms)
+✔ binary filenames cannot conceal plaintext vendor credentials or private keys (4.004467ms)
+✔ recognized PNG and PDF headers are excluded; oversized fake media fails closed (1.648967ms)
+✔ encrypted PKCS8 and DSA private-key blocks are detected in source and synthetic fixtures (0.585409ms)
+✔ recognized WebAssembly header is binary; plaintext credentials with a wasm suffix remain scanned (2.296601ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 436.375098
+
+   • turbo 2.11.7
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/testkit, @invoxim/web, @invoxim/worker
+   • Running test:unit in 6 packages
+   • Remote caching disabled
+
+@invoxim/contracts:test:unit: cache hit, replaying logs eec16e339aaa93a0
+@invoxim/contracts:test:unit: $ vitest run
+@invoxim/contracts:test:unit: 
+@invoxim/contracts:test:unit:  RUN  v5.0.3 /home/geek/workspace/invoxim/packages/contracts
+@invoxim/contracts:test:unit: 
+@invoxim/contracts:test:unit:  ✓ test/controls.test.ts (1 test) 3ms
+@invoxim/contracts:test:unit:  ✓ test/storage.test.ts (3 tests) 5ms
+@invoxim/contracts:test:unit:  ✓ test/presentation.test.ts (6 tests) 26ms
+@invoxim/contracts:test:unit: stderr | test/event-reference.test.ts
+@invoxim/contracts:test:unit: unknown format "date" ignored in schema at path "#/properties/records/items/properties/documentDate"
+@invoxim/contracts:test:unit: unknown format "date" ignored in schema at path "#/properties/records/items/properties/documentDate"
+@invoxim/contracts:test:unit: unknown format "date" ignored in schema at path "#/properties/records/items/properties/eventDate"
+@invoxim/contracts:test:unit: unknown format "date" ignored in schema at path "#/properties/records/items/properties/eventDate"
+@invoxim/contracts:test:unit: 
+@invoxim/contracts:test:unit:  ✓ test/event-reference.test.ts (5 tests) 7ms
+@invoxim/contracts:test:unit:  ✓ test/contracts.test.ts (33 tests) 18ms
+@invoxim/contracts:test:unit: 
+@invoxim/contracts:test:unit:  Test Files  5 passed (5)
+@invoxim/contracts:build: cache hit, replaying logs 012db095616ff737
+@invoxim/contracts:test:unit:       Tests  48 passed (48)
+@invoxim/contracts:test:unit:    Start at  07:18:16
+@invoxim/contracts:test:unit:    Duration  346ms (import 60%, transform 31%, tests 7%, worker 2%)
+@invoxim/contracts:test:unit: 
+@invoxim/contracts:build: $ tsc --noEmit
+@invoxim/core:build: cache miss, executing 0b55c65dbd11cf5d
+@invoxim/core:test:unit: cache miss, executing 9cc0a9c93580f9e3
+@invoxim/core:build: $ tsc --noEmit
+@invoxim/core:test:unit: $ vitest run
+@invoxim/core:test:unit: 
+@invoxim/core:test:unit:  RUN  v5.0.3 /home/geek/workspace/invoxim/packages/core
+@invoxim/core:test:unit: 
+@invoxim/core:test:unit:  ✓ src/corrections/settlement.test.ts (6 tests) 6ms
+@invoxim/core:test:unit:  ✓ src/corrections/validation.test.ts (6 tests) 17ms
+@invoxim/core:test:unit:  ✓ test/recurring.test.ts (20 tests) 84ms
+@invoxim/core:test:unit:  ✓ test/fx.test.ts (35 tests) 75ms
+@invoxim/core:test:unit:  ✓ test/ai-missing-fields.test.ts (3 tests) 9ms
+@invoxim/core:test:unit:  ✓ test/ai-event-reference.test.ts (6 tests) 16ms
+@invoxim/core:test:unit:  ✓ test/ai-engine.test.ts (10 tests) 19ms
+@invoxim/core:test:unit:  ✓ test/financial-facts.test.ts (8 tests) 20ms
+@invoxim/core:test:unit:  ✓ test/ledger-adversarial.test.ts (18 tests) 22ms
+@invoxim/core:test:unit:  ✓ test/presentation-oracle.test.ts (1 test) 5ms
+@invoxim/core:test:unit:  ✓ test/ai-validation.test.ts (32 tests) 25ms
+@invoxim/core:test:unit:  ✓ test/ai-adversarial.test.ts (27 tests) 31ms
+@invoxim/core:test:unit:  ✓ test/ledger.test.ts (41 tests) 35ms
+@invoxim/core:test:unit:  ✓ test/financial-fixtures.test.ts (20 tests) 11ms
+@invoxim/core:test:unit:  ✓ test/money.test.ts (10 tests) 59ms
+@invoxim/core:test:unit: stdout | test/extraction-eval.test.ts > T22 aggregate results retain split denominators and make no model quality claim
+@invoxim/core:test:unit: T22_OFFLINE_CONFORMANCE {"development":{"label":"preset-candidate application conformance; not model quality","cases":80,"clean":{"accepted":44,"denominator":44},"challenges":{"accepted":0,"reviewed":32,"parserBlocked":4,"denominator":36},"falseCashCases":0,"missingCashCases":0,"incorrectFinancialCases":0,"refusals":0,"truncatedResponses":1,"providerRequests":0,"costMinor":0},"holdout":{"label":"preset-candidate application conformance; not model quality","cases":40,"clean":{"accepted":22,"denominator":22},"challenges":{"accepted":0,"reviewed":16,"parserBlocked":2,"denominator":18},"falseCashCases":0,"missingCashCases":0,"incorrectFinancialCases":0,"refusals":1,"truncatedResponses":0,"providerRequests":0,"costMinor":0}}
+@invoxim/core:test:unit: 
+@invoxim/core:test:unit:  ✓ test/extraction-eval.test.ts (129 tests) 80ms
+@invoxim/core:test:unit: 
+@invoxim/core:test:unit:  Test Files  16 passed (16)
+@invoxim/core:test:unit:       Tests  372 passed (372)
+@invoxim/core:test:unit:    Start at  10:34:57
+@invoxim/core:test:unit:    Duration  787ms (transform 55%, import 37%, tests 7%, worker 1%)
+@invoxim/core:test:unit: 
+@invoxim/core:test:unit:   Transform  transforming modules took 3.94s · 55% of tracked time, re-done on every run
+@invoxim/core:test:unit:              persist transforms across runs with fsModuleCache: true
+@invoxim/core:test:unit:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+@invoxim/core:test:unit: 
+@invoxim/adapters:build: cache miss, executing 3144e9d195aafa80
+@invoxim/adapters:build: $ tsc --noEmit
+
+ Tasks:    5 successful, 5 total
+Cached:    2 cached, 5 total
+  Time:    4.18s 
+
+ WARNING  no output files found for task @invoxim/adapters#build. Please check your `outputs` key in `turbo.json`
+ WARNING  no output files found for task @invoxim/core#build. Please check your `outputs` key in `turbo.json`
+$ turbo run test:integration
+
+   • turbo 2.11.7
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/testkit, @invoxim/web, @invoxim/worker
+   • Running test:integration in 6 packages
+   • Remote caching disabled
+
+@invoxim/contracts:build: cache hit, replaying logs 012db095616ff737
+@invoxim/contracts:build: $ tsc --noEmit
+@invoxim/core:build: cache hit, replaying logs 0b55c65dbd11cf5d
+@invoxim/core:build: $ tsc --noEmit
+@invoxim/adapters:build: cache hit, replaying logs 3144e9d195aafa80
+@invoxim/adapters:build: $ tsc --noEmit
+@invoxim/worker:test:integration: cache bypass, force executing 3139506ef35c2711
+@invoxim/worker:test:integration: $ vitest run
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:  RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/pipeline-adversarial.test.ts > T12 native full pipeline counts multiple MIME documents and records under one shared40 counter per invocation
+@invoxim/worker:test:integration: T12 hosted multi-document invocation statements [ [33m15[39m, [33m33[39m, [33m23[39m, [33m33[39m, [33m22[39m ]
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/pipeline-adversarial.test.ts > T12 BYOK positive control uses the selected private key through the real factory under shared40
+@invoxim/worker:test:integration: T12 BYOK invocation statements [ [33m15[39m, [33m35[39m, [33m23[39m ]
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/pipeline-adversarial.test.ts > T12 document refusal preserves operational review and continues the sibling payment
+@invoxim/worker:test:integration: T12 refusal sibling invocation statements [ [33m15[39m, [33m35[39m, [33m33[39m, [33m21[39m ]
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/pipeline-adversarial.test.ts > T12 document timeout preserves operational review and continues the sibling payment
+@invoxim/worker:test:integration: T12 timeout sibling invocation statements [ [33m15[39m, [33m35[39m, [33m33[39m, [33m21[39m ]
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:  ✓ test/pipeline-adversarial.test.ts (23 tests) 2416ms
+@invoxim/worker:test:integration:    ✓ T12 document timeout preserves operational review and continues the sibling payment 1063ms
+@invoxim/worker:test:integration:  ✓ test/onboarding-adversarial.test.ts (16 tests) 846ms
+@invoxim/worker:test:integration:  ✓ test/lifecycle-adversarial.test.ts (18 tests) 740ms
+@invoxim/worker:test:integration:  ✓ test/onboarding-measurement.test.ts (7 tests) 625ms
+@invoxim/worker:test:integration:  ✓ test/corrections.test.ts (17 tests) 654ms
+@invoxim/worker:test:integration:  ✓ test/drive-service-adversarial.test.ts (13 tests) 349ms
+@invoxim/worker:test:integration:  ✓ test/outlook-state.test.ts (20 tests) 312ms
+@invoxim/worker:test:integration:  ✓ test/corrections-adversarial.test.ts (15 tests) 428ms
+@invoxim/worker:test:integration:  ✓ test/documents.test.ts (13 tests) 1621ms
+@invoxim/worker:test:integration:    ✓ DOCUMENT-02: real generated two-page PDF retains subtotal/tax and final paid evidence exactly 1170ms
+@invoxim/worker:test:integration:    ✓ DOCUMENT-04: Gmail content rejects malformed padding and nonzero base64url pad bits 436ms
+@invoxim/worker:test:integration:  ✓ test/lifecycle.test.ts (12 tests) 271ms
+@invoxim/worker:test:integration:  ✓ test/storage-routes.test.ts (15 tests) 363ms
+@invoxim/worker:test:integration: stdout | test/discovery-adversarial.test.ts > native consumption, expired-credential refresh and discovery make durable progress within one shared forty-statement invocation budget
+@invoxim/worker:test:integration: {"budgetStatements":34,"nativeResult":{"outcome":"ok","retryBatch":{"retry":false},"ackAll":false,"retryMessages":[],"explicitAcks":["budget-native-message"]},"requests":["https://oauth2.googleapis.com/token","https://openidconnect.googleapis.com/v1/userinfo","https://gmail.googleapis.com/gmail/v1/users/me/messages","https://gmail.googleapis.com/gmail/v1/users/me/messages/budget-receipt-a"]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/discovery-adversarial.test.ts > native consumption, expired-credential refresh and discovery make durable progress within one shared forty-statement invocation budget
+@invoxim/worker:test:integration: QA_SHARED_INVOCATION_STATEMENTS=34
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:  ✓ test/discovery-adversarial.test.ts (37 tests) 392ms
+@invoxim/worker:test:integration:  ✓ test/m1-lifecycle.test.ts (13 tests) 1285ms
+@invoxim/worker:test:integration:  ✓ test/purchase-routes.test.ts (8 tests) 225ms
+@invoxim/worker:test:integration: stdout | test/ai-adversarial.test.ts > AI-05 native guarded probe and replay fit one shared 40-statement handle each
+@invoxim/worker:test:integration: {"case":"native-probe","first":17,"replay":4}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:  ✓ test/ai-adversarial.test.ts (29 tests) 420ms
+@invoxim/worker:test:integration:  ✓ test/pipeline-database.test.ts (29 tests) 605ms
+@invoxim/worker:test:integration: stdout | test/outlook-routes.test.ts > OUTLOOK-01 actual Worker serves configured Microsoft mailbox start to a signed Google-login session without reading mail
+@invoxim/worker:test:integration: {"case":"T17-native-route-queries","executedStatements":[7]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/outlook-routes.test.ts > OUTLOOK-01 actual Worker rejects disabled provider, invalid actor/origin/body and unknown provider without outbound authorization
+@invoxim/worker:test:integration: {"case":"T17-native-route-queries","executedStatements":[3,0,0,0,3,3]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/outlook-routes.test.ts > OUTLOOK-01 actual signed Microsoft callback attaches independent Outlook B only to Google-login A, encrypted and awaiting Start
+@invoxim/worker:test:integration: {"case":"T17-native-route-queries","executedStatements":[7,10,6]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/outlook-routes.test.ts > OUTLOOK-01 denied callback consumes one-use consent state without provider HTTP or mailbox attachment
+@invoxim/worker:test:integration: {"case":"T17-native-route-queries","executedStatements":[7,7,6]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/outlook-routes.test.ts > OUTLOOK-01 actual callback rejects wrong nonce before mailbox persistence
+@invoxim/worker:test:integration: {"case":"T17-native-route-queries","executedStatements":[7,7]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/outlook-routes.test.ts > OUTLOOK-01 actual callback rejects partial Mail.Read grant before mailbox persistence
+@invoxim/worker:test:integration: {"case":"T17-native-route-queries","executedStatements":[7,7]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration: stdout | test/outlook-routes.test.ts > OUTLOOK-01 actual Microsoft callback cannot consume Google mailbox state or call Microsoft's token endpoint
+@invoxim/worker:test:integration: {"case":"T17-native-route-queries","executedStatements":[7,6]}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:  ✓ test/outlook-routes.test.ts (7 tests) 285ms
+@invoxim/worker:test:integration:  ✓ test/outlook-service.test.ts (8 tests) 158ms
+@invoxim/worker:test:integration:  ✓ test/purchase-adversarial.test.ts (9 tests) 198ms
+@invoxim/worker:test:integration:  ✓ test/mailbox-adversarial.test.ts (22 tests) 283ms
+@invoxim/worker:test:integration:  ✓ test/lifecycle-actor.test.ts (2 tests) 196ms
+@invoxim/worker:test:integration:  ✓ test/purchase-views.test.ts (11 tests) 498ms
+@invoxim/worker:test:integration:  ✓ test/archive-objects.test.ts (30 tests) 385ms
+@invoxim/worker:test:integration: stdout | test/ai-budget-adversarial.test.ts > AI-05 native job claim, inference reservation/settlement/cache and ACK share actual40
+@invoxim/worker:test:integration: {"case":"native-job-ai","executed":19}
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:  ✓ test/ai-budget-adversarial.test.ts (12 tests) 288ms
+@invoxim/worker:test:integration:  ✓ test/drive-lifecycle.test.ts (2 tests) 261ms
+@invoxim/worker:test:integration:  ✓ test/jobs-adversarial.test.ts (18 tests) 232ms
+@invoxim/worker:test:integration:  ✓ test/onboarding.test.ts (8 tests) 223ms
+@invoxim/worker:test:integration:  ✓ test/ai-budget.test.ts (13 tests) 188ms
+@invoxim/worker:test:integration:  ✓ test/drive-refresh.test.ts (20 tests) 220ms
+@invoxim/worker:test:integration:  ✓ test/fx-repository.test.ts (17 tests) 218ms
+@invoxim/worker:test:integration:  ✓ test/ai.test.ts (18 tests) 154ms
+@invoxim/worker:test:integration:  ✓ test/drive-consent.test.ts (18 tests) 186ms
+@invoxim/worker:test:integration:  ✓ test/drive-folders.test.ts (13 tests) 189ms
+@invoxim/worker:test:integration:  ✓ test/connections-legacy.test.ts (1 test) 115ms
+@invoxim/worker:test:integration:  ✓ test/database-adversarial.test.ts (14 tests) 149ms
+@invoxim/worker:test:integration:  ✓ test/discovery-entry.test.ts (4 tests) 82ms
+@invoxim/worker:test:integration:  ✓ test/archive-objects-adversarial.test.ts (1 test) 75ms
+@invoxim/worker:test:integration:  ✓ test/discovery.test.ts (9 tests) 89ms
+@invoxim/worker:test:integration:  ✓ test/database.test.ts (6 tests) 63ms
+@invoxim/worker:test:integration:  ✓ test/mailbox.test.ts (5 tests) 108ms
+@invoxim/worker:test:integration:  ✓ test/vault-adversarial.test.ts (12 tests) 98ms
+@invoxim/worker:test:integration:  ✓ test/jobs.test.ts (8 tests) 86ms
+@invoxim/worker:test:integration:  ✓ test/vault.test.ts (8 tests) 59ms
+@invoxim/worker:test:integration:  ✓ test/drive-service.test.ts (3 tests) 92ms
+@invoxim/worker:test:integration:  ✓ test/job-entry.test.ts (2 tests) 8ms
+@invoxim/worker:test:integration:  ✓ test/drive-authorization.test.ts (76 tests) 756ms
+@invoxim/worker:test:integration:  ✓ test/extraction-corpus.test.ts (5 tests) 638ms
+@invoxim/worker:test:integration:    ✓ T22/DOCUMENT-02 actual corpus two-page PDF preserves final-page cash, gross, subtotal and tax exactly 633ms
+@invoxim/worker:test:integration:  ✓ test/documents-adversarial.test.ts (15 tests) 624ms
+@invoxim/worker:test:integration:    ✓ DOCUMENT-02 actual local parser retains each page's subtotal/tax/gross/cash/credit numeric evidence 609ms
+@invoxim/worker:test:integration:  ✓ test/auth-adversarial.test.ts (14 tests) 474ms
+@invoxim/worker:test:integration:  ✓ test/drive-transport.test.ts (45 tests) 467ms
+@invoxim/worker:test:integration:  ✓ test/fx-reference.test.ts (28 tests) 353ms
+@invoxim/worker:test:integration:  ✓ test/original-mail.test.ts (47 tests) 223ms
+@invoxim/worker:test:integration:  ✓ test/auth.test.ts (10 tests) 198ms
+@invoxim/worker:test:integration:  ✓ test/outlook-provider.test.ts (46 tests) 159ms
+@invoxim/worker:test:integration:  ✓ test/provider-stream-bounds.test.ts (12 tests) 77ms
+@invoxim/worker:test:integration:  ✓ test/pipeline-runtime.test.ts (8 tests) 53ms
+@invoxim/worker:test:integration:  ✓ test/gmail-stream-bounds.test.ts (8 tests) 58ms
+@invoxim/worker:test:integration:  ✓ test/historical-upgrade.test.ts (3 tests) 56ms
+@invoxim/worker:test:integration:  ✓ test/outlook-discovery.test.ts (55 tests) 42ms
+@invoxim/worker:test:integration:  ✓ test/invocation-database.test.ts (6 tests) 28ms
+@invoxim/worker:test:integration:  ✓ test/ai-stream-bounds.test.ts (6 tests) 20ms
+@invoxim/worker:test:integration:  ✓ test/baseline.test.ts (3 tests) 22ms
+@invoxim/worker:test:integration:  ✓ test/health.test.ts (2 tests) 7ms
+@invoxim/worker:test:integration:  ✓ test/public-config.test.ts (2 tests) 8ms
+@invoxim/worker:test:integration:  ✓ test/proxy.test.ts (2 tests) 4ms
+@invoxim/worker:test:integration:  ✓ test/auth-stream-bounds.test.ts (2 tests) 4ms
+@invoxim/worker:test:integration:  ✓ test/security-headers.test.ts (2 tests) 5ms
+@invoxim/worker:test:integration:  ✓ test/queue-budget.test.ts (1 test) 2ms
+@invoxim/worker:test:integration:  ✓ test/storage-token.test.ts (1 test) 4ms
+@invoxim/worker:test:integration:  ✓ test/workspace-token.test.ts (1 test) 3ms
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:  Test Files  70 passed (70)
+@invoxim/worker:test:integration:       Tests  986 passed (986)
+@invoxim/worker:test:integration:    Start at  10:35:02
+@invoxim/worker:test:integration:    Duration  161.83s (transform 59%, import 26%, tests 15%)
+@invoxim/worker:test:integration: 
+@invoxim/worker:test:integration:   Transform  transforming modules took 83.30s · 59% of tracked time, re-done on every run
+@invoxim/worker:test:integration:              persist transforms across runs with fsModuleCache: true
+@invoxim/worker:test:integration:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+@invoxim/worker:test:integration: 
+
+ Tasks:    4 successful, 4 total
+Cached:    3 cached, 4 total
+  Time:    2m42.685s 
+
+$ turbo run build
+
+   • turbo 2.11.7
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/testkit, @invoxim/web, @invoxim/worker
+   • Running build in 6 packages
+   • Remote caching disabled
+
+@invoxim/contracts:build: cache hit, replaying logs 012db095616ff737
+@invoxim/contracts:build: $ tsc --noEmit
+@invoxim/core:build: cache hit, replaying logs 0b55c65dbd11cf5d
+@invoxim/core:build: $ tsc --noEmit
+@invoxim/adapters:build: cache hit, replaying logs 3144e9d195aafa80
+@invoxim/adapters:build: $ tsc --noEmit
+@invoxim/web:build: cache miss, executing 7a2354c9e2e0aac1
+@invoxim/worker:build: cache miss, executing 7cf96227fbbd9ee4
+@invoxim/worker:build: $ wrangler deploy --dry-run --outdir dist
+@invoxim/web:build: $ vite build && wrangler pages functions build functions --outdir dist/_worker.js
+@invoxim/web:build: vite v8.3.4 building client environment for production...
+@invoxim/web:build: transforming...
+@invoxim/web:build: ✓ 164 modules transformed.
+@invoxim/web:build: rendering chunks...
+@invoxim/web:build: computing gzip size...
+@invoxim/web:build: dist/index.html                   0.40 kB │ gzip:   0.26 kB
+@invoxim/web:build: dist/assets/index-Caw8ULDb.css   17.96 kB │ gzip:   4.19 kB
+@invoxim/web:build: dist/assets/index-DGvcFE0Y.js   426.62 kB │ gzip: 122.97 kB
+@invoxim/web:build: 
+@invoxim/web:build: ✓ built in 141ms
+@invoxim/worker:build: 
+@invoxim/worker:build:  ⛅️ wrangler 4.149.0
+@invoxim/worker:build: ────────────────────
+@invoxim/web:build: 
+@invoxim/web:build:  ⛅️ wrangler 4.149.0
+@invoxim/web:build: ────────────────────
+@invoxim/web:build: ✨ Compiled Worker successfully
+@invoxim/worker:build: Total Upload: 5872.86 KiB / gzip: 1190.00 KiB
+@invoxim/worker:build: Your Worker has access to the following bindings:
+@invoxim/worker:build: Binding                                                Resource                  
+@invoxim/worker:build: env.AUTH_ENABLED ("false")                             Environment Variable      
+@invoxim/worker:build: env.CORRECTIONS_ENABLED ("false")                      Environment Variable      
+@invoxim/worker:build: env.AI_ENABLED ("false")                               Environment Variable      
+@invoxim/worker:build: env.EXTRACTION_ENABLED ("false")                       Environment Variable      
+@invoxim/worker:build: env.GMAIL_ENABLED ("false")                            Environment Variable      
+@invoxim/worker:build: env.OUTLOOK_ENABLED ("false")                          Environment Variable      
+@invoxim/worker:build: env.DRIVE_ENABLED ("false")                            Environment Variable      
+@invoxim/worker:build: env.FX_REFERENCE_ENABLED ("false")                     Environment Variable      
+@invoxim/worker:build: env.GMAIL_DISCOVERY_ENABLED ("false")                  Environment Variable      
+@invoxim/worker:build: env.JOBS_ENABLED ("false")                             Environment Variable      
+@invoxim/worker:build: env.LIFECYCLE_ENABLED ("false")                        Environment Variable      
+@invoxim/worker:build: env.LIFECYCLE_GOOGLE_REVOCATION_ENABLED ("false")      Environment Variable      
+@invoxim/worker:build: env.JOBS_QUERY_LIMIT ("40")                            Environment Variable      
+@invoxim/worker:build: 
+@invoxim/worker:build: --dry-run: exiting now.
+
+ Tasks:    5 successful, 5 total
+Cached:    3 cached, 5 total
+  Time:    1.781s 
+
+$ pnpm --filter @invoxim/web exec playwright test --config playwright.config.ts
+[WebServer] (node:3626) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 62 tests using 1 worker
+
+(node:3652) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/corrections-adversarial.spec.ts:150:1 › EDIT-01 existing KWD payment correction keeps identity and exact three-decimal magnitude (528ms)
+  ✓   2 tests/corrections-adversarial.spec.ts:180:1 › EDIT-01 JPY fractional input is rejected before any write and retains user entry (385ms)
+  ✓   3 tests/corrections-adversarial.spec.ts:198:1 › EDIT-02 account change while an old form is open clears its values before mutation (409ms)
+  ✓   4 tests/corrections-adversarial.spec.ts:221:1 › EDIT-03 uncertain retry keeps token body and command key and creates no optimistic cash (543ms)
+  ✓   5 tests/corrections-ui.spec.ts:136:1 › EDIT-01 document total correction remains separate from documented cash (485ms)
+  ✓   6 tests/corrections-ui.spec.ts:159:1 › EDIT-02 conflict retains entered correction until deliberate reload (370ms)
+  ✓   7 tests/corrections-ui.spec.ts:185:1 › EDIT-03 unknown payment confirmation retry reuses its request identity (586ms)
+  ✓   8 tests/corrections-ui.spec.ts:230:1 › EDIT-01 correcting a cash event preserves its identity and carries the read-time workspace token (483ms)
+  ✓   9 tests/corrections-ui.spec.ts:257:1 › EDIT-01 unavailable corrections keep existing purchase and cash readable without false actions (248ms)
+  ✓  10 tests/corrections-ui.spec.ts:279:1 › EDIT-04 merge and reversal submit distinct owned versions without fabricating ledger changes (751ms)
+  ✓  11 tests/corrections-ui.spec.ts:356:1 › EDIT-05 dismissing an operational issue leaves the financial question and valid payment visible (443ms)
+  ✓  12 tests/corrections-ui.spec.ts:416:1 › EDIT-01 mobile correction labels, exact precision and keyboard errors remain accessible (870ms)
+  ✓  13 tests/corrections-ui.spec.ts:445:1 › EDIT-01 an unsupported original currency does not crash or clear untouched money during a merchant correction (456ms)
+  ✓  14 tests/corrections-ui.spec.ts:478:1 › EDIT-02 workspace-token rejection clears the old actor's draft and reloads the signed identity (409ms)
+  ✓  15 tests/corrections-ui.spec.ts:549:1 › EDIT-05 unlinked source completion collects explicit user values without guessing or confirming cash (510ms)
+  ✓  16 tests/corrections-ui.spec.ts:637:1 › EDIT-01 exclusion and restoration retain records and send the current purchase version (608ms)
+  ✓  17 tests/corrections-ui.spec.ts:701:1 › EDIT-01 an existing cash event can be corrected to zero without confirming a new zero payment (588ms)
+  ✓  18 tests/corrections-ui.spec.ts:740:1 › EDIT-03 actual manual cash remains visible and editable without inventing source observations (436ms)
+  ✓  19 tests/corrections-ui.spec.ts:824:1 › EDIT-03 manually associated source stays separate from extracted observations and confirmed cash (253ms)
+  ✓  20 tests/demo.spec.ts:4:1 › PRESENT-02 only the example is an available product action (393ms)
+  ✓  21 tests/demo.spec.ts:25:1 › DEMO-01/03/04 exact records, local retrieval and evidence without API traffic (315ms)
+  ✓  22 tests/demo.spec.ts:75:1 › DEMO-02 storage sentinels cannot influence static example (not real auth/cache integration) (202ms)
+  ✓  23 tests/demo.spec.ts:87:1 › mobile keyboard, reduced motion, reflow and automated accessibility (865ms)
+  ✓  24 tests/demo.spec.ts:147:1 › UX-01 example actions lead to real refund and unpaid histories without dead ends (281ms)
+  ✓  25 tests/demo.spec.ts:186:1 › UX-02 search finds receipt details and quick filters recover from empty results (364ms)
+  ✓  26 tests/fixture.spec.ts:5:1 › DEMO-03 production example matches canonical synthetic fixture (0ms)
+  ✓  27 tests/onboarding-adversarial.spec.ts:164:1 › ONBOARD-06/09 readable policy refresh clears old consent while retaining the full reviewed interval (504ms)
+  ✓  28 tests/onboarding-adversarial.spec.ts:211:1 › ONBOARD-08/11/RECENT-07 budget pause preserves keyboard focus and available records during unfinished older history (448ms)
+  ✓  29 tests/onboarding-adversarial.spec.ts:279:1 › ONBOARD-04/09 account changing during disclosure delivery never publishes old processor approval or enables Start (330ms)
+  ✓  30 tests/onboarding-adversarial.spec.ts:309:1 › RECENT-10 separately measures the first user action opening available record history (686ms)
+  ✓  31 tests/onboarding-ui.spec.ts:143:1 › ONBOARD-04/06 actual login and mailbox identities, processors and full frozen range precede explicit Start (411ms)
+  ✓  32 tests/onboarding-ui.spec.ts:199:1 › ONBOARD-09 changed processing disclosure blocks old acceptance and never silently resubmits (372ms)
+  ✓  33 tests/onboarding-ui.spec.ts:240:1 › ONBOARD-09 unknown Start retry preserves token, complete body and idempotency key (514ms)
+  ✓  34 tests/onboarding-ui.spec.ts:267:1 › ONBOARD-06/09 preference edits require a new reviewed disclosure and clear consent (346ms)
+  ✓  35 tests/onboarding-ui.spec.ts:298:1 › ONBOARD-03 unavailable mailbox provider remains honest and never starts authorization (239ms)
+  ✓  36 tests/onboarding-ui.spec.ts:328:1 › ACCESS-02 360px review is keyboard reachable with no horizontal overflow (722ms)
+  ✓  37 tests/onboarding-ui.spec.ts:371:1 › ONBOARD-14/RECENT-07 actual first records are available during paused partial history without navigation or zero-spend claims (247ms)
+  ✓  38 tests/onboarding-ui.spec.ts:428:1 › ACCESS-02 verified mailbox return focuses the review heading once (231ms)
+  ✓  39 tests/onboarding-ui.spec.ts:440:1 › ONBOARD-04/12 changing to another owned mailbox retains login and requires its own review before Start (422ms)
+  ✓  40 tests/onboarding-ui.spec.ts:521:1 › ONBOARD-08 optional AI settings require and forward the same form's workspace token (453ms)
+  ✓  41 tests/onboarding-ui.spec.ts:567:1 › ONBOARD-08 optional AI settings cannot save when the server form has no workspace token (308ms)
+  ✓  42 tests/onboarding-ui.spec.ts:586:1 › ONBOARD-05 denied permission keeps login, shows actual partial scope and never loops OAuth (242ms)
+  ✓  43 tests/onboarding-ui.spec.ts:628:1 › ONBOARD-11/RECENT-08 reload resumes actual pending older history without another Start or zero spending (398ms)
+  ✓  44 tests/private-adversarial.spec.ts:5:1 › HOME-05 known payment uncertainty asks the exact question rather than full re-entry (255ms)
+  ✓  45 tests/private-adversarial.spec.ts:20:1 › HOME-01/02/04/06 private periods, lifecycle and unavailable originals remain honest (522ms)
+  ✓  46 tests/private-adversarial.spec.ts:54:1 › UI-04 mobile keyboard focus, search, exact money and accessibility remain usable (931ms)
+  ✓  47 tests/private-adversarial.spec.ts:93:1 › private identity/session revalidation clears old records without falling back to demo (341ms)
+  ✓  48 tests/private-adversarial.spec.ts:124:1 › demo navigation and private errors never prefetch or substitute private data (347ms)
+  ✓  49 tests/private-adversarial.spec.ts:142:1 › UI-04 loading and ready/error announcements support the complete keyboard journey and 200 percent reflow (958ms)
+  ✓  50 tests/private-adversarial.spec.ts:259:1 › private account changing while purchase responses are in flight never publishes the old owner's records (234ms)
+  ✓  51 tests/private-adversarial.spec.ts:282:1 › HOME-05 unlinked document review asks only its known missing currency and preserves access to valid history (490ms)
+  ✓  52 tests/private-ui.spec.ts:118:1 › HOME-01/04 purchase-first private Home with exact period/lifecycle values and partial coverage (641ms)
+  ✓  53 tests/private-ui.spec.ts:150:1 › HOME-02/06 pending refund and unavailable original preserve structured details (243ms)
+  ✓  54 tests/private-ui.spec.ts:171:1 › UI-01/02 mobile reflow and accessible keyboard search (936ms)
+  ✓  55 tests/private-ui.spec.ts:202:1 › UI-03 session expiry clears private records with genuine example escape (302ms)
+  ✓  56 tests/private-ui.spec.ts:222:1 › HOME-03 unpaid invoice remains useful without invented spending and services can be unavailable (246ms)
+  ✓  57 tests/private-ui.spec.ts:274:1 › UI-04 coverage shows budget pause and retains records without fake completion (252ms)
+  ✓  58 tests/private-ui.spec.ts:312:1 › HOME-01 category search and pagination preserve matching summary filters (811ms)
+  ✓  59 tests/private-ui.spec.ts:349:1 › UI-04 paused jobs override importing copy and announce a ready milestone (242ms)
+  ✓  60 tests/private-ui.spec.ts:372:1 › HOME-05 only validated missing fields become exact questions including unlinked documents (524ms)
+  ✓  61 tests/public-login.spec.ts:18:1 › T29 landing offers onboarding when server login is available, without signing in automatically (215ms)
+  ✓  62 tests/public-login.spec.ts:36:1 › T29 invalid public capability data cannot enable login and demo remains static (479ms)
+
+  62 passed (28.9s)

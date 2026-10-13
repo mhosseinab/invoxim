@@ -1,0 +1,14 @@
+$ node tools/implementation/security-gates.mjs security-tests
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+
+ Test Files  30 passed (30)
+      Tests  393 passed (393)
+   Start at  10:39:01
+   Duration  78.95s (transform 58%, import 25%, tests 17%)
+
+  Transform  transforming modules took 40.48s · 58% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

@@ -1182,6 +1182,46 @@
       "deliverableEvidence": "Gate D decision: approved with evidence or blocked with precise prerequisites. No billing build.",
       "completionEvidence": [],
       "blockedBy": []
+    },
+    {
+      "id": "T31",
+      "title": "Restore native D1 persistence and consolidate initial schema",
+      "milestone": "M1",
+      "status": "done",
+      "dependsOn": [
+        "T02"
+      ],
+      "ownerRole": "database",
+      "reviewerRole": "principal-reviewer",
+      "read": [
+        "docs/02-architecture.md",
+        "docs/03-data-model.md",
+        "docs/07-engineering-quality.md"
+      ],
+      "scope": "Latest owner decision: revert Prisma, restore native D1 and established Drizzle authentication, retain one consolidated initial baseline with all native constraints/indexes/required seeds and historical compatibility fixtures. Preserve tenant/atomic/fence/query-budget/exact-money/millisecond-auth behavior, folder cleanup and refresh fixture fixes. No database reset, remote mutation or deployment.",
+      "acceptanceCaseIds": [
+        "BASELINE",
+        "HISTORICAL-UPGRADE",
+        "DB-01",
+        "DB-02",
+        "DB-03",
+        "DB-04"
+      ],
+      "redFirst": "Preserve genuine missing-scheduler-seed and folder parent-erasure RED witnesses; native fresh/populated schema and historical data proofs plus original behavioral regressions must pass.",
+      "deliverableEvidence": "Restored native auth/session/atomic/money/query-budget regressions; fresh and populated baseline equivalence with initial scheduler data; clean install/audit and pnpm verify/security/db; independent review, non-destructive transition checklist and scoped commits.",
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/native-d1-baseline-restoration.md",
+        "evidence/implementation/native-d1-restoration-independent-review.md",
+        "evidence/implementation/baseline-transition-checklist.md",
+        "evidence/implementation/t18-drive-folders-security-review.md"
+      ],
+      "completionEvidence": [
+        "evidence/implementation/native-d1-restoration-final-certificate.md",
+        "evidence/implementation/native-d1-restoration-independent-review.md",
+        "evidence/implementation/baseline-transition-checklist.md",
+        "evidence/implementation/native-d1-restoration-final/provenance.json"
+      ]
     }
   ]
 }

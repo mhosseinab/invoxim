@@ -1,0 +1,2 @@
+# Keep PDF fixtures byte-exact; their xref records contain required trailing spaces.
+*.pdf binary

@@ -1,6 +1,6 @@
 # Data model, invariants, and reconciliation
 
-This is a logical schema specification. Generate concrete Drizzle migrations only after T01 verifies the pinned auth/runtime combination. Prefer explicit columns for indexed/status/financial fields; use small versioned JSON only for validated provenance and connector-specific cursor state.
+This logical schema is implemented by one consolidated SQL baseline with native D1 queries and the verified Better Auth Drizzle mapping. The owner reverted the Prisma experiment on 2026-10-13 while retaining the consolidated baseline. Native CHECKs, partial indexes, composite FKs, INTEGER auth milliseconds and required scheduler seed rows remain authoritative. Existing databases require the reviewed non-destructive transition procedure, not replay of the initial baseline. Prefer explicit columns for indexed/status/financial fields; use small versioned JSON only for validated provenance and connector-specific cursor state.
 
 ## Tables
 

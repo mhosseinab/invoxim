@@ -2,7 +2,7 @@
 
 ## Stack and package boundaries
 
-Frontend: React + Vite, TypeScript, semantic HTML, a small router and query library only if justified. API: Hono and Better Auth in a Worker. Persistence: D1 through Drizzle, with explicit SQL for constrained/atomic operations where the ORM obscures behavior. Better Auth has Google and Drizzle support, and Drizzle documents D1 support; their exact pinned combination still needs a workerd smoke test. [S20, S21, S22]
+Frontend: React + Vite, TypeScript, semantic HTML, a small router and query library only if justified. API: Hono and Better Auth in a Worker. Persistence retains D1 through the established native query adapters and Better Auth's Drizzle adapter, with explicit parameterized SQL for constrained/atomic operations. The owner's latest 2026-10-13 decision reverts the Prisma experiment while retaining one consolidated initial SQL baseline. Native D1.batch preserves atomic financial/consent/fencing operations; the shared invocation wrapper accounts for auth and repository statements. The baseline preserves schema constraints, indexes and required scheduler seeds; it initializes only empty databases and must not be replayed against existing data. Restored-native local verification and independent review passed; the final evidence is in evidence/implementation/native-d1-restoration-final-certificate.md. Live migration and deployment remain separate operator gates.
 
 Use pnpm workspaces and Turborepo for task ordering/caching. Runtime imports:
 
