@@ -26,6 +26,8 @@ interface FolderState {
   history_cursor: string | null;
   stage: string;
   history_reset_count: number;
+  consecutive_failures: number;
+  retry_at: number | null;
   frozen_start: string | null;
   frozen_cutoff: string | null;
 }
@@ -94,8 +96,26 @@ export function createOutlookDeltaRunner(
         parent.sync_kind,
       )
       .first();
+    const paused = !missing
+      ? await db
+          .prepare(
+            `SELECT 1 FROM sync_states child WHERE child.user_id=? AND child.connection_id=? AND child.run_key=? AND child.slice_key=? AND child.sync_kind=? AND child.scope_key LIKE ? AND child.stage='paused_rate' LIMIT 1`,
+          )
+          .bind(
+            lease.context.userId,
+            lease.connectionId,
+            parent.run_key,
+            parent.slice_key,
+            parent.sync_kind,
+            `outlook:${lease.generation}:%`,
+          )
+          .first()
+      : null;
     const restart =
-      !missing && parent.sync_kind === "incremental" && parent.stage === "idle"
+      !missing &&
+      !paused &&
+      parent.sync_kind === "incremental" &&
+      parent.stage === "idle"
         ? await db
             .prepare(
               `SELECT 1 FROM sync_states child WHERE child.user_id=? AND child.connection_id=? AND child.run_key=? AND child.slice_key='live' AND child.sync_kind='incremental' AND child.scope_key LIKE ? AND child.stage='idle' LIMIT 1`,
@@ -111,6 +131,7 @@ export function createOutlookDeltaRunner(
     const older =
       !missing &&
       !restart &&
+      !paused &&
       parent.slice_key === "recent" &&
       parent.import_run_id
         ? await db
@@ -141,8 +162,9 @@ export function createOutlookDeltaRunner(
     ];
     const continuationKey = `outlook:page:${lease.jobId}`;
     const continuePage = Boolean(missing || restart || older);
-    const nextStage =
-      missing || restart
+    const nextStage = paused
+      ? "paused_rate"
+      : missing || restart
         ? "queued"
         : parent.sync_kind === "backfill"
           ? "discovery_complete"
@@ -235,7 +257,7 @@ export function createOutlookDeltaRunner(
             ...leaseGuard.values,
           ),
       );
-    if (parent.import_run_id && !missing && !restart)
+    if (parent.import_run_id && !missing && !restart && !paused)
       statements.push(
         db
           .prepare(
@@ -366,6 +388,99 @@ export function createOutlookDeltaRunner(
       ? { kind: "completed" }
       : { kind: "retry", code: "transient" };
   }
+  async function deferFolderRate(
+    lease: JobLease,
+    control: { signal: AbortSignal; checkpoint: () => Promise<boolean> },
+    folder: FolderState,
+    delayMs: number,
+    countFailure = true,
+  ): Promise<JobOutcome> {
+    if (control.signal.aborted || !(await control.checkpoint()))
+      return { kind: "paused", code: "auth" };
+    if (options.remainingStatements() < 5)
+      return { kind: "paused", code: "budget" };
+    const now = clock();
+    const delay = Number.isFinite(delayMs) ? Math.max(1000, delayMs) : 86400001;
+    const paused =
+      delay > 86400000 || (countFailure && folder.consecutive_failures >= 4);
+    const retryAt = paused
+      ? null
+      : countFailure
+        ? now + delay
+        : folder.retry_at;
+    const nonce = crypto.randomUUID();
+    const leaseGuard = guard(lease, now);
+    const marker =
+      "EXISTS(SELECT 1 FROM sync_states child WHERE child.user_id=? AND child.id=? AND child.discovery_version=? AND child.pending_history_id=?)";
+    const markerValues = [
+      lease.context.userId,
+      folder.id,
+      folder.discovery_version + 1,
+      nonce,
+    ];
+    const continuationKey = `outlook:page:${lease.jobId}`;
+    const statements: D1PreparedStatement[] = [
+      db
+        .prepare(
+          `UPDATE sync_states SET discovery_version=discovery_version+1,stage=?,retry_at=?,consecutive_failures=consecutive_failures+?,pending_history_id=? WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${leaseGuard.sql}`,
+        )
+        .bind(
+          paused ? "paused_rate" : folder.stage,
+          retryAt,
+          countFailure ? 1 : 0,
+          nonce,
+          lease.context.userId,
+          folder.id,
+          lease.connectionId,
+          folder.discovery_version,
+          ...leaseGuard.values,
+        ),
+    ];
+    if (!paused)
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,0 WHERE ${marker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
+          )
+          .bind(
+            crypto.randomUUID(),
+            lease.context.userId,
+            lease.connectionId,
+            lease.consentId,
+            lease.generation,
+            lease.syncStateId,
+            lease.type,
+            continuationKey,
+            retryAt,
+            ...markerValues,
+            ...leaseGuard.values,
+          ),
+      );
+    statements.push(
+      db
+        .prepare(
+          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code=? WHERE user_id=? AND id=? AND ${marker} AND ${leaseGuard.sql}${paused ? "" : " AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')"}`,
+        )
+        .bind(
+          paused ? "rate_paused" : "rate_deferred",
+          lease.context.userId,
+          lease.jobId,
+          ...markerValues,
+          ...leaseGuard.values,
+          ...(paused ? [] : [lease.context.userId, continuationKey]),
+        ),
+    );
+    await db.batch(statements);
+    const settled = await db
+      .prepare(
+        "SELECT status FROM jobs WHERE user_id=? AND id=? AND status='completed'",
+      )
+      .bind(lease.context.userId, lease.jobId)
+      .first();
+    return settled
+      ? { kind: "completed" }
+      : { kind: "retry", code: "transient" };
+  }
   return {
     async run(
       lease: JobLease,
@@ -383,9 +498,30 @@ export function createOutlookDeltaRunner(
         .first<ParentState>();
       if (!parent || parent.stage === "waiting_recent")
         return { kind: "paused", code: "auth" };
+      const approved =
+        parent.sync_kind === "incremental"
+          ? await db
+              .prepare(
+                "SELECT frozen_start FROM import_runs WHERE user_id=? AND connection_id=? AND consent_id=? AND connection_generation=? ORDER BY started_at DESC,id DESC LIMIT 1",
+              )
+              .bind(
+                lease.context.userId,
+                lease.connectionId,
+                lease.consentId,
+                lease.generation,
+              )
+              .first<{ frozen_start: string }>()
+          : null;
+      if (parent.sync_kind === "incremental" && !approved)
+        return { kind: "paused", code: "auth" };
+      const approvedStartMs = Date.parse(
+        approved?.frozen_start ?? parent.frozen_start ?? "",
+      );
+      if (!Number.isSafeInteger(approvedStartMs) || approvedStartMs < 0)
+        return { kind: "terminal", code: "malformed" };
       const folder = await db
         .prepare(
-          `SELECT s.id,f.folder_id,s.discovery_version,s.page_token,s.history_cursor,s.stage,s.history_reset_count,s.frozen_start,s.frozen_cutoff FROM sync_states s JOIN outlook_folders f ON f.user_id=s.user_id AND f.connection_id=s.connection_id AND f.generation=? AND s.scope_key='outlook:'||f.generation||':'||f.folder_id WHERE s.user_id=? AND s.connection_id=? AND s.run_key=? AND s.slice_key=? AND s.sync_kind=? AND s.stage IN ('queued','recovering','recovering_delta') ORDER BY f.folder_id LIMIT 1`,
+          `SELECT s.id,f.folder_id,s.discovery_version,s.page_token,s.history_cursor,s.stage,s.history_reset_count,s.consecutive_failures,s.retry_at,s.frozen_start,s.frozen_cutoff FROM sync_states s JOIN outlook_folders f ON f.user_id=s.user_id AND f.connection_id=s.connection_id AND f.generation=? AND s.scope_key='outlook:'||f.generation||':'||f.folder_id WHERE s.user_id=? AND s.connection_id=? AND s.run_key=? AND s.slice_key=? AND s.sync_kind=? AND s.stage IN ('queued','recovering','recovering_delta') ORDER BY f.folder_id LIMIT 1`,
         )
         .bind(
           lease.generation,
@@ -397,6 +533,14 @@ export function createOutlookDeltaRunner(
         )
         .first<FolderState>();
       if (!folder) return advanceParent(lease, control, parent);
+      if (folder.retry_at !== null && folder.retry_at > now)
+        return deferFolderRate(
+          lease,
+          control,
+          folder,
+          folder.retry_at - now,
+          false,
+        );
       if (options.remainingStatements() < 16)
         return { kind: "paused", code: "budget" };
       if (control.signal.aborted || !(await control.checkpoint()))
@@ -404,7 +548,7 @@ export function createOutlookDeltaRunner(
       const continuation = folder.page_token ?? folder.history_cursor;
       const listing =
         parent.sync_kind === "backfill" || folder.stage === "recovering";
-      let received;
+      let received: z.infer<typeof pageSchema>;
       try {
         received = listing
           ? await provider
@@ -431,6 +575,13 @@ export function createOutlookDeltaRunner(
       } catch (cause) {
         if (cause instanceof DiscoveryError && cause.code === "HISTORY_EXPIRED")
           return resetExpired(lease, control, folder);
+        if (cause instanceof DiscoveryError && cause.code === "RATE_LIMITED")
+          return deferFolderRate(
+            lease,
+            control,
+            folder,
+            cause.retryAfterMs ?? 30000,
+          );
         throw cause;
       }
       const page = pageSchema.parse(received);
@@ -469,9 +620,21 @@ export function createOutlookDeltaRunner(
       for (const id of [...ids, ...removed]) {
         if (control.signal.aborted || !(await control.checkpoint()))
           return { kind: "paused", code: "auth" };
-        const value = metadataSchema.parse(
-          await provider.metadata(id, control.signal),
-        );
+        let value: z.infer<typeof metadataSchema>;
+        try {
+          value = metadataSchema.parse(
+            await provider.metadata(id, control.signal),
+          );
+        } catch (cause) {
+          if (cause instanceof DiscoveryError && cause.code === "RATE_LIMITED")
+            return deferFolderRate(
+              lease,
+              control,
+              folder,
+              cause.retryAfterMs ?? 30000,
+            );
+          throw cause;
+        }
         if (value.id !== id) throw new DiscoveryError("UNAVAILABLE");
         metadata.push({ ...value, removed: removed.includes(id) });
       }
@@ -522,14 +685,13 @@ export function createOutlookDeltaRunner(
           item.available &&
           !item.excluded &&
           item.parentFolderId === folder.folder_id &&
-          ((parent.sync_kind !== "backfill" &&
-            !folder.stage.startsWith("recovering")) ||
-            (item.receivedAtMs >=
-              Date.parse(folder.frozen_start ?? parent.frozen_start ?? "") &&
+          (parent.sync_kind === "incremental" &&
+          !folder.stage.startsWith("recovering")
+            ? item.receivedAtMs >= approvedStartMs && item.receivedAtMs < now
+            : item.receivedAtMs >=
+                Date.parse(folder.frozen_start ?? parent.frozen_start ?? "") &&
               item.receivedAtMs <
-                Date.parse(
-                  folder.frozen_cutoff ?? parent.frozen_cutoff ?? "",
-                )));
+                Date.parse(folder.frozen_cutoff ?? parent.frozen_cutoff ?? ""));
         add(
           `INSERT INTO discovery_seen_refs(user_id,sync_state_id,provider_message_id,candidate_kind) SELECT ?,?,?,? WHERE ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,sync_state_id,provider_message_id) DO UPDATE SET candidate_kind=excluded.candidate_kind`,
           [

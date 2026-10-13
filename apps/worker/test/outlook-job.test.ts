@@ -1,0 +1,954 @@
+import { env } from "cloudflare:workers";
+import type { JobLease, JobPolicy } from "@invoxim/core";
+import { DiscoveryError } from "@invoxim/core";
+import { expect, it } from "vitest";
+import type { OutlookGraphDiscoveryPort } from "../../../packages/adapters/src/discovery/outlook";
+import { createOutlookJobRunner } from "../../../packages/adapters/src/discovery/outlook-job";
+import { createJobStore } from "../../../packages/adapters/src/jobs/store";
+import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
+import { createInvocationDatabase } from "../src/invocation-database";
+import { owner } from "./onboarding-qa-fixture";
+
+const policy: JobPolicy = {
+  dispatchLimit: 1,
+  scheduleLimit: 1,
+  tenantConcurrency: 2,
+  globalConcurrency: 20,
+  maxAttempts: 5,
+  leaseMs: 300000,
+  redeliveryMs: 1000,
+  queryLimit: 40,
+};
+
+async function claimed(
+  name: string,
+  mode: "live" | "recent" = "live",
+): Promise<JobLease> {
+  const current = await owner(`qa-outlook-job-${name}`, "outlook-mailbox", [
+    ...OUTLOOK_AUTHORIZATION_SCOPES,
+  ]);
+  const userId = current.tenant.userId;
+  await env.DB.prepare(
+    "UPDATE connections SET provider='outlook',scheduling_state='active',next_sync_at=NULL WHERE user_id=? AND id='outlook-mailbox'",
+  )
+    .bind(userId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,'outlook-mailbox',1,'synthetic','local',0,0,1)",
+  )
+    .bind(`pc-${name}`, userId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO import_runs(id,user_id,connection_id,consent_id,connection_generation,frozen_start,frozen_cutoff,timezone,request_fingerprint,started_at) VALUES(?,?,'outlook-mailbox',?,1,'2025-10-12T00:00:00.000Z','2026-10-13T00:00:00.000Z','UTC',?,0)",
+  )
+    .bind(`run-${name}`, userId, `pc-${name}`, `fingerprint-${name}`)
+    .run();
+  if (mode === "live") {
+    await env.DB.prepare(
+      "INSERT INTO sync_states(id,user_id,connection_id,scope_key,sync_kind,run_key,slice_key,stage,coverage_code) VALUES(?,?,'outlook-mailbox','mailbox','incremental','live','live','queued','candidate_unknown')",
+    )
+      .bind(`ss-${name}`, userId)
+      .run();
+  } else {
+    for (const slice of ["recent", "older"] as const)
+      await env.DB.prepare(
+        "INSERT INTO sync_states(id,user_id,connection_id,import_run_id,scope_key,sync_kind,run_key,slice_key,frozen_start,frozen_cutoff,stage,coverage_code) VALUES(?,?,? ,?,'mailbox','backfill',?,?,?,?,?,'candidate_unknown')",
+      )
+        .bind(
+          slice === "recent" ? `ss-${name}` : `older-${name}`,
+          userId,
+          "outlook-mailbox",
+          `run-${name}`,
+          `run-${name}`,
+          slice,
+          slice === "recent"
+            ? "2026-09-13T00:00:00.000Z"
+            : "2025-10-12T00:00:00.000Z",
+          slice === "recent"
+            ? "2026-10-13T00:00:00.000Z"
+            : "2026-09-13T00:00:00.000Z",
+          slice === "recent" ? "queued" : "waiting_recent",
+        )
+        .run();
+  }
+  await env.DB.prepare(
+    "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at) VALUES(?,?,'outlook-mailbox',?,1,?,?,?,'ready',0)",
+  )
+    .bind(
+      `j-${name}`,
+      userId,
+      `pc-${name}`,
+      `ss-${name}`,
+      mode === "live" ? "sync" : "discover",
+      `j-${name}`,
+    )
+    .run();
+  const lease = await createJobStore(env.DB, { policy }).claim(`j-${name}`);
+  if (!lease) throw new Error("Synthetic Outlook job lease unavailable");
+  return lease;
+}
+
+function provider(
+  folders: OutlookGraphDiscoveryPort["folders"],
+): OutlookGraphDiscoveryPort {
+  function unused(): never {
+    throw new Error("Unexpected message request during inventory");
+  }
+  return {
+    folders,
+    folder: unused,
+    listFolder: unused,
+    deltaFolder: unused,
+    metadata: unused,
+  };
+}
+
+async function seedLiveFolder(
+  lease: JobLease,
+  stateId: string,
+  folderId: string,
+  historyCursor: string | null = null,
+) {
+  await env.DB.prepare(
+    "INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) VALUES(?,?,?,'root',NULL,1,NULL,'complete',?)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.generation,
+      crypto.randomUUID(),
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO outlook_folders(user_id,connection_id,generation,folder_id,parent_folder_id,child_folder_count,is_hidden) VALUES(?,?,?,?,'provider-root',0,0)",
+  )
+    .bind(lease.context.userId, lease.connectionId, lease.generation, folderId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO sync_states(id,user_id,connection_id,scope_key,sync_kind,run_key,slice_key,stage,coverage_code,history_cursor) VALUES(?,?,?,?,'incremental','live','live','queued','candidate_unknown',?)",
+  )
+    .bind(
+      stateId,
+      lease.context.userId,
+      lease.connectionId,
+      `outlook:${lease.generation}:${folderId}`,
+      historyCursor,
+    )
+    .run();
+}
+
+it("OUTLOOK-02 inventory page atomically advances its cursor and schedules a fresh job", async () => {
+  const lease = await claimed("durable-inventory");
+  const nextLink =
+    "https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=opaque%2B%2F%3D";
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => provider(async () => ({ folders: [], nextLink })),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT version,next_link FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND scope_key='root'",
+    )
+      .bind(lease.context.userId, lease.connectionId, lease.generation)
+      .first(),
+  ).toEqual({ version: 1, next_link: nextLink });
+  expect(
+    await env.DB.prepare(
+      "SELECT status,outcome_code FROM jobs WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.jobId)
+      .first(),
+  ).toEqual({ status: "completed", outcome_code: "discovery_staged" });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND connection_id=? AND sync_state_id=? AND type='sync' AND status='ready'",
+    )
+      .bind(lease.context.userId, lease.connectionId, lease.syncStateId)
+      .first("n"),
+  ).toBe(1);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-04 initial folder delta durably queues one source and saves the opaque folder cursor", async () => {
+  const lease = await claimed("first-delta");
+  const folderId = "inbox-folder";
+  const messageId = "immutable+message/=";
+  const deltaLink = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=opaque%2B%2F%3D`;
+  await env.DB.prepare(
+    "INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) VALUES(?,?,?,'root',NULL,1,NULL,'complete',?)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.generation,
+      crypto.randomUUID(),
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO outlook_folders(user_id,connection_id,generation,folder_id,parent_folder_id,child_folder_count,is_hidden) VALUES(?,?,?,?,'provider-root',0,0)",
+  )
+    .bind(lease.context.userId, lease.connectionId, lease.generation, folderId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO sync_states(id,user_id,connection_id,scope_key,sync_kind,run_key,slice_key,stage,coverage_code) VALUES(?,?,?,?,'incremental','live','live','queued','candidate_unknown')",
+  )
+    .bind(
+      "folder-first-delta",
+      lease.context.userId,
+      lease.connectionId,
+      `outlook:${lease.generation}:${folderId}`,
+    )
+    .run();
+  let deltaCalls = 0;
+  const graph: OutlookGraphDiscoveryPort = {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    deltaFolder: async (input) => {
+      deltaCalls++;
+      expect(input.folderId).toBe(folderId);
+      expect(input.continuationLink).toBeUndefined();
+      return { ids: [messageId], folderRemovedIds: [], deltaLink };
+    },
+    metadata: async (id) => ({
+      id,
+      parentFolderId: folderId,
+      receivedAtMs: Date.parse("2026-10-12T12:00:00.000Z"),
+      available: true,
+      excluded: false,
+      candidate: "unknown",
+    }),
+  };
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => graph,
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(deltaCalls).toBe(1);
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,history_cursor,page_token,discovery_version FROM sync_states WHERE user_id=? AND id='folder-first-delta'",
+    )
+      .bind(lease.context.userId)
+      .first(),
+  ).toEqual({
+    stage: "idle",
+    history_cursor: deltaLink,
+    page_token: null,
+    discovery_version: 1,
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT provider_message_id,processing_status,available FROM source_messages WHERE user_id=? AND connection_id=?",
+    )
+      .bind(lease.context.userId, lease.connectionId)
+      .first(),
+  ).toEqual({
+    provider_message_id: messageId,
+    processing_status: "discovered",
+    available: 1,
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND type='source-extract' AND status='ready'",
+    )
+      .bind(lease.context.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-05 expired folder delta resets only its cursor and schedules recovery without a failure attempt", async () => {
+  const lease = await claimed("expired-delta");
+  const folderId = "archive-folder";
+  const stateId = "folder-expired-delta";
+  const prior = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=expired`;
+  await seedLiveFolder(lease, stateId, folderId, prior);
+  const graph: OutlookGraphDiscoveryPort = {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    deltaFolder: async (input) => {
+      expect(input.continuationLink).toBe(prior);
+      throw new DiscoveryError("HISTORY_EXPIRED");
+    },
+  };
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => graph,
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,page_token,history_cursor,history_reset_count,discovery_version,frozen_start,frozen_cutoff FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first(),
+  ).toEqual({
+    stage: "recovering",
+    page_token: null,
+    history_cursor: null,
+    history_reset_count: 1,
+    discovery_version: 1,
+    frozen_start: "2025-10-12T00:00:00.000Z",
+    frozen_cutoff: "2026-10-13T00:00:00.000Z",
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT status,retry_count FROM jobs WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.jobId)
+      .first(),
+  ).toEqual({ status: "completed", retry_count: lease.attempt });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND connection_id=? AND sync_state_id=? AND type='sync' AND status='ready'",
+    )
+      .bind(lease.context.userId, lease.connectionId, lease.syncStateId)
+      .first("n"),
+  ).toBe(1);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-04 a moved message remains available when Graph removes it from one folder", async () => {
+  const lease = await claimed("moved-message");
+  const folderId = "old-folder";
+  const messageId = "immutable+move/=";
+  await seedLiveFolder(lease, "folder-moved-message", folderId);
+  await env.DB.prepare(
+    "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,processing_status,generation,available) VALUES(?,?,?,?,?,'processed',?,1)",
+  )
+    .bind(
+      crypto.randomUUID(),
+      lease.context.userId,
+      lease.connectionId,
+      messageId,
+      1000,
+      lease.generation,
+    )
+    .run();
+  const deltaLink = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=after-move`;
+  const graph: OutlookGraphDiscoveryPort = {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    deltaFolder: async () => ({
+      ids: [],
+      folderRemovedIds: [messageId],
+      deltaLink,
+    }),
+    metadata: async (id) => ({
+      id,
+      parentFolderId: "new-folder",
+      receivedAtMs: 1000,
+      available: true,
+      excluded: false,
+      candidate: "unknown",
+    }),
+  };
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => graph,
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT available,processing_status FROM source_messages WHERE user_id=? AND connection_id=? AND provider_message_id=?",
+    )
+      .bind(lease.context.userId, lease.connectionId, messageId)
+      .first(),
+  ).toEqual({ available: 1, processing_status: "processed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND type='source-extract'",
+    )
+      .bind(lease.context.userId)
+      .first("n"),
+  ).toBe(0);
+});
+
+it("OUTLOOK-02 complete inventory seeds bounded recent folder cursors and a durable continuation", async () => {
+  const lease = await claimed("recent-seed", "recent");
+  await env.DB.prepare(
+    "INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) VALUES(?,?,?,'root',NULL,1,NULL,'complete',?)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.generation,
+      crypto.randomUUID(),
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO outlook_folders(user_id,connection_id,generation,folder_id,parent_folder_id,child_folder_count,is_hidden) VALUES(?,?,?,'receipt-folder','provider-root',0,0)",
+  )
+    .bind(lease.context.userId, lease.connectionId, lease.generation)
+    .run();
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () =>
+      provider(async () => {
+        throw new Error("Inventory is already complete");
+      }),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT scope_key,slice_key,stage,frozen_start,frozen_cutoff FROM sync_states WHERE user_id=? AND scope_key='outlook:1:receipt-folder'",
+    )
+      .bind(lease.context.userId)
+      .first(),
+  ).toEqual({
+    scope_key: "outlook:1:receipt-folder",
+    slice_key: "recent",
+    stage: "queued",
+    frozen_start: "2026-09-13T00:00:00.000Z",
+    frozen_cutoff: "2026-10-13T00:00:00.000Z",
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.syncStateId)
+      .first("stage"),
+  ).toBe("queued");
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND sync_state_id=? AND type='discover' AND status='ready'",
+    )
+      .bind(lease.context.userId, lease.syncStateId)
+      .first("n"),
+  ).toBe(1);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-02 completed recent folders release the older slice without declaring the import complete", async () => {
+  const lease = await claimed("older-release", "recent");
+  await env.DB.prepare(
+    "INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) VALUES(?,?,?,'root',NULL,1,NULL,'complete',?)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.generation,
+      crypto.randomUUID(),
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO outlook_folders(user_id,connection_id,generation,folder_id,parent_folder_id,child_folder_count,is_hidden) VALUES(?,?,?,'archive-folder','provider-root',0,0)",
+  )
+    .bind(lease.context.userId, lease.connectionId, lease.generation)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO sync_states(id,user_id,connection_id,import_run_id,scope_key,sync_kind,run_key,slice_key,frozen_start,frozen_cutoff,stage,coverage_code) VALUES(?,?,?,?,'outlook:1:archive-folder','backfill',?,'recent','2026-09-13T00:00:00.000Z','2026-10-13T00:00:00.000Z','discovery_complete','candidate_unknown')",
+  )
+    .bind(
+      "child-older-release",
+      lease.context.userId,
+      lease.connectionId,
+      "run-older-release",
+      "run-older-release",
+    )
+    .run();
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () =>
+      provider(async () => {
+        throw new Error("No provider read after recent folder completion");
+      }),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.syncStateId)
+      .first("stage"),
+  ).toBe("discovery_complete");
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM sync_states WHERE user_id=? AND id='older-older-release'",
+    )
+      .bind(lease.context.userId)
+      .first("stage"),
+  ).toBe("queued");
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND sync_state_id='older-older-release' AND type='discover' AND status='ready'",
+    )
+      .bind(lease.context.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM import_runs WHERE user_id=? AND id='run-older-release'",
+    )
+      .bind(lease.context.userId)
+      .first("stage"),
+  ).toBe("discovering_older");
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-04 hourly sync resumes each folder from its saved opaque delta URL", async () => {
+  const lease = await claimed("hourly-resume");
+  const folderId = "inbox-folder";
+  const stateId = "folder-hourly-resume";
+  const prior = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=prior`;
+  const next = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=next`;
+  await seedLiveFolder(lease, stateId, folderId, prior);
+  await env.DB.prepare(
+    "UPDATE sync_states SET stage='idle' WHERE user_id=? AND id IN (?,?)",
+  )
+    .bind(lease.context.userId, lease.syncStateId, stateId)
+    .run();
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () =>
+      provider(async () => {
+        throw new Error("No provider request while scheduling hourly folders");
+      }),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first("stage"),
+  ).toBe("queued");
+  const ready = await env.DB.prepare(
+    "SELECT id FROM jobs WHERE user_id=? AND sync_state_id=? AND type='sync' AND status='ready'",
+  )
+    .bind(lease.context.userId, lease.syncStateId)
+    .first<{ id: string }>();
+  if (!ready) throw new Error("Hourly continuation missing");
+  const nextLease = await createJobStore(env.DB, { policy }).claim(ready.id);
+  if (!nextLease) throw new Error("Hourly continuation not claimable");
+  let requested = 0;
+  const graph: OutlookGraphDiscoveryPort = {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    deltaFolder: async (input) => {
+      requested++;
+      expect(input.folderId).toBe(folderId);
+      expect(input.continuationLink).toBe(prior);
+      return { ids: [], folderRemovedIds: [], deltaLink: next };
+    },
+  };
+  const secondMeter = createInvocationDatabase(env.DB, 40);
+  const second = createOutlookJobRunner(secondMeter.db, {
+    open: async () => graph,
+    remainingStatements: secondMeter.remainingStatements,
+  });
+  expect(
+    await second.run(nextLease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(requested).toBe(1);
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,history_cursor FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first(),
+  ).toEqual({ stage: "idle", history_cursor: next });
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+  expect(secondMeter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-05 expired delta performs bounded range recovery before acquiring a new folder token", async () => {
+  const lease = await claimed("range-recovery");
+  const folderId = "archive-folder";
+  const stateId = "folder-range-recovery";
+  const expired = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=expired`;
+  const fresh = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=fresh`;
+  await seedLiveFolder(lease, stateId, folderId, expired);
+  const run = async (job: JobLease, graph: OutlookGraphDiscoveryPort) => {
+    const meter = createInvocationDatabase(env.DB, 40);
+    const runner = createOutlookJobRunner(meter.db, {
+      open: async () => graph,
+      remainingStatements: meter.remainingStatements,
+    });
+    const outcome = await runner.run(job, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    });
+    expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+    return outcome;
+  };
+  const base = provider(async () => {
+    throw new Error("Inventory is complete");
+  });
+  expect(
+    await run(lease, {
+      ...base,
+      deltaFolder: async () => {
+        throw new DiscoveryError("HISTORY_EXPIRED");
+      },
+    }),
+  ).toEqual({ kind: "completed" });
+  const claimContinuation = async () => {
+    const ready = await env.DB.prepare(
+      "SELECT id FROM jobs WHERE user_id=? AND sync_state_id=? AND type='sync' AND status='ready' ORDER BY id LIMIT 1",
+    )
+      .bind(lease.context.userId, lease.syncStateId)
+      .first<{ id: string }>();
+    if (!ready) throw new Error("Recovery continuation missing");
+    const nextLease = await createJobStore(env.DB, { policy }).claim(ready.id);
+    if (!nextLease) throw new Error("Recovery continuation not claimable");
+    return nextLease;
+  };
+  let listed = 0;
+  expect(
+    await run(await claimContinuation(), {
+      ...base,
+      listFolder: async (input) => {
+        listed++;
+        expect(input.folderId).toBe(folderId);
+        expect(input.range.startMs).toBe(
+          Date.parse("2025-10-12T00:00:00.000Z"),
+        );
+        expect(input.range.cutoffMs).toBe(
+          Date.parse("2026-10-13T00:00:00.000Z"),
+        );
+        return { ids: [] };
+      },
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(listed).toBe(1);
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first("stage"),
+  ).toBe("recovering_delta");
+  expect(
+    await run(await claimContinuation(), {
+      ...base,
+      deltaFolder: async (input) => {
+        expect(input.continuationLink).toBeUndefined();
+        return { ids: [], folderRemovedIds: [], deltaLink: fresh };
+      },
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,history_cursor FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first(),
+  ).toEqual({ stage: "idle", history_cursor: fresh });
+});
+
+it("OUTLOOK-04 a stale folder CAS cannot queue source work or settle the losing lease", async () => {
+  const lease = await claimed("stale-folder-cas");
+  const folderId = "inbox-folder";
+  const stateId = "folder-stale-cas";
+  const messageId = "immutable+stale/=";
+  const deltaLink = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=fresh`;
+  await seedLiveFolder(lease, stateId, folderId);
+  const graph: OutlookGraphDiscoveryPort = {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    deltaFolder: async () => ({
+      ids: [messageId],
+      folderRemovedIds: [],
+      deltaLink,
+    }),
+    metadata: async (id) => {
+      await env.DB.prepare(
+        "UPDATE sync_states SET discovery_version=discovery_version+1 WHERE user_id=? AND id=?",
+      )
+        .bind(lease.context.userId, stateId)
+        .run();
+      return {
+        id,
+        parentFolderId: folderId,
+        receivedAtMs: Date.parse("2026-10-12T12:00:00.000Z"),
+        available: true,
+        excluded: false,
+        candidate: "unknown" as const,
+      };
+    },
+  };
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => graph,
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "retry", code: "transient" });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM source_messages WHERE user_id=? AND connection_id=?",
+    )
+      .bind(lease.context.userId, lease.connectionId)
+      .first("n"),
+  ).toBe(0);
+  expect(
+    await env.DB.prepare("SELECT status FROM jobs WHERE user_id=? AND id=?")
+      .bind(lease.context.userId, lease.jobId)
+      .first("status"),
+  ).toBe("leased");
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND type='source-extract'",
+    )
+      .bind(lease.context.userId)
+      .first("n"),
+  ).toBe(0);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-05 Graph 429 durably defers a folder without consuming a job failure attempt or its cursor", async () => {
+  const lease = await claimed("rate-limited-folder");
+  const folderId = "inbox-folder";
+  const stateId = "folder-rate-limited";
+  const prior = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=prior`;
+  await seedLiveFolder(lease, stateId, folderId, prior);
+  const before = Date.now();
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => ({
+      ...provider(async () => {
+        throw new Error("Inventory is complete");
+      }),
+      deltaFolder: async (input) => {
+        expect(input.continuationLink).toBe(prior);
+        throw new DiscoveryError("RATE_LIMITED", 60_000);
+      },
+    }),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,page_token,history_cursor,retry_at FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first(),
+  ).toEqual({
+    stage: "queued",
+    page_token: null,
+    history_cursor: prior,
+    retry_at: expect.any(Number),
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT status,retry_count FROM jobs WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.jobId)
+      .first(),
+  ).toEqual({ status: "completed", retry_count: lease.attempt });
+  const continuation = await env.DB.prepare(
+    "SELECT status,dispatch_at FROM jobs WHERE user_id=? AND sync_state_id=? AND type='sync' AND id<>?",
+  )
+    .bind(lease.context.userId, lease.syncStateId, lease.jobId)
+    .first<{ status: string; dispatch_at: number }>();
+  expect(continuation?.status).toBe("ready");
+  expect(continuation?.dispatch_at).toBeGreaterThanOrEqual(before + 60_000);
+  expect(continuation?.dispatch_at).toBeLessThanOrEqual(Date.now() + 60_000);
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM source_messages WHERE user_id=? AND connection_id=?",
+    )
+      .bind(lease.context.userId, lease.connectionId)
+      .first("n"),
+  ).toBe(0);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-04 initial live delta admits only messages in the approved import interval", async () => {
+  const lease = await claimed("live-approved-range");
+  const folderId = "inbox-folder";
+  const stateId = "folder-live-approved-range";
+  const outsideId = "immutable+old/=";
+  const insideId = "immutable+recent/=";
+  const deltaLink = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=approved`;
+  await seedLiveFolder(lease, stateId, folderId);
+  const graph: OutlookGraphDiscoveryPort = {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    deltaFolder: async () => ({
+      ids: [outsideId, insideId],
+      folderRemovedIds: [],
+      deltaLink,
+    }),
+    metadata: async (id) => ({
+      id,
+      parentFolderId: folderId,
+      receivedAtMs: Date.parse(
+        id === outsideId
+          ? "2025-10-11T23:59:59.000Z"
+          : "2026-10-12T12:00:00.000Z",
+      ),
+      available: true,
+      excluded: false,
+      candidate: "unknown",
+    }),
+  };
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => graph,
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT provider_message_id FROM source_messages WHERE user_id=? AND connection_id=?",
+    )
+      .bind(lease.context.userId, lease.connectionId)
+      .all(),
+  ).toMatchObject({ results: [{ provider_message_id: insideId }] });
+  expect(
+    await env.DB.prepare(
+      "SELECT provider_message_id,candidate_kind FROM discovery_seen_refs WHERE user_id=? AND sync_state_id=? ORDER BY provider_message_id",
+    )
+      .bind(lease.context.userId, stateId)
+      .all(),
+  ).toMatchObject({
+    results: [
+      { provider_message_id: outsideId, candidate_kind: "excluded" },
+      { provider_message_id: insideId, candidate_kind: "unknown" },
+    ],
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT history_cursor FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first("history_cursor"),
+  ).toBe(deltaLink);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("OUTLOOK-05 a rate-paused recent folder cannot complete its parent or release the older slice", async () => {
+  const lease = await claimed("paused-recent-child", "recent");
+  const folderId = "archive-folder";
+  await env.DB.prepare(
+    "INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) VALUES(?,?,?,'root',NULL,1,NULL,'complete',?)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.generation,
+      crypto.randomUUID(),
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO outlook_folders(user_id,connection_id,generation,folder_id,parent_folder_id,child_folder_count,is_hidden) VALUES(?,?,?,?,'provider-root',0,0)",
+  )
+    .bind(lease.context.userId, lease.connectionId, lease.generation, folderId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO sync_states(id,user_id,connection_id,import_run_id,scope_key,sync_kind,run_key,slice_key,frozen_start,frozen_cutoff,stage,coverage_code,consecutive_failures) VALUES(?,?,?,? ,?,'backfill',?,'recent','2026-09-13T00:00:00.000Z','2026-10-13T00:00:00.000Z','paused_rate','candidate_unknown',5)",
+  )
+    .bind(
+      "folder-paused-recent-child",
+      lease.context.userId,
+      lease.connectionId,
+      `run-paused-recent-child`,
+      `outlook:${lease.generation}:${folderId}`,
+      `run-paused-recent-child`,
+    )
+    .run();
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () =>
+      provider(async () => {
+        throw new Error("No provider read while a folder is paused");
+      }),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.syncStateId)
+      .first("stage"),
+  ).toBe("paused_rate");
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, "older-paused-recent-child")
+      .first("stage"),
+  ).toBe("waiting_recent");
+  expect(
+    await env.DB.prepare(
+      "SELECT stage FROM import_runs WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, "run-paused-recent-child")
+      .first("stage"),
+  ).not.toBe("processing_pending");
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
