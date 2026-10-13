@@ -198,7 +198,7 @@ The CLI prompts for the value; never put it in a command argument, repository fi
 
 ### Email classification configuration
 
-The Worker reads `config/ai.classification.production.json` directly. The `AI` Workers AI binding supplies Clef; no Cloudflare API key is embedded in the file. `AI_CLASSIFICATION_ENABLED=false` disables classification for an intentional rollout/local override; `AI_CLASSIFICATION_JSON` can explicitly override the bundled configuration. Tests disable the remote binding path by default and use synthetic classifier bindings in dedicated integration cases.
+The Worker reads `config/ai.classification.production.json` directly. The `AI` Workers AI binding supplies Clef; no Cloudflare API key is embedded in the file. Classification is mandatory whenever processing is enabled. Missing or disabled classification, or a missing `AI` binding, blocks processing instead of bypassing the gate. `AI_CLASSIFICATION_JSON` may override the bundled classifier settings but cannot disable the required stage. Tests use synthetic classifier bindings and do not call the remote model.
 
 A probability at or below 0.1 is a strong negative. All other valid receipt answers continue to financial extraction; a category below the configured 0.5 probability threshold remains uncategorized. Classification cannot establish payment, refund, totals or dates. The classifier result is cached per source and reused across attachments and job replay. Unreadable attachments prevent a negative classification from discarding the entire source. Raw state and model responses remain transient.
 

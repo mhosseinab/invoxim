@@ -22,7 +22,7 @@ export function createPipelineRuntime(options: {
   classificationBinding?: ClefBinding | undefined;
   remainingStatements: () => number;
 }): JobHandler {
-  if (options.ai.classification?.enabled && !options.classificationBinding) {
+  if (!options.ai.classification?.enabled || !options.classificationBinding) {
     return {
       async run() {
         return { kind: "paused", code: "handler-unavailable" };
