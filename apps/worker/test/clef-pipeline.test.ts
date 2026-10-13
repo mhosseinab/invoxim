@@ -1236,3 +1236,308 @@ it("DATE-01 multipart plain boilerplate plus complete HTML euro invoice becomes 
       .first("n"),
   ).toBe(0);
 });
+async function interruptedFinancial(
+  version: string,
+  unfinished = false,
+  paidReceipt?: { content: DocumentInput; output: string },
+) {
+  const { hashOnboardingValue } =
+    await import("../../../packages/adapters/src/onboarding/configuration");
+  config = {
+    ...config,
+    promptVersion: version,
+    fingerprint: await hashOnboardingValue([
+      config.mode,
+      price.configurationDigest,
+      1,
+      1,
+      0,
+      1,
+      "consent",
+      version,
+      1,
+    ]),
+  };
+  if (paidReceipt) await sourceDocuments(paidReceipt.content);
+  const selected = service(0.9, policy, paidReceipt?.content ?? input);
+  if (paidReceipt)
+    selected.extract.mockResolvedValue({
+      status: "ok",
+      output: paidReceipt.output,
+      finish: "complete",
+      usage: { input: 20, output: 1, other: 0, source: "reported" },
+    });
+  expect(await selected.pipeline.run(lease, control)).toEqual({
+    kind: "completed",
+  });
+  const paidLease = await continueLease();
+  expect(await selected.pipeline.run(paidLease, control)).toEqual({
+    kind: "completed",
+  });
+  if (paidReceipt)
+    expect(await selected.pipeline.run(await continueLease(), control)).toEqual(
+      { kind: "completed" },
+    );
+  await db
+    .prepare("DELETE FROM jobs WHERE user_id=? AND status='ready'")
+    .bind(tenant.userId)
+    .run();
+  await db
+    .prepare(
+      "UPDATE jobs SET status='leased',lease_id='interrupted',lease_expires_at=?,fence=fence+1 WHERE user_id=? AND id=?",
+    )
+    .bind(lease.expiresAt, tenant.userId, paidLease.jobId)
+    .run();
+  if (unfinished) {
+    await db
+      .prepare(
+        "UPDATE ai_extractions SET result_json=NULL,completed_at=NULL WHERE user_id=? AND destination_id='abacus'",
+      )
+      .bind(tenant.userId)
+      .run();
+    await db
+      .prepare(
+        "UPDATE usage_events SET state='sent' WHERE user_id=? AND destination_id='abacus'",
+      )
+      .bind(tenant.userId)
+      .run();
+  }
+  return {
+    ...selected,
+    current: {
+      ...paidLease,
+      leaseId: "interrupted",
+      fence: paidLease.fence + 1,
+    },
+  };
+}
+it("VERSION-01 completed paid v3 extraction is reused after v4 repair without duplicate model calls", async () => {
+  const { pipeline, run, extract, current } = await interruptedFinancial(
+    "invoice-extraction-v3",
+  );
+  config = {
+    ...config,
+    promptVersion: EXTRACTION_PROMPT_VERSION,
+    fingerprint: await computeAiFingerprint({
+      mode: "hosted",
+      configurationDigest: price.configurationDigest,
+      settingsRevision: 1,
+      generation: 1,
+      credentialVersion: 0,
+      policyVersion: 1,
+      consentId: "consent",
+    }),
+  };
+  expect(await pipeline.run(current, control)).toEqual({ kind: "completed" });
+  expect(await pipeline.run(await continueLease(), control)).toEqual({
+    kind: "completed",
+  });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(
+    await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM usage_events WHERE user_id=? AND destination_id='abacus'",
+      )
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(0);
+});
+it("VERSION-02 sent unfinished v3 attempt remains visible and cannot be charged again by v4", async () => {
+  const { pipeline, run, extract, current } = await interruptedFinancial(
+    "invoice-extraction-v3",
+    true,
+  );
+  config = {
+    ...config,
+    promptVersion: EXTRACTION_PROMPT_VERSION,
+    fingerprint: await computeAiFingerprint({
+      mode: "hosted",
+      configurationDigest: price.configurationDigest,
+      settingsRevision: 1,
+      generation: 1,
+      credentialVersion: 0,
+      policyVersion: 1,
+      consentId: "consent",
+    }),
+  };
+  expect(await pipeline.run(current, control)).toEqual({ kind: "completed" });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(
+    await db
+      .prepare("SELECT parse_code FROM documents WHERE user_id=? AND id='d'")
+      .bind(tenant.userId)
+      .first("parse_code"),
+  ).toBe("cache-review-required");
+  expect(
+    await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM usage_events WHERE user_id=? AND destination_id='abacus'",
+      )
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(1);
+});
+it("VERSION-03 incompatible paid v3 configuration is held without a new provider request", async () => {
+  const { pipeline, run, extract, current } = await interruptedFinancial(
+    "invoice-extraction-v3",
+  );
+  price = { ...price, configurationDigest: "b".repeat(64) };
+  config = {
+    ...config,
+    promptVersion: EXTRACTION_PROMPT_VERSION,
+    fingerprint: await computeAiFingerprint({
+      mode: "hosted",
+      configurationDigest: price.configurationDigest,
+      settingsRevision: 1,
+      generation: 1,
+      credentialVersion: 0,
+      policyVersion: 1,
+      consentId: "consent",
+    }),
+  };
+  expect(await pipeline.run(current, control)).toEqual({ kind: "completed" });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(
+    await db
+      .prepare("SELECT parse_code FROM documents WHERE user_id=? AND id='d'")
+      .bind(tenant.userId)
+      .first("parse_code"),
+  ).toBe("cache-review-required");
+});
+it("VERSION-04 current v4 paid cache still replays without an extra model request", async () => {
+  const { pipeline, run, extract, current } = await interruptedFinancial(
+    EXTRACTION_PROMPT_VERSION,
+  );
+  expect(await pipeline.run(current, control)).toEqual({ kind: "completed" });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).toHaveBeenCalledTimes(1);
+});
+it("VERSION-05 already reconciled paid v3 receipt cannot create a duplicate purchase or payment under v4", async () => {
+  const text =
+    "Synthetic Store\nReceipt 2026-10-13\nTotal EUR 15.00\nPaid EUR 15.00 by card.";
+  const content: DocumentInput = {
+    connectionId: "c",
+    providerMessageId: "m",
+    root: {
+      partId: "body",
+      mimeType: "text/plain",
+      bytes: new TextEncoder().encode(text),
+    },
+  };
+  const output = JSON.stringify({
+    schemaVersion: 1,
+    documentType: "receipt",
+    warnings: [],
+    records: [
+      {
+        merchant: "Synthetic Store",
+        documentDate: "2026-10-13",
+        eventDate: "2026-10-13",
+        currency: "EUR",
+        total: "15.00",
+        tax: null,
+        invoiceNumber: null,
+        orderReference: null,
+        paymentReference: null,
+        refundReference: null,
+        category: "shopping",
+        paymentEvidence: "explicitly-paid",
+        refundEvidence: "none",
+        paymentMethodHint: "card",
+        recurringCadence: "unknown",
+        paymentAmount: "15.00",
+        refundAmount: null,
+        storeCreditAmount: null,
+        evidence: [
+          { field: "merchant", quote: "Synthetic Store" },
+          { field: "documentDate", quote: "2026-10-13" },
+          { field: "eventDate", quote: "2026-10-13" },
+          { field: "currency", quote: "EUR" },
+          { field: "total", quote: "Total EUR 15.00" },
+          { field: "payment", quote: "Paid EUR 15.00 by card." },
+          { field: "paymentAmount", quote: "Paid EUR 15.00 by card." },
+        ].map((item) => ({ ...item, inputPartId: "part-0" })),
+      },
+    ],
+  });
+  const { validateExtraction } = await import("@invoxim/core");
+  expect(
+    validateExtraction(output, [{ id: "part-0", text }], 4096).status,
+  ).toBe("accepted");
+  const { pipeline, run, extract, current } = await interruptedFinancial(
+    "invoice-extraction-v3",
+    false,
+    { content, output },
+  );
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM purchases WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(1);
+  config = {
+    ...config,
+    promptVersion: EXTRACTION_PROMPT_VERSION,
+    fingerprint: await computeAiFingerprint({
+      mode: "hosted",
+      configurationDigest: price.configurationDigest,
+      settingsRevision: 1,
+      generation: 1,
+      credentialVersion: 0,
+      policyVersion: 1,
+      consentId: "consent",
+    }),
+  };
+  expect(await pipeline.run(current, control)).toEqual({ kind: "completed" });
+  expect(
+    await db
+      .prepare("SELECT outcome_code FROM jobs WHERE user_id=? AND id=?")
+      .bind(tenant.userId, current.jobId)
+      .first("outcome_code"),
+  ).toBe("pipeline_staged");
+  expect(
+    await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM jobs WHERE user_id=? AND status='ready'",
+      )
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(0);
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM purchases WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(
+    await db
+      .prepare(
+        "SELECT amount_minor,currency FROM ledger_entries WHERE user_id=?",
+      )
+      .bind(tenant.userId)
+      .first(),
+  ).toEqual({ amount_minor: 1500, currency: "EUR" });
+});
