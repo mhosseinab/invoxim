@@ -569,7 +569,11 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "State projection and API guard tests; Playwright refusal/wrong-account/two-tab/reload/paused/no-results paths; explicit absence of pre-consent content requests.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/login-recovery-local-verification-20261013.md",
+        "evidence/implementation/login-recovery-review-20261013.md"
+      ]
     },
     {
       "id": "T16",
@@ -715,7 +719,11 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "M0 completion report with command evidence, security review and known limitations. Not full-MVP completion.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/deployed-login-browser-qa-20261013.md",
+        "evidence/implementation/goal-progress-20261013-login-and-m1.md"
+      ]
     },
     {
       "id": "T17",
@@ -743,7 +751,8 @@
       "completionEvidence": [],
       "blockedBy": [],
       "localProgressEvidence": [
-        "evidence/implementation/t17-outlook-service-checkpoint.md"
+        "evidence/implementation/t17-outlook-service-checkpoint.md",
+        "evidence/implementation/outlook-durable-job-checkpoint-20261013.md"
       ]
     },
     {
@@ -836,7 +845,10 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Month-end anchors, variable bills, annual terms and override persistence; forecasts never add spending.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/recurring-persistence-checkpoint-20261013.md"
+      ]
     },
     {
       "id": "T21",
