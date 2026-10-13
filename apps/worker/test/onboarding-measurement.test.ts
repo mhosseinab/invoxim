@@ -299,6 +299,9 @@ async function runSample(
               policy,
               clock: () => now,
               processingReview: createProcessingReviewResolver(configuration),
+              ...(configuration.classification
+                ? { classification: configuration.classification }
+                : {}),
             }).recover();
             expect(recovery.executedStatements()).toBeLessThanOrEqual(40);
           }

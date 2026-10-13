@@ -134,7 +134,11 @@ export function createPipelineService(
               ? {
                   extractionVersion:
                     work.previousFinancialExtraction?.fingerprint ===
-                    work.extractionFingerprint
+                      work.extractionFingerprint &&
+                    selected.config.promptVersion ===
+                      EXTRACTION_PROMPT_VERSION &&
+                    work.previousFinancialExtraction.extractionVersion !==
+                      EXTRACTION_PROMPT_VERSION
                       ? work.previousFinancialExtraction.extractionVersion
                       : selected.config.promptVersion,
                   configurationDigest: price.configurationDigest,
