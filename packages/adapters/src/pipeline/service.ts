@@ -1,3 +1,4 @@
+import { EXTRACTION_PROMPT_VERSION } from "@invoxim/contracts";
 import type {
   AiTextPart,
   DocumentInput,
@@ -131,7 +132,11 @@ export function createPipelineService(
             work.extractionFingerprint,
             expected !== work.extractionFingerprint && price
               ? {
-                  extractionVersion: selected.config.promptVersion,
+                  extractionVersion:
+                    work.previousFinancialExtraction?.fingerprint ===
+                    work.extractionFingerprint
+                      ? work.previousFinancialExtraction.extractionVersion
+                      : selected.config.promptVersion,
                   configurationDigest: price.configurationDigest,
                   policyVersion: price.policyVersion,
                 }
@@ -140,14 +145,54 @@ export function createPipelineService(
           if (!cached) return stale;
           return await reconcile(document, work.extractionFingerprint, cached);
         }
+        if (
+          work.stage === "infer" &&
+          currentDocument &&
+          work.previousFinancialExtraction &&
+          work.previousFinancialExtraction.extractionVersion !==
+            EXTRACTION_PROMPT_VERSION
+        ) {
+          const previous = work.previousFinancialExtraction;
+          const selected = await options.inference.open(lease, work, []);
+          if (previous.extractionVersion !== selected.config.promptVersion) {
+            const price = selected.pricing.get(selected.config.fingerprint);
+            const cached =
+              previous.completed && price
+                ? await repository.cachedResult(
+                    lease,
+                    currentDocument.id,
+                    previous.fingerprint,
+                    {
+                      extractionVersion: previous.extractionVersion,
+                      configurationDigest: price.configurationDigest,
+                      policyVersion: price.policyVersion,
+                    },
+                  )
+                : null;
+            if (!cached)
+              return failCurrentDocument
+                ? await failCurrentDocument("cache-review-required")
+                : await finishFailure("review", "cache-review-required");
+            return (await repository.advance(lease, {
+              stage: "reconcile",
+              documentIndex: work.documentIndex,
+              extractionFingerprint: previous.fingerprint,
+            })) === "committed"
+              ? completed
+              : stale;
+          }
+        }
         const selectedPart =
-          work.stage === "infer" && !options.classification
+          work.stage === "infer" &&
+          !options.classification &&
+          currentDocument?.parserVersion !== "documents-direct-v1"
             ? work.documents[work.documentIndex]?.partKey
             : undefined;
         if (
           work.stage === "infer" &&
           selectedPart === undefined &&
-          !options.classification
+          !options.classification &&
+          currentDocument?.parserVersion !== "documents-direct-v1"
         )
           return await finishFailure("review", "invalid-stage");
         const reader = await options.content.open(lease, guardedControl);
@@ -162,9 +207,21 @@ export function createPipelineService(
             ? await failCurrentDocument(content.code)
             : await finishFailure("review", content.code);
         if (!(await authorized())) return stale;
+        const directModelInput =
+          (work.stage === "parse" && options.directModelInputs === true) ||
+          work.documents.some(
+            (document) => document.parserVersion === "documents-direct-v1",
+          );
         const parsed = await options.documents.extract(content.input, {
           tenant: lease.context,
           signal: control.signal,
+          ...(directModelInput ? { inputMode: "direct-model" as const } : {}),
+          ...(!directModelInput &&
+          work.stage !== "parse" &&
+          work.documents[0]?.parserVersion === "documents-v1" &&
+          ["text/plain", "text/html"].includes(work.documents[0].mime)
+            ? { bodyAlternative: "legacy-plain" as const }
+            : {}),
         });
         if (!parsed.documents.length)
           return failCurrentDocument
@@ -181,7 +238,16 @@ export function createPipelineService(
               partKey: document.identity.partId,
               contentHash: document.contentHash,
               mime: document.mimeType,
-              byteLength: lengths.get(document.identity.partId) ?? 0,
+              byteLength:
+                directModelInput && document.status === "ready"
+                  ? document.textParts.reduce(
+                      (sum, part) =>
+                        sum +
+                        (lengths.get(part.partId ?? document.identity.partId) ??
+                          0),
+                      0,
+                    )
+                  : (lengths.get(document.identity.partId) ?? 0),
               parseState: document.status,
               parserVersion: document.parserVersion,
               ...(document.status !== "ready" ? { code: document.code } : {}),
@@ -212,6 +278,12 @@ export function createPipelineService(
         const parts: AiTextPart[] = document.textParts.map((part, index) => ({
           id: `part-${index}`,
           text: part.text,
+          ...(directModelInput
+            ? {
+                interpretation: "model" as const,
+                ...(part.mimeType ? { mimeType: part.mimeType } : {}),
+              }
+            : {}),
         }));
         if (!(await authorized())) return stale;
         const selected = await options.inference.open(lease, work, parts);

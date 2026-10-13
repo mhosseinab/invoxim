@@ -147,11 +147,11 @@ flowchart TD
   Review -->|Explicit Start| Jobs[Durable D1 jobs and ID-only queue delivery]
   Jobs --> Discovery[Bounded source discovery]
   Discovery --> Content[Transient mail or attachment bytes]
-  Content --> Parser[Bounded text extraction]
-  Parser --> Clef[Clef: receipt decision and category in one request]
+  Content --> Input[Bounded MIME decoding: original text and HTML]
+  Input --> Clef[Clef: receipt decision and category in one request]
   Clef -->|Candidate| AI[Selected hosted or BYOK financial extraction]
   Clef -->|Strong negative| Complete[Complete source without financial writes]
-  AI --> Validation[Strict schema, evidence and money validation]
+  AI --> Validation[Strict schema, source citations and exact money validation]
   Validation --> Ledger[Atomic purchase, evidence and ledger writes]
   Ledger --> Data[(D1: structured data and source references)]
   Data --> Views[Purchase views, review, spending and exports]
@@ -169,6 +169,8 @@ Login and mailbox callbacks do not authorize scanning. AI has no tools or direct
 Start with [START_HERE.md](START_HERE.md) and [AGENTS.md](AGENTS.md) for implementation work. [BLUEPRINT.md](BLUEPRINT.md) defines scope; [architecture](docs/02-architecture.md), [data model](docs/03-data-model.md), [API contracts](docs/12-api-contracts.md) and [onboarding](docs/13-presentation-and-onboarding.md) define detailed behavior. [Release gates](docs/10-decisions-and-release-gates.md) and the operator checklists distinguish local evidence from live readiness.
 
 ## AI provider configuration
+
+Newly staged emails send their original decoded text and HTML alternatives together as one model input. Clef decides whether the message contains purchase evidence and categorizes it; the selected hosted or BYOK model interprets all receipt fields. The app checks output structure, real calendar dates, exact monetary precision, source-part citations and cash-event consistency; it does not parse receipt language or demand that normalized values appear literally in raw HTML. Raw content stays transient. Missing facts remain reviewable. Binary image/PDF input is not enabled for Luna until its endpoint support is verified; these files remain explicitly unsupported rather than silently converted. Already staged legacy documents retain their previous input, and paid attempts are reused or held for review rather than charged again.
 
 Email classification uses Cloudflare Clef before financial extraction. One request asks whether the email contains purchase evidence and selects a category; invoice, order and refund evidence remain candidates. The existing provider handles evidence-backed financial extraction.
 

@@ -38,6 +38,7 @@ export function createPipelineRuntime(options: {
       processingDigest: createProcessingReviewResolver(options.ai),
     }),
     content: options.content,
+    directModelInputs: true,
     documents: createDocumentTextExtractor({
       pdf: createLocalPdfTextExtractor(),
     }),

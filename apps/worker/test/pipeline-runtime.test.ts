@@ -227,7 +227,7 @@ it("T12 over-limit encoded response cancels the stream with a safe typed failure
   expect(canceled).toHaveBeenCalledTimes(1);
 });
 
-it("T12 invocation headroom shortage retries before any paid inference", async () => {
+it("T12 staged legacy body remains stable and headroom shortage retries before paid inference", async () => {
   const { env } = await import("cloudflare:workers");
   const db = env.DB;
   const { createDocumentTextExtractor } = await import("@invoxim/core");
@@ -241,13 +241,29 @@ it("T12 invocation headroom shortage retries before any paid inference", async (
     connectionId: "connection",
     providerMessageId: "message",
     root: {
-      partId: "body",
-      mimeType: "text/plain",
-      bytes: new TextEncoder().encode("synthetic receipt"),
+      partId: "alternative",
+      mimeType: "multipart/alternative",
+      children: [
+        {
+          partId: "body",
+          mimeType: "text/plain",
+          bytes: new TextEncoder().encode("synthetic receipt"),
+        },
+        {
+          partId: "html",
+          mimeType: "text/html",
+          bytes: new TextEncoder().encode(
+            "<p>New receipt HTML 15 EUR October 13, 2026</p>",
+          ),
+        },
+      ],
     },
   };
   const documents = createDocumentTextExtractor();
-  const parsed = await documents.extract(input, { tenant });
+  const parsed = await documents.extract(input, {
+    tenant,
+    bodyAlternative: "legacy-plain",
+  });
   const document = parsed.documents[0];
   if (!document) throw new Error("missing synthetic document");
   const extractor = { extract: vi.fn() };

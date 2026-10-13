@@ -10,28 +10,25 @@ Capabilities: text input, image input, native PDF input, JSON schema output, JSO
 
 The sample config intentionally disables live inference and has no credentials. T11/T22 must select a currently available model using synthetic accuracy/cost tests and verify its privacy terms. The operator can choose a free-allowance Cloudflare model or an external endpoint, but no model is presumed free or adequate without measurement. Workers AI pricing and data-use terms are documented independently. [S26, S27]
 
-## PDF and image strategy
+## Current direct-model flow (owner decision, 2026-10-14)
 
-Prefer existing plain text or inertly normalized email HTML. For text-layer PDF attachments, use a swappable Cloudflare `toMarkdown` adapter as the initial candidate, subject to T01 numeric-fidelity/runtime validation. PDF conversion is documented, and most conversions have a free path; image conversions can invoke models and have separate costs. [S24, S25]
+New email bodies use bounded MIME decoding, not local receipt interpretation. Original plain text and HTML alternatives form one labeled document; neither is rendered and external assets are never fetched. Clef classifies the email and categorizes purchase candidates. The selected hosted/BYOK extraction model returns all structured receipt fields from this input with no tools.
 
-Do not use a model-generated summary or image caption as if it were exact OCR. A textless/scanned PDF is `needs_review` unless a separately verified OCR/native-PDF path can extract the actual numeric evidence. JPEG/PNG support is capability-gated. Do not add AI Search, a vector database, R2, or container infrastructure merely to make document conversion work.
+The direct-input validator checks the schema, real calendar dates, supported currency precision, exact minor-unit amounts, nonempty citations to supplied source parts, and typed payment/refund consistency. It does not recognize locale-specific receipt language or compare normalized model values with raw HTML substrings. Citations in this path are model assertions, not independently verified text grounding. Missing or ambiguous required facts remain reviewable. No evidence quotes or model transcripts are persisted.
 
-Reject dangerous/unsupported input before conversion. Limit bytes, document count, page count when available, and output text length. If the relevant final-total/payment section would be truncated or the converter returns suspiciously little text, mark the input incomplete. Never silently extract from only the first page of a multipage invoice.
+Direct inputs use `documents-direct-v1` and `invoice-extraction-v5`. Already staged legacy documents retain their input identity and legacy validator. Previously paid attempts are cached or held for review; a prompt change does not authorize another charge.
 
-A BYOK user still uses the configured parser unless a separate parser choice is supported. Show that destination separately. There is no undisclosed fallback to the operator’s parser/inference vendor after the user rejects that processing destination.
+Abacus documents image and PDF wire formats, but the selected Luna model's compatibility has not been verified. Binary files are explicitly reviewable without a converter call in direct mode. Native binary inputs must be separately capability-tested before activation. Existing parser code remains for legacy jobs only.
 
 ## Pipeline
 
-1. Deterministic candidate detection, MIME normalization, and content identity.
-2. Extract supported merchant templates with explicit amount/date/currency/reference selectors. A matching sender alone is not a trusted template match.
-3. Apply existing user merchant-to-category rules where applicable. This can skip AI categorization, not reading the new transaction amount.
-4. Minimize content. Remove quoted conversation history, marketing sections, tracking links, and unnecessary personal identifiers where reliably separable. Never remove context needed to distinguish subtotal/total/paid/refund.
-5. Send labeled text parts to the chosen extractor with no tools. Output must conform to `contracts/extraction.schema.json`.
-6. Validate JSON and exact evidence strings against the provided parts. Re-parse amount/date evidence deterministically and compare with the proposed normalized values.
-7. Apply business checks: missing currency, ambiguous dates, subtotal/total mismatch, unclear payment, duplicate references, and refund semantics.
-8. Resolve or create review items. Commit only allowed structured fields; discard raw model response and transient evidence text.
-
-Short evidence quotes exist transiently to verify extraction; they are not stored as a shadow copy of email text. Persist only field provenance, source/part IDs, reason codes, version information, and suitable hashes. On-demand review can refetch source text if still available.
+1. Discover sources under the approved mailbox/range and retrieve bounded MIME parts.
+2. Decode original text and HTML as inert data and hash their exact source bytes.
+3. Ask Clef whether the email is a purchase candidate and select its category. Unreadable attachments prevent a body-only negative from discarding the source.
+4. Send the original labeled input to the chosen extraction model, with bounded JSON output and no tools.
+5. Validate the structured result as described above; preserve nulls and review reasons.
+6. Reconcile accepted purchase facts atomically with tenant, consent, generation and lease fencing. An invoice is not proof of payment and a pending refund is not cash.
+7. Cache outcomes and meter usage, including conservative reservations when usage is missing.
 
 ## Prompt contract
 

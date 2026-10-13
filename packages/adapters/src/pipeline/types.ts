@@ -53,6 +53,8 @@ export interface PipelineServiceOptions {
   readonly repository: PipelineRepository;
   readonly content: TransientContentFactory;
   readonly documents: DocumentTextExtractor;
+  /** Newly staged messages go directly to the model; staged legacy jobs retain their input. */
+  readonly directModelInputs?: boolean;
   readonly inference: PipelineInferenceFactory;
   readonly classification?: PipelineClassificationFactory;
   readonly budget: AiBudgetPolicy;

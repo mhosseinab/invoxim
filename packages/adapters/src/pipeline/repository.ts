@@ -62,6 +62,11 @@ export interface PipelineWork {
   readonly documentIndex: number;
   readonly documents: readonly PipelineDocumentMetadata[];
   readonly extractionFingerprint: string | null;
+  readonly previousFinancialExtraction?: {
+    readonly fingerprint: string;
+    readonly extractionVersion: string;
+    readonly completed: boolean;
+  };
 }
 export interface PipelineAdvance {
   readonly stage: "infer" | "reconcile";
@@ -159,7 +164,13 @@ const metadataSchema = z
         "image/png",
         "image/jpeg",
         "image/webp",
-      ].includes(document.mime),
+      ].includes(document.mime) ||
+      (document.parserVersion === "documents-direct-v1" &&
+        [
+          "multipart/alternative",
+          "multipart/mixed",
+          "multipart/related",
+        ].includes(document.mime)),
     "Unsupported ready document MIME",
   );
 type SourceRow = {
@@ -172,6 +183,7 @@ type SourceRow = {
   extraction_fingerprint: string | null;
   documents: string;
   processing_selection?: string;
+  previous_extraction?: string | null;
 };
 type ObservationRow = {
   id: string;
@@ -547,11 +559,12 @@ export function createPipelineRepository(
       guard,
     );
   }
+  const previousFinancialProjection = `(SELECT json_object('fingerprint',e.run_key,'extractionVersion',e.extraction_version,'completed',json(CASE WHEN e.completed_at IS NOT NULL THEN 'true' ELSE 'false' END)) FROM ai_extractions e JOIN documents prior ON prior.user_id=e.user_id AND prior.id=e.document_id WHERE prior.user_id=sm.user_id AND prior.source_message_id=sm.id AND prior.pipeline_index=dj.document_index AND e.purpose='extraction' AND e.content_hash=prior.content_hash AND e.extraction_version LIKE 'invoice-extraction-v%' AND EXISTS(SELECT 1 FROM usage_events paid WHERE paid.user_id=e.user_id AND paid.run_key=e.run_key AND paid.state IN ('sent','known','uncertain','overrun')) ORDER BY e.created_at DESC,e.run_key LIMIT 1)`;
   async function load(lease: JobLease): Promise<PipelineWork | null> {
     const where = baseLiveWhere(lease, clock());
     const row = await db
       .prepare(
-        `SELECT sm.id AS source_id,sm.provider_message_id,pc.ai_settings_revision,pc.disclosure_version,dj.pipeline_stage,dj.document_index,dj.extraction_fingerprint,${options.processingDigest ? `${selectionProjection} AS processing_selection,` : ""}(SELECT COALESCE(json_group_array(json_object('id',dd.id,'partKey',dd.part_key,'contentHash',dd.content_hash,'mime',dd.mime,'byteLength',dd.byte_length,'parseState',dd.parse_state,'parserVersion',dd.parser_version,'code',dd.parse_code)),'[]') FROM (SELECT id,part_key,content_hash,mime,byte_length,parse_state,parser_version,parse_code FROM documents WHERE user_id=sm.user_id AND source_message_id=sm.id AND pipeline_index IS NOT NULL ORDER BY pipeline_index LIMIT 65) dd) AS documents FROM ${LIVE_FROM} WHERE ${where.sql}`,
+        `SELECT sm.id AS source_id,sm.provider_message_id,pc.ai_settings_revision,pc.disclosure_version,${previousFinancialProjection} AS previous_extraction,dj.pipeline_stage,dj.document_index,dj.extraction_fingerprint,${options.processingDigest ? `${selectionProjection} AS processing_selection,` : ""}(SELECT COALESCE(json_group_array(json_object('id',dd.id,'partKey',dd.part_key,'contentHash',dd.content_hash,'mime',dd.mime,'byteLength',dd.byte_length,'parseState',dd.parse_state,'parserVersion',dd.parser_version,'code',dd.parse_code)),'[]') FROM (SELECT id,part_key,content_hash,mime,byte_length,parse_state,parser_version,parse_code FROM documents WHERE user_id=sm.user_id AND source_message_id=sm.id AND pipeline_index IS NOT NULL ORDER BY pipeline_index LIMIT 65) dd) AS documents FROM ${LIVE_FROM} WHERE ${where.sql}`,
       )
       .bind(...where.values)
       .first<SourceRow>();
@@ -568,7 +581,17 @@ export function createPipelineRepository(
       });
       return code === undefined ? metadata : { ...metadata, code };
     });
+    const previous = row.previous_extraction
+      ? z
+          .strictObject({
+            fingerprint: fingerprintSchema,
+            extractionVersion: z.string().min(1).max(120),
+            completed: z.boolean(),
+          })
+          .parse(safeJson(row.previous_extraction))
+      : undefined;
     return {
+      ...(previous ? { previousFinancialExtraction: previous } : {}),
       sourceId: row.source_id,
       providerMessageId: row.provider_message_id,
       settingsRevision: row.ai_settings_revision,
