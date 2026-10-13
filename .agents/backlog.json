@@ -750,7 +750,7 @@
       "id": "T18",
       "title": "Implement optional Google Drive archive",
       "milestone": "M1",
-      "status": "not_started",
+      "status": "in_progress",
       "dependsOn": [
         "T16"
       ],
@@ -774,7 +774,11 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Lost response/409/quota/revocation/source-missing tests; archive failure does not change money.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/t18-workflow-wip-checkpoint.md",
+        "evidence/implementation/t18-workflow-repair-checkpoint.md"
+      ]
     },
     {
       "id": "T19",
