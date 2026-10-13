@@ -721,7 +721,7 @@
       "id": "T17",
       "title": "Implement Outlook mail adapter",
       "milestone": "M1",
-      "status": "not_started",
+      "status": "in_progress",
       "dependsOn": [
         "T16"
       ],
@@ -741,7 +741,10 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Personal/work account protocol fixtures, moved/archive mail and opaque continuation tests.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/t17-outlook-service-checkpoint.md"
+      ]
     },
     {
       "id": "T18",
@@ -777,7 +780,7 @@
       "id": "T19",
       "title": "Implement historical FX reporting",
       "milestone": "M1",
-      "status": "not_started",
+      "status": "in_progress",
       "dependsOn": [
         "T16"
       ],
@@ -798,7 +801,10 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Weekend/missing-rate/per-entry-rounding/refund-date tests and list-summary-export equality.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/t19-fx-service-checkpoint.md"
+      ]
     },
     {
       "id": "T20",
@@ -922,7 +928,7 @@
       "id": "T24",
       "title": "Implement deploy, monitoring and recovery runbooks",
       "milestone": "M1",
-      "status": "not_started",
+      "status": "in_progress",
       "dependsOn": [
         "T16"
       ],
@@ -940,7 +946,10 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Runbook exercises and restore suppression evidence; record missing operator inputs without inventing infrastructure.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/t24-operational-observer.md"
+      ]
     },
     {
       "id": "T30",
