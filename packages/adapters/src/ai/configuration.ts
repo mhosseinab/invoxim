@@ -182,7 +182,12 @@ export function aiConfiguration(bindings: AiBindings) {
             JSON.parse(bindings.AI_CLASSIFICATION_JSON),
           )
         : undefined;
-    if (classification?.enabled && !bindings.AI) return null;
+    if (
+      !classification?.enabled ||
+      !bindings.AI ||
+      typeof bindings.AI.run !== "function"
+    )
+      return null;
     return {
       ...(classification?.enabled ? { classification } : {}),
       destinations,
