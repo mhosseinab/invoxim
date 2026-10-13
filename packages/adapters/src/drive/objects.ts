@@ -50,20 +50,20 @@ const current = `EXISTS(
  JOIN connections m ON m.user_id=s.user_id AND m.id=s.connection_id
  JOIN connections c ON c.user_id=p.user_id AND c.id=archive_objects.storage_connection_id
  JOIN archive_settings a ON a.user_id=p.user_id
- WHERE p.user_id=archive_objects.user_id AND p.status='active'
- AND d.source_message_id=archive_objects.source_message_id AND d.part_key=archive_objects.part_key
- AND d.content_hash=archive_objects.document_hash AND d.mime=archive_objects.document_mime AND d.byte_length=archive_objects.document_size
- AND s.available=1 AND s.provider_message_id=archive_objects.provider_message_id AND s.generation=archive_objects.mailbox_generation
- AND m.id=archive_objects.mailbox_connection_id AND m.generation=archive_objects.mailbox_generation
- AND m.kind='mailbox' AND m.state='connected' AND m.credential_ciphertext IS NOT NULL AND m.credential_key_version>0
- AND c.kind='storage' AND c.provider='google-drive' AND c.state='connected'
+ WHERE (p.user_id=archive_objects.user_id AND p.status='active')
+ AND (d.source_message_id=archive_objects.source_message_id AND d.part_key=archive_objects.part_key
+ AND d.content_hash=archive_objects.document_hash AND d.mime=archive_objects.document_mime AND d.byte_length=archive_objects.document_size)
+ AND (s.available=1 AND s.provider_message_id=archive_objects.provider_message_id AND s.generation=archive_objects.mailbox_generation)
+ AND (m.id=archive_objects.mailbox_connection_id AND m.generation=archive_objects.mailbox_generation
+ AND m.kind='mailbox' AND m.state='connected' AND m.credential_ciphertext IS NOT NULL AND m.credential_key_version>0)
+ AND (c.kind='storage' AND c.provider='google-drive' AND c.state='connected'
  AND c.generation=archive_objects.storage_generation AND c.provider_subject=archive_objects.storage_subject
  AND c.credential_ciphertext IS NOT NULL AND c.credential_key_version>0
  AND json_type(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END)='array'
- AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file')
- AND a.enabled=1 AND a.version=archive_objects.settings_version AND a.connection_id=c.id AND a.connection_generation=c.generation AND a.disclosure_version=1
+ AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file'))
+ AND (a.enabled=1 AND a.version=archive_objects.settings_version AND a.connection_id=c.id AND a.connection_generation=c.generation AND a.disclosure_version=1)
 )`;
-const leaseGuard = `user_id=? AND id=? AND state='pending' AND lease_id=? AND fence=? AND lease_expires_at=? AND lease_expires_at>? AND ${current}`;
+const leaseGuard = `(user_id=? AND id=? AND state='pending') AND (lease_id=? AND fence=? AND lease_expires_at=? AND lease_expires_at>?) AND ${current}`;
 
 function credentialGuard(value: ArchiveCredentialFences | undefined) {
   if (!value) return { sql: "", values: [] as (string | number)[] };

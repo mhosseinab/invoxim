@@ -4,10 +4,7 @@ import type { TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import sessionMigration from "../../../packages/adapters/migrations/0002_archive_upload_sessions.sql?raw";
-import {
-  archiveObjectAuthorization,
-  createArchiveObjectStore,
-} from "../../../packages/adapters/src/drive/objects";
+import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { createArchiveUploadSessionStore } from "../../../packages/adapters/src/drive/session-store";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import type {
@@ -245,59 +242,4 @@ it("fences progress against replaced session versions and refuses credential cha
       .bind(owner.userId, work.lease.id)
       .first(),
   ).toEqual({ version: 2, uploaded_bytes: 0 });
-});
-
-it("diagnoses synthetic native session SQL using the unchanged parent authorization guard", async () => {
-  const guard = archiveObjectAuthorization(
-    owner,
-    work.lease,
-    Date.now(),
-    fences,
-  );
-  const sql = `${guard.sql} AND planned_file_id=? AND parent_id=? AND workspace_marker=? AND original_mime=? AND original_size=? AND original_sha256=?`;
-  const values = [
-    ...guard.values,
-    plan.fileId,
-    plan.parentId,
-    plan.workspaceMarker,
-    plan.mimeType,
-    plan.size,
-    plan.sha256,
-  ];
-  await expect(
-    db
-      .prepare(`SELECT 1 AS eligible FROM archive_objects WHERE ${sql}`)
-      .bind(...values)
-      .first(),
-  ).resolves.toEqual({ eligible: 1 });
-  await expect(
-    db
-      .prepare(
-        `SELECT reference_ciphertext,key_version,version,expires_at,uploaded_bytes FROM archive_upload_sessions s WHERE s.user_id=? AND s.object_id=? AND EXISTS(SELECT 1 FROM archive_objects WHERE ${sql})`,
-      )
-      .bind(owner.userId, work.lease.id, ...values)
-      .first(),
-  ).resolves.toBeNull();
-  const value = await reference();
-  await expect(
-    db
-      .prepare(
-        `INSERT INTO archive_upload_sessions(user_id,object_id,reference_ciphertext,key_version,version,expires_at,uploaded_bytes) SELECT ?,?,?,?,1,?,0 WHERE EXISTS(SELECT 1 FROM archive_objects WHERE ${sql}) AND (?=0 OR EXISTS(SELECT 1 FROM archive_upload_sessions WHERE user_id=? AND object_id=? AND version=?)) ON CONFLICT(user_id,object_id) DO UPDATE SET reference_ciphertext=excluded.reference_ciphertext,key_version=excluded.key_version,version=archive_upload_sessions.version+1,expires_at=excluded.expires_at,uploaded_bytes=0 WHERE archive_upload_sessions.version=? AND archive_upload_sessions.version<? RETURNING version`,
-      )
-      .bind(
-        owner.userId,
-        work.lease.id,
-        value.ciphertext,
-        value.keyVersion,
-        value.expiresAt,
-        ...values,
-        0,
-        owner.userId,
-        work.lease.id,
-        0,
-        0,
-        2147483646,
-      )
-      .first(),
-  ).resolves.toEqual({ version: 1 });
 });

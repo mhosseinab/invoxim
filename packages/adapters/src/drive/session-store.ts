@@ -36,7 +36,7 @@ const referenceSchema = z.strictObject({
   expiresAt: integer.min(1),
 });
 const planClause =
-  " AND planned_file_id=? AND parent_id=? AND workspace_marker=? AND original_mime=? AND original_size=? AND original_sha256=?";
+  " AND (planned_file_id=? AND parent_id=? AND workspace_marker=? AND original_mime=? AND original_size=? AND original_sha256=?)";
 const fields =
   "reference_ciphertext,key_version,version,expires_at,uploaded_bytes";
 interface SessionRow {
