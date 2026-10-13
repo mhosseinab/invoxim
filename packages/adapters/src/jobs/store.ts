@@ -214,19 +214,12 @@ export function createJobStore(
     const filter = kind === "recovery" ? "" : "status='active' AND ";
     const users = (
       await prepare(
-        `SELECT user_id,job_recovery_cursor FROM profiles WHERE ${filter}user_id>? ORDER BY user_id LIMIT ?`,
+        `SELECT user_id,job_recovery_cursor FROM (SELECT user_id,job_recovery_cursor,0 AS wrap_rank FROM (SELECT user_id,job_recovery_cursor FROM profiles WHERE ${filter}user_id>? ORDER BY user_id LIMIT ?) UNION ALL SELECT user_id,job_recovery_cursor,1 AS wrap_rank FROM (SELECT user_id,job_recovery_cursor FROM profiles WHERE ${filter}user_id<=? ORDER BY user_id LIMIT ?)) ORDER BY wrap_rank,user_id LIMIT ?`,
       )
-        .bind(cursor.last_user_id, limit)
+        .bind(cursor.last_user_id, limit, cursor.last_user_id, limit, limit)
         .all<{ user_id: string; job_recovery_cursor: string }>()
     ).results;
-    // Reset at the end of a page; the next invocation wraps without extra query work.
-    if (users.length === 0 && cursor.last_user_id !== "" && remaining() >= 1) {
-      await prepare(
-        "UPDATE scheduler_cursors SET last_user_id='',version=version+1 WHERE kind=? AND version=?",
-      )
-        .bind(kind, cursor.version)
-        .run();
-    }
+    // Two bounded index ranges wrap in this statement, without an idle reset tick.
     let version = cursor.version;
     return {
       users,
