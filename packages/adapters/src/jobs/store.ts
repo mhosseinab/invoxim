@@ -403,7 +403,12 @@ export function createJobStore(
           Math.min(policy.dispatchLimit, 5),
         );
         const groups: DispatchCandidate[][] = [];
-        // Three indexed branches fetch at most two identifiers before authorization checks.
+        // Queue fill is bounded by dispatch reservations, not active lease slots.
+        const perTenantCandidates = Math.min(
+          policy.dispatchLimit,
+          reservationCap,
+        );
+        // Three indexed priority branches each fetch at most that reserved bound.
         const branches = [0, 1, 2].map(
           () =>
             "SELECT id FROM (SELECT id FROM jobs WHERE user_id=? AND status IN ('ready','retry_wait') AND priority=? AND dispatch_at<=? ORDER BY dispatch_at,id LIMIT ?)",
@@ -412,12 +417,12 @@ export function createJobStore(
           if (remaining() < 2) break;
           const bindings: unknown[] = [];
           for (const priority of [0, 1, 2])
-            bindings.push(user.user_id, priority, at, policy.tenantConcurrency);
+            bindings.push(user.user_id, priority, at, perTenantCandidates);
           const rows = (
             await prepare(
               `SELECT ${columns} FROM jobs WHERE id IN (${branches.join(" UNION ALL ")}) AND ${live} ORDER BY priority,dispatch_at,id LIMIT ?`,
             )
-              .bind(...bindings, at, policy.tenantConcurrency)
+              .bind(...bindings, at, perTenantCandidates)
               .all<Row>()
           ).results;
           groups.push(
@@ -432,7 +437,7 @@ export function createJobStore(
           if (!(await window.advance(user.user_id))) break;
         }
         const output: DispatchCandidate[] = [];
-        for (let rank = 0; rank < policy.tenantConcurrency; rank++)
+        for (let rank = 0; rank < perTenantCandidates; rank++)
           for (const group of groups) {
             const item = group[rank];
             if (item && output.length < policy.dispatchLimit) output.push(item);
