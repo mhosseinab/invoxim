@@ -108,7 +108,7 @@ export function validateExtraction(
               contextLines(
                 inputs.get(item.inputPartId) ?? "",
                 item.quote,
-              ).every((line) => groundedDate(line, value)),
+              ).every((line) => groundedDate(line, value) && !forbiddenDateContext(line,value,item.quote)),
           )
       )
         return { status: "needs-review", reason: "date" };
@@ -400,6 +400,24 @@ export function validateExtraction(
       })),
     })),
   };
+}
+function forbiddenDateContext(line: string, date: string, quote: string): boolean {
+  const forbiddenLabels = /\b(?:due(?:\s*date)?|expires?(?:\s*(?:date|on|at))?|expiry(?:\s*date)?|expiration(?:\s*date)?|(?:email|mail|message)\s+(?:(?:sent|received)(?:\s*(?:date|time|at|on))?|date)|(?:sent|received)\s+(?:email|mail|message)(?:\s*(?:date|time))?)\s*[:=]?/gi;
+  for(const match of line.matchAll(forbiddenLabels)) {
+    const tail=line.slice((match.index??0)+match[0].length);
+    const nextLabel=tail.search(/[;\n]|\b(?:invoice|receipt|transaction|order|payment|refund)\s+(?:date|on|at)\b|\bpaid\s+on\b/i);
+    const labelledDate=nextLabel<0?tail:tail.slice(0,nextLabel);
+    if(!groundedDate(labelledDate,date))continue;
+    const segmentStart=(match.index??0)+match[0].length;
+    const segmentEnd=segmentStart+labelledDate.length;
+    let quoteStart=line.indexOf(quote);
+    if(quoteStart<0)return true;
+    while(quoteStart>=0) {
+      if(quoteStart<segmentEnd && quoteStart+quote.length>segmentStart)return true;
+      quoteStart=line.indexOf(quote,quoteStart+1);
+    }
+  }
+  return false;
 }
 const printedMonthPatterns = [
   "jan(?:uary)?",

@@ -147,3 +147,20 @@ it("CURRENCY-03 a dollar amount cannot borrow a euro currency label from another
     ),
   ).toEqual({ status: "needs-review", reason: "money" });
 });
+it.each(["Invoice due date", "Expiry date", "Email sent", "Email received date"])("DATE-04 %s cannot supply the document date despite matching printed evidence",label=>{
+  const {output,text}=candidate("October 13, 2026");
+  expect(validateExtraction(JSON.stringify(output),[{id:"body",text:text.replace("Invoice date",label)}],10000)).toEqual({status:"needs-review",reason:"date"});
+});
+it("DATE-04 a due date cannot supply an event date while the document has its own valid date",()=>{
+  const {output,text}=candidate("2026-10-13");const record=output.records[0];if(!record)throw new Error("synthetic record missing");record.eventDate="2026-10-14";record.evidence.push({field:"eventDate",inputPartId:"body",quote:"October 14, 2026"});
+  expect(validateExtraction(JSON.stringify(output),[{id:"body",text:`${text}\nInvoice due date: October 14, 2026`}],10000)).toEqual({status:"needs-review",reason:"date"});
+});
+it("DATE-04 an unrelated due date on the same source line does not invalidate an explicit invoice date",()=>{
+  const {output,text}=candidate("October 13, 2026");
+  expect(validateExtraction(JSON.stringify(output),[{id:"body",text:text.replace("Invoice date: October 13, 2026","Invoice date: October 13, 2026; Due date: November 14, 2026")}],10000).status).toBe("accepted");
+});
+it("DATE-04 explicit invoice-date evidence remains valid when an unrelated due date has the same value",()=>{
+  const {output,text}=candidate("October 13, 2026");const record=output.records[0];if(!record)throw new Error("synthetic record missing");
+  const evidence=record.evidence.find(item=>item.field==="documentDate");if(!evidence)throw new Error("synthetic date evidence missing");evidence.quote="Invoice date: October 13, 2026";
+  expect(validateExtraction(JSON.stringify(output),[{id:"body",text:text.replace("Invoice date: October 13, 2026","Invoice date: October 13, 2026; Due date: October 13, 2026")}],10000).status).toBe("accepted");
+});
