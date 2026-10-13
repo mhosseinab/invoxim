@@ -8,6 +8,7 @@ const payloadSchema = z.strictObject({
     "lifecycle",
     "storage-settings",
     "fx-reporting",
+    "recurring",
   ]),
   userId: z.string().min(1).max(256),
   sessionId: z.string().min(1).max(256),
