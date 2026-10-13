@@ -24,7 +24,7 @@ No migration or new queue/stage/resource is required beyond the Workers AI bindi
 
 - [x] Final behavioral and repository verification.
 - [x] Final independent review and recoverable commits.
-- [ ] Deploy Worker and frontend together when authorized.
+- [x] Deploy Worker and frontend together when authorized.
 - [ ] New processing review/Start approval includes Cloudflare classification; prior consent cannot authorize the new processor.
 - [ ] Separate live synthetic Clef quality/latency/cost smoke; deterministic mocks do not prove accuracy.
 
@@ -41,3 +41,5 @@ Recovery P1 follow-up: two native unchanged-consent renewal cases initially fail
 `pnpm verify` completed with exit 0 in the isolated source checkout. 1404 native Worker tests across 115 files, 379 core tests, 48 contract tests and 84 browser tests passed, together with boundary, secret/dependency policy, format/Biome/ESLint, types, builds and production publication guard. Log: `/tmp/invoxim-clef-final-complete-verify.txt`; root terminal 51113. Independent read-only review approved checkpoint 0377e87 and inspected the final focused recovery evidence.
 
 The implementation gates are complete. Deployment, renewed processing consent and separately measured live-model quality remain operator rollout gates; no private-email Clef call or production deployment was performed.
+
+Subsequent owner-authorized rollout completed; see `corrections-clef-reset-20261013.md`. Worker and frontend are deployed, prior import state is reset, and renewed Review/Start plus live-model quality verification remain pending.

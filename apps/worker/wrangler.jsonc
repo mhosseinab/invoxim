@@ -10,7 +10,7 @@
     "AUTH_ORIGIN": "https://invoxim-web.pages.dev",
     "AUTH_GOOGLE_CLIENT_ID": "563909797128-8ho9ofplbgl7cu45isplfec18umknru9.apps.googleusercontent.com",
     "GMAIL_CLIENT_ID": "563909797128-s3loaq011nlfsjl1d250kcl90h1th186.apps.googleusercontent.com",
-    "CORRECTIONS_ENABLED": "false",
+    "CORRECTIONS_ENABLED": "true",
     "EXTRACTION_ENABLED": "true",
     "AUTH_ALLOWED_EMAILS": "[\"mh.abolghasemi@gmail.com\"]",
     "GMAIL_ENABLED": "true",
