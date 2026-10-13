@@ -2,6 +2,7 @@ import { inertHtmlText } from "./html";
 import { binarySignature } from "./signatures";
 import type {
   DocumentCode,
+  DocumentContext,
   DocumentInput,
   DocumentLimits,
   DocumentResult,
@@ -159,6 +160,181 @@ function select(
   const result = visit(root);
   return [...result.body, ...result.attachments];
 }
+async function directModelInput(
+  input: DocumentInput,
+  limits: Readonly<DocumentLimits>,
+  context: DocumentContext,
+): Promise<MessageDocumentResult> {
+  const bodies: MimePart[] = [];
+  const attachments: MimePart[] = [];
+  const ignoredPartIds: string[] = [];
+  function visit(node: MimePart) {
+    if (node.children) {
+      for (const child of node.children) visit(child);
+      return;
+    }
+    const mime = node.mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+    if (
+      mime.startsWith("image/") &&
+      node.disposition !== "attachment" &&
+      (node.disposition === "inline" || node.contentId)
+    ) {
+      ignoredPartIds.push(node.partId);
+      return;
+    }
+    if (
+      (mime === "text/plain" || mime === "text/html") &&
+      !node.filename &&
+      node.disposition !== "attachment"
+    )
+      bodies.push(node);
+    else attachments.push(node);
+  }
+  visit(input.root);
+  const groups = [
+    ...(bodies.length ? [bodies] : []),
+    ...attachments.map((part) => [part]),
+  ];
+  const documents: DocumentResult[] = [];
+  let characters = 0;
+  for (const group of groups) {
+    if (context.signal?.aborted)
+      return {
+        status: "needs_review",
+        code: "canceled",
+        documents: [],
+        ignoredPartIds: [],
+      };
+    const first = group[0];
+    if (!first?.bytes)
+      return {
+        status: "unreadable",
+        code: "invalid_mime",
+        documents: [],
+        ignoredPartIds: [],
+      };
+    const grouped = group.length > 1;
+    const identityPart = grouped ? input.root : first;
+    let hashBytes: Uint8Array;
+    if (!grouped) hashBytes = first.bytes;
+    else {
+      // Length framing preserves each exact original byte sequence and its provider part identity.
+      const framed = group.map((part) => ({
+        part,
+        header: new TextEncoder().encode(
+          JSON.stringify([part.partId, part.mimeType, part.bytes?.length ?? 0]),
+        ),
+      }));
+      hashBytes = new Uint8Array(
+        framed.reduce(
+          (size, item) =>
+            size + 4 + item.header.length + (item.part.bytes?.length ?? 0),
+          0,
+        ),
+      );
+      let offset = 0;
+      const view = new DataView(hashBytes.buffer);
+      for (const item of framed) {
+        view.setUint32(offset, item.header.length);
+        offset += 4;
+        hashBytes.set(item.header, offset);
+        offset += item.header.length;
+        if (item.part.bytes) {
+          hashBytes.set(item.part.bytes, offset);
+          offset += item.part.bytes.length;
+        }
+      }
+    }
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new Uint8Array(hashBytes),
+    );
+    const mimeType =
+      identityPart.mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+    const base = {
+      identity: {
+        connectionId: input.connectionId,
+        providerMessageId: input.providerMessageId,
+        partId: identityPart.partId,
+      },
+      role:
+        !first.filename &&
+        first.disposition !== "attachment" &&
+        ["text/plain", "text/html"].includes(
+          first.mimeType.toLowerCase().split(";")[0]?.trim() ?? "",
+        )
+          ? ("body" as const)
+          : ("attachment" as const),
+      mimeType,
+      contentHash: [...new Uint8Array(digest)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join(""),
+      parserVersion: "documents-direct-v1",
+    };
+    if (
+      group.some(
+        (part) =>
+          !["text/plain", "text/html"].includes(
+            part.mimeType.toLowerCase().split(";")[0]?.trim() ?? "",
+          ),
+      )
+    ) {
+      documents.push({
+        ...base,
+        status: "needs_review",
+        code: "converter_unavailable",
+      });
+      continue;
+    }
+    const textParts: {
+      page: null;
+      text: string;
+      partId: string;
+      mimeType: "text/plain" | "text/html";
+    }[] = [];
+    let invalidEncoding = false;
+    for (const part of group) {
+      try {
+        const text = new TextDecoder(part.charset ?? "utf-8", {
+          fatal: true,
+          ignoreBOM: false,
+        }).decode(part.bytes);
+        characters += text.length;
+        if (characters > limits.textCharacters)
+          return {
+            status: "incomplete",
+            code: "text_limit",
+            documents: [],
+            ignoredPartIds: [],
+          };
+        const textMime = part.mimeType.toLowerCase().split(";")[0]?.trim();
+        if (textMime !== "text/plain" && textMime !== "text/html")
+          throw new Error("INVALID_TEXT_MIME");
+        textParts.push({
+          page: null,
+          text,
+          partId: part.partId,
+          mimeType: textMime,
+        });
+      } catch {
+        invalidEncoding = true;
+        break;
+      }
+    }
+    documents.push(
+      invalidEncoding
+        ? { ...base, status: "unreadable", code: "invalid_encoding" }
+        : { ...base, status: "ready", textParts, pageCount: null },
+    );
+  }
+  return {
+    status: documents.every((document) => document.status === "ready")
+      ? "ready"
+      : "needs_review",
+    documents,
+    ignoredPartIds,
+  };
+}
 export function createDocumentTextExtractor(
   options: {
     pdf?: PdfTextExtractor;
@@ -192,6 +368,8 @@ export function createDocumentTextExtractor(
           invalid.endsWith("limit") ? "incomplete" : "unreadable",
           invalid,
         );
+      if (context.inputMode === "direct-model")
+        return directModelInput(input, limits, context);
       const ignoredPartIds: string[] = [];
       const documents: DocumentResult[] = [];
       let characters = 0;

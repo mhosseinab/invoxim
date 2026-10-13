@@ -40,6 +40,8 @@ export interface DocumentContext {
   signal?: AbortSignal;
   /** Preserve the selected part/hash for already staged version-one documents. */
   bodyAlternative?: "legacy-plain";
+  /** Transport original decoded text/HTML to the model without receipt parsing. */
+  inputMode?: "direct-model";
 }
 export type DocumentCode =
   | "byte_limit"
@@ -67,7 +69,12 @@ export type DocumentResult = {
 } & (
   | {
       status: "ready";
-      textParts: { page: number | null; text: string }[];
+      textParts: {
+        page: number | null;
+        text: string;
+        partId?: string;
+        mimeType?: "text/plain" | "text/html";
+      }[];
       pageCount: number | null;
     }
   | {
