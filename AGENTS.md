@@ -47,6 +47,8 @@ Review roles do not fix their own findings. Return a reproducible finding to the
 
 Use `.agents/templates/task-handoff.md`, `review-report.md`, and `completion-report.md`. Keep task status in `.agents/backlog.json`. Include evidence paths and command results; store only synthetic data in repository artifacts.
 
+Create scoped Git commits at useful implementation checkpoints, especially before substantial refactors or migrations and after verified milestones. Do not leave a long sequence of changes without recoverable commits. State verification status accurately, keep unrelated work out of each commit, and never overwrite or discard the owner's changes to simplify a revert.
+
 ## Done means
 
 Acceptance tests pass; typecheck/lint/format/build and applicable integration/E2E/security checks pass; migrations are exercised; no unapproved critical/high security issue remains; an independent review is recorded when available; docs match behavior; operational and privacy effects are explicit.
