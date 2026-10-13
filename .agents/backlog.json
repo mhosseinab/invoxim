@@ -371,7 +371,10 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Malformed/injection/SSRF/capability/budget race tests; synthetic endpoint smoke and masked settings.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/ai-runtime-activation-20261013.md"
+      ]
     },
     {
       "id": "T12",
@@ -753,7 +756,8 @@
       "localProgressEvidence": [
         "evidence/implementation/t17-outlook-service-checkpoint.md",
         "evidence/implementation/outlook-durable-job-checkpoint-20261013.md",
-        "evidence/implementation/t17-outlook-floor-review-20261013.md"
+        "evidence/implementation/t17-outlook-floor-review-20261013.md",
+        "evidence/implementation/t17-outlook-factories-checkpoint-20261013.md"
       ]
     },
     {
@@ -787,7 +791,8 @@
       "blockedBy": [],
       "localProgressEvidence": [
         "evidence/implementation/t18-workflow-wip-checkpoint.md",
-        "evidence/implementation/t18-workflow-repair-checkpoint.md"
+        "evidence/implementation/t18-workflow-repair-checkpoint.md",
+        "evidence/implementation/t18-dispatch-backfill-checkpoint-20261013.md"
       ]
     },
     {
@@ -819,7 +824,8 @@
       "localProgressEvidence": [
         "evidence/implementation/t19-fx-service-checkpoint.md",
         "evidence/implementation/t19-period-integration-plan-20261013.md",
-        "evidence/implementation/t19-reporting-revision-checkpoint.md"
+        "evidence/implementation/t19-reporting-revision-checkpoint.md",
+        "evidence/implementation/t19-period-api-checkpoint-20261013.md"
       ]
     },
     {
