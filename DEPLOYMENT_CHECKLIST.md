@@ -68,3 +68,12 @@ T13–T15 and T29 local verification is complete: 770 distinct tests, 79 repeate
 - [ ] Treat `0001_initial.sql` as the fresh-database starting point. Do not apply it on top of an existing migrated database or reset that database automatically. Review `evidence/implementation/baseline-transition-checklist.md` and compare every application constraint/index and required scheduler seed against the historical schema before changing migration bookkeeping.
 
 - [ ] Keep pilot measurement disabled until separate user opt-in, opt-out, retention/deletion and content-free event handling are verified. Record pilot benchmarks as NOT RUN until the approved pilot is actually executed.
+
+## Reported deployment and live login QA — 13 October 2026
+
+Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser login QA ran against that URL; Google initiation failed before redirect. Evidence: `evidence/implementation/deployed-login-browser-qa-20261013.md`. Existing unchecked release gates remain unchecked.
+
+- [ ] Record the actual deployed commit, Pages/Worker build identities and intended D1 binding; do not assume they match the local worktree.
+- [ ] Resolve the login-initiation failure and independently recheck the actual Google redirect after the reviewed fix is deployed.
+- [ ] Verify anonymous private routes offer configured sign-in recovery and fresh anonymous visits use neutral signed-out copy.
+- [ ] Complete login/callback/session/logout with an approved test identity and record refusal, wrong-account and allowlist behavior without retaining tokens or personal screenshots.
