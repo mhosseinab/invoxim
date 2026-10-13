@@ -8,11 +8,20 @@ const identifier = z
   .max(120)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
+export const aiModelIdentifierSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(
+    /^(?:[A-Za-z0-9._:-]+|@[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*)$/,
+  )
+  .refine((value) => !hasControlCharacters(value));
+
 export const aiSettingsRequestSchema = z.strictObject({
   version,
   mode: z.enum(["hosted", "byok"]),
   providerId: identifier,
-  modelId: identifier,
+  modelId: aiModelIdentifierSchema,
   acceptedPolicyVersion: z.number().int().min(1).max(2147483646),
   apiKey: z
     .string()
@@ -32,7 +41,7 @@ export const aiSettingsResponseSchema = z.strictObject({
   version,
   mode: z.enum(["hosted", "byok"]).nullable(),
   providerId: identifier.nullable(),
-  modelId: identifier.nullable(),
+  modelId: aiModelIdentifierSchema.nullable(),
   keyConfigured: z.boolean(),
   processingReviewRequired: z.literal(true),
   configured: z.boolean(),
@@ -61,7 +70,7 @@ export const aiSettingsResponseSchema = z.strictObject({
     .array(
       z.strictObject({
         id: identifier,
-        models: z.array(identifier).min(1).max(10),
+        models: z.array(aiModelIdentifierSchema).min(1).max(10),
         policyVersion: z.number().int().min(1).max(2147483646),
         noticeRefs: z.array(identifier).min(1).max(10),
       }),

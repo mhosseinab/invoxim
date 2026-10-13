@@ -1,0 +1,70 @@
+{
+  "status": "owner-selected-default-operator-review-required",
+  "instructions": "Selected default: Abacus RouteLLM with fixed model gpt-6-luna. Review Abacus and upstream OpenAI processor terms and replace unverified pricing fields; set pricing.approved=true only after review. Serialize registry into AI_REGISTRY_JSON. Keep AI_ENABLED=false until server secret, budget and synthetic live smoke gates pass. This public file is a preparation template, not runtime configuration.",
+  "variables": {
+    "AI_ENABLED": "false",
+    "AI_HOSTED_DESTINATION": "abacus-routellm",
+    "AI_HOSTED_MODEL": "gpt-6-luna"
+  },
+  "requiredServerSecrets": ["AI_HOSTED_KEY", "CREDENTIAL_KEYRING"],
+  "requiredBudgetVariable": "AI_BUDGET_JSON",
+  "registry": [
+    {
+      "id": "abacus-routellm",
+      "endpoint": "https://routellm.abacus.ai/v1/chat/completions",
+      "configVersion": "abacus-gpt-6-luna-v1",
+      "policyVersion": 1,
+      "noticeRefs": ["abacus-routellm-v1", "openai-upstream-v1"],
+      "notices": [
+        {
+          "id": "abacus-routellm-v1",
+          "displayName": "Abacus.AI RouteLLM",
+          "dataUseSummary": "OPERATOR REVIEW REQUIRED: purchase evidence is sent to Abacus.AI to invoke the explicitly selected OpenAI model. Review provider-managed failover destinations.",
+          "retentionSummary": "OPERATOR REVIEW REQUIRED: disclose applicable RouteLLM retention and logging terms; do not claim zero retention without evidence.",
+          "privacyUrl": "https://abacus.ai/privacy-policy"
+        },
+        {
+          "id": "openai-upstream-v1",
+          "displayName": "OpenAI (upstream model provider)",
+          "dataUseSummary": "OPERATOR REVIEW REQUIRED: GPT-6 Luna is listed as an OpenAI model. Review the upstream processor terms applicable through Abacus.AI.",
+          "retentionSummary": "OPERATOR REVIEW REQUIRED: disclose applicable upstream retention and processing terms before enabling.",
+          "privacyUrl": "https://openai.com/policies/privacy-policy/"
+        }
+      ],
+      "timeoutMs": 30000,
+      "maxInputBytes": 24000,
+      "maxOutputBytes": 65536,
+      "maxOutputTokens": 4096,
+      "models": [
+        {
+          "id": "gpt-6-luna",
+          "capabilities": {
+            "jsonSchema": false,
+            "jsonObject": true,
+            "outputLimit": "max_tokens",
+            "usage": true,
+            "idempotency": false
+          },
+          "pricing": {
+            "version": "abacus-gpt-6-luna-pricing-unverified",
+            "approved": false,
+            "currency": "USD",
+            "source": "https://api.abacus.ai/help/route-llm/",
+            "checkedAt": "REPLACE_WITH_VERIFIED_ISO_DATETIME",
+            "inputUsdMicrosPerMillion": "REPLACE_WITH_VERIFIED_INPUT_PRICE",
+            "outputUsdMicrosPerMillion": "REPLACE_WITH_VERIFIED_OUTPUT_PRICE",
+            "otherUsdMicrosPerMillion": "REPLACE_WITH_VERIFIED_OTHER_PRICE"
+          }
+        }
+      ]
+    }
+  ],
+  "budgetExampleRequiresOperatorApproval": {
+    "dailyDocuments": 50,
+    "monthlyDocuments": 500,
+    "dailyUnits": 1000000,
+    "monthlyUnits": 10000000,
+    "globalDailyUsdMicros": "1000000",
+    "globalMonthlyUsdMicros": "10000000"
+  }
+}

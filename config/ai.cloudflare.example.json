@@ -1,0 +1,63 @@
+{
+  "status": "operator-review-required-not-ready-to-apply",
+  "instructions": "Replace ACCOUNT_ID, review processor notices and pricing, set pricing.approved=true only after review, and serialize registry into AI_REGISTRY_JSON. Keep AI_ENABLED=false until secret, budget and synthetic live smoke gates pass. This file is a preparation template, not runtime configuration.",
+  "variables": {
+    "AI_ENABLED": "false",
+    "AI_HOSTED_DESTINATION": "cloudflare-workers-ai",
+    "AI_HOSTED_MODEL": "@cf/openai/gpt-oss-20b"
+  },
+  "requiredServerSecrets": ["AI_HOSTED_KEY", "CREDENTIAL_KEYRING"],
+  "requiredBudgetVariable": "AI_BUDGET_JSON",
+  "registry": [
+    {
+      "id": "cloudflare-workers-ai",
+      "endpoint": "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1/chat/completions",
+      "configVersion": "cloudflare-gpt-oss-20b-v1",
+      "policyVersion": 1,
+      "noticeRefs": ["cloudflare-workers-ai-v1"],
+      "notices": [
+        {
+          "id": "cloudflare-workers-ai-v1",
+          "displayName": "Cloudflare Workers AI (GPT-OSS 20B)",
+          "dataUseSummary": "OPERATOR REVIEW REQUIRED: summarize Cloudflare's current processing terms and applicable model license before enabling.",
+          "retentionSummary": "OPERATOR REVIEW REQUIRED: disclose current retention limits; do not claim zero retention without evidence.",
+          "privacyUrl": "https://developers.cloudflare.com/workers-ai/platform/data-usage/"
+        }
+      ],
+      "timeoutMs": 30000,
+      "maxInputBytes": 24000,
+      "maxOutputBytes": 65536,
+      "maxOutputTokens": 4096,
+      "models": [
+        {
+          "id": "@cf/openai/gpt-oss-20b",
+          "capabilities": {
+            "jsonSchema": false,
+            "jsonObject": false,
+            "outputLimit": "max_tokens",
+            "usage": true,
+            "idempotency": false
+          },
+          "pricing": {
+            "version": "cloudflare-listed-20261013-unapproved",
+            "approved": false,
+            "currency": "USD",
+            "source": "https://developers.cloudflare.com/workers-ai/models/gpt-oss-20b/",
+            "checkedAt": "2026-10-13T00:00:00Z",
+            "inputUsdMicrosPerMillion": "200000",
+            "outputUsdMicrosPerMillion": "300000",
+            "otherUsdMicrosPerMillion": "300000"
+          }
+        }
+      ]
+    }
+  ],
+  "budgetExampleRequiresOperatorApproval": {
+    "dailyDocuments": 50,
+    "monthlyDocuments": 500,
+    "dailyUnits": 1000000,
+    "monthlyUnits": 10000000,
+    "globalDailyUsdMicros": "1000000",
+    "globalMonthlyUsdMicros": "10000000"
+  }
+}

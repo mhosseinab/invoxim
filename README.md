@@ -153,3 +153,23 @@ Login and mailbox callbacks do not authorize scanning. AI has no tools or direct
 ## Project references
 
 Start with [START_HERE.md](START_HERE.md) and [AGENTS.md](AGENTS.md) for implementation work. [BLUEPRINT.md](BLUEPRINT.md) defines scope; [architecture](docs/02-architecture.md), [data model](docs/03-data-model.md), [API contracts](docs/12-api-contracts.md) and [onboarding](docs/13-presentation-and-onboarding.md) define detailed behavior. [Release gates](docs/10-decisions-and-release-gates.md) and the operator checklists distinguish local evidence from live readiness.
+
+## AI provider configuration
+
+The operator default is Abacus RouteLLM with fixed model `gpt-6-luna`; BYOK remains supported. Provider choices are server configuration, not frontend constants:
+
+| Setting                                                 | Location                                                       |
+| ------------------------------------------------------- | -------------------------------------------------------------- |
+| Provider endpoints, models, notices and verified prices | Worker variable `AI_REGISTRY_JSON`                             |
+| Operator-funded destination/model                       | Worker variables `AI_HOSTED_DESTINATION` and `AI_HOSTED_MODEL` |
+| Hosted API credential                                   | Worker secret `AI_HOSTED_KEY`                                  |
+| Allowance and cost caps                                 | Worker variable `AI_BUDGET_JSON`                               |
+| User mode/provider/model and encrypted BYOK credential  | D1 `ai_settings`, using the server `CREDENTIAL_KEYRING`        |
+
+Start from [the Abacus preparation template](config/ai.abacus.example.json). It is inactive until pricing/notices, credentials and budgets are reviewed; placeholders must not be copied as an approved runtime registry. Configure the key securely on the intended Worker:
+
+```sh
+pnpm --filter @invoxim/worker exec wrangler secret put AI_HOSTED_KEY
+```
+
+The CLI prompts for the value; never put it in a command argument, repository file or chat. See [Worker configuration](apps/worker/CONFIGURATION.md) for activation prerequisites.

@@ -1,4 +1,5 @@
 import {
+  aiModelIdentifierSchema,
   EXTRACTION_PROMPT_VERSION,
   hasControlCharacters,
 } from "@invoxim/contracts";
@@ -75,7 +76,7 @@ const pricingSchema = z.strictObject({
   otherUsdMicrosPerMillion: z.string().regex(/^[0-9]{1,15}$/),
 });
 export const aiModelSchema = z.strictObject({
-  id: identifier,
+  id: aiModelIdentifierSchema,
   capabilities: z.strictObject({
     jsonSchema: z.boolean(),
     jsonObject: z.boolean(),

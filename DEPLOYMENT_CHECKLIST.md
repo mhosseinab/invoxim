@@ -105,3 +105,6 @@ Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser log
 Latest remote check: migrations list exited0 with no pending migrations; journal records0001–0006 and checked auth tables exist. This is read-only verification, not approval or execution of a new migration. Endpoint recheck and actual Google button initiation passed; callback/session/logout remains open. See `evidence/implementation/deployed-login-endpoint-recheck-20261013.md`.
 
 - [ ] Redeploy Pages with the reviewed signed-out onboarding visual increment and check desktop/mobile live. Its 28 synthetic login/onboarding regressions, scoped build and independent screenshot review passed; the remote page has not been changed by this patch.
+
+- [ ] Verify release of typed processing configuration errors and revised review/sign-in UI on the actual Pages/Worker versions. Local37native+40browser checks passed; this does not activate inference.
+- [ ] For Abacus activation, supply `AI_HOSTED_KEY` on `invoxim-api`, reviewed registry/pricing/notices and budget; keep BYOK available through the same validated service and retain explicit import consent. The public preset is inactive until these gates pass.

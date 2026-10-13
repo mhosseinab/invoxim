@@ -9,6 +9,8 @@
     "AUTH_ENABLED": "false",
     "CORRECTIONS_ENABLED": "false",
     "AI_ENABLED": "false",
+    "AI_HOSTED_DESTINATION": "abacus-routellm",
+    "AI_HOSTED_MODEL": "gpt-6-luna",
     "EXTRACTION_ENABLED": "false",
     "GMAIL_ENABLED": "false",
     "OUTLOOK_ENABLED": "false",
