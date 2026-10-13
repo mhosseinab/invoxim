@@ -40,8 +40,6 @@ Vite does not provide the production Pages service-binding proxy. Running both p
 | `pnpm test:eval:offline`               | Run the synthetic extraction corpus; not live-model evaluation                                                                                 |
 | `pnpm check:deps`                      | Check dependency policy and registry advisories                                                                                                |
 | `pnpm check:production`                | Inspect built publication artifacts and all three bundle inventories for test/debug tooling; requires a completed build                        |
-| `pnpm ai:config`                       | Generate the five AI Wrangler variables from the selected production preset; secrets are unchanged                                             |
-| `pnpm ai:config:check`                 | Fail if runtime AI variables differ from the preset; included in `pnpm verify`                                                                 |
 | `pnpm build`                           | Build frontend/Pages Function, dry-run the Worker bundle, and check production artifacts; does not deploy                                      |
 
 For a focused native test:
@@ -160,15 +158,15 @@ Start with [START_HERE.md](START_HERE.md) and [AGENTS.md](AGENTS.md) for impleme
 
 The operator default is Abacus RouteLLM with fixed model `gpt-6-luna`; BYOK remains supported. Provider choices are server configuration, not frontend constants:
 
-| Setting                                                 | Location                                                       |
-| ------------------------------------------------------- | -------------------------------------------------------------- |
-| Provider endpoints, models, notices and verified prices | Worker variable `AI_REGISTRY_JSON`                             |
-| Operator-funded destination/model                       | Worker variables `AI_HOSTED_DESTINATION` and `AI_HOSTED_MODEL` |
-| Hosted API credential                                   | Worker secret `AI_HOSTED_KEY`                                  |
-| Allowance and cost caps                                 | Worker variable `AI_BUDGET_JSON`                               |
-| User mode/provider/model and encrypted BYOK credential  | D1 `ai_settings`, using the server `CREDENTIAL_KEYRING`        |
+| Setting                                                 | Location                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------- |
+| Provider endpoints, models, notices and verified prices | Server preset `config/ai.abacus.production.json` → `registry` |
+| Operator-funded destination/model                       | Server preset → `variables`                                   |
+| Hosted API credential                                   | Worker secret `AI_HOSTED_KEY`                                 |
+| Allowance and cost caps                                 | Server preset → `budget`                                      |
+| User mode/provider/model and encrypted BYOK credential  | D1 `ai_settings`, using the server `CREDENTIAL_KEYRING`       |
 
-[The production preset](config/ai.abacus.production.json) is the readable source for the selected provider, processor notices, verified tariff and approved application budget ($1/day, $10/month). The inactive [preparation template](config/ai.abacus.example.json) remains an example. After editing the production preset, run `pnpm ai:config`, review the resulting Wrangler diff, then run `pnpm verify`. The Worker reads the generated environment variables; it does not load the preset file directly. The consistency check prevents drift without changing OAuth bindings or secrets.
+[The production preset](config/ai.abacus.production.json) is the readable source for the selected provider, processor notices, verified tariff and approved application budget ($1/day, $10/month). The inactive [preparation template](config/ai.abacus.example.json) remains an example. The Worker imports this JSON directly into its server bundle for API, scheduled and queue handling. Edit it, run `pnpm verify`, then redeploy the Worker. No generation step or copied AI settings in Wrangler is required. Secrets remain external; explicit environment overrides are still supported and validated when intentionally supplied.
 
 Missing or unusable provider usage metadata does not reject otherwise valid output. The adapter emits `ai_usage_unavailable` and retains conservative reserved usage/cost; it never treats missing accounting as zero cost.
 

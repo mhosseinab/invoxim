@@ -5,6 +5,7 @@ import { beforeAll, expect, it, vi } from "vitest";
 import runtimeText from "../../../config/ai.abacus.production.json?raw";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import { createAiRoutes } from "../src/ai-routes";
+import worker from "../src/index";
 import {
   createOnboardingRoutes,
   type OnboardingBindings,
@@ -289,4 +290,40 @@ it("AI-03/ONBOARD-04 approved Abacus runtime variables make both read endpoints 
   } finally {
     transport.mockRestore();
   }
+});
+
+it("AI-03 Worker loads the server-side preset with only Wrangler secrets and no copied AI variables", async () => {
+  const base = { ...bindings };
+  delete base.AI_ENABLED;
+  const configured = {
+    ...base,
+    AI_HOSTED_KEY: "synthetic-abacus-hosted-key",
+    CREDENTIAL_KEYRING: JSON.stringify({
+      activeVersion: 1,
+      keys: { 1: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+    }),
+  };
+  const response = await worker.request(
+    `${configuration.origin}/api/ai/settings`,
+    { headers: { Cookie: cookie } },
+    configured,
+  );
+  expect(response.status).toBe(200);
+  expect(
+    aiSettingsResponseSchema.parse(await response.json()).providers[0]?.id,
+  ).toBe("abacus-routellm");
+  const disabled = await worker.request(
+    `${configuration.origin}/api/ai/settings`,
+    { headers: { Cookie: cookie } },
+    { ...configured, AI_ENABLED: "false" },
+  );
+  expect(disabled.status).toBe(503);
+  const missingKey = { ...configured };
+  Reflect.deleteProperty(missingKey, "AI_HOSTED_KEY");
+  const unavailable = await worker.request(
+    `${configuration.origin}/api/ai/settings`,
+    { headers: { Cookie: cookie } },
+    missingKey,
+  );
+  expect(unavailable.status).toBe(503);
 });

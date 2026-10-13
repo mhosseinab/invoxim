@@ -24,6 +24,7 @@ import {
 import { publicConfigSchema } from "@invoxim/contracts";
 import type { JobHandler } from "@invoxim/core";
 import { Hono } from "hono";
+import { runtimeAiBindings } from "./ai-bindings";
 import { createAiRoutes } from "./ai-routes";
 import { createAuthRoutes } from "./auth-routes";
 import { createCorrectionRoutes } from "./correction-routes";
@@ -134,9 +135,10 @@ type WorkerBindings = DriveBindings &
   FxReferenceBindings;
 
 function configuredJobs(
-  bindings: WorkerBindings,
+  suppliedBindings: WorkerBindings,
   sharedDatabase?: ReturnType<typeof createInvocationDatabase>,
 ) {
+  const bindings = runtimeAiBindings(suppliedBindings);
   const configuredPolicy = jobConfiguration(bindings);
   const policy =
     configuredPolicy && sharedDatabase
@@ -211,7 +213,11 @@ function configuredJobs(
 }
 
 // Preserve the established Hono API while adding the platform event entry points.
+const handleRequest = app.fetch;
 const worker = Object.assign(app, {
+  fetch(request: Request, bindings?: WorkerBindings, context?: ExecutionContext) {
+    return handleRequest(request, runtimeAiBindings(bindings ?? {}), context);
+  },
   async scheduled(
     _controller: ScheduledController,
     bindings: WorkerBindings,

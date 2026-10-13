@@ -16,7 +16,7 @@
     "test:integration": "turbo run test:integration",
     "check:boundaries": "node tools/implementation/check-boundaries.mjs",
     "build": "turbo run build && pnpm check:production",
-    "verify": "pnpm check:boundaries && pnpm ai:config:check && pnpm check:secrets && pnpm check:dependency-policy && pnpm format:check && pnpm lint:biome && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm build && pnpm test:e2e",
+    "verify": "pnpm check:boundaries && pnpm check:secrets && pnpm check:dependency-policy && pnpm format:check && pnpm lint:biome && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm build && pnpm test:e2e",
     "test:contracts": "pnpm --filter @invoxim/contracts test:unit",
     "test:security": "node tools/implementation/security-gates.mjs security-tests",
     "test:e2e": "pnpm --filter @invoxim/web exec playwright test --config playwright.config.ts",
@@ -30,9 +30,7 @@
     "db:check": "pnpm --filter @invoxim/worker exec vitest run test/database.test.ts test/database-adversarial.test.ts test/pipeline-database.test.ts test/lifecycle.test.ts test/lifecycle-adversarial.test.ts",
     "verify:release": "node tools/implementation/not-implemented.mjs verify:release",
     "lint:biome": "biome check . --error-on-warnings",
-    "check:production": "node tools/implementation/production-artifacts.mjs --artifact apps/web/dist --graph apps/web/.production/web.json --graph apps/web/.production/pages.json --graph apps/worker/.production/worker.json",
-    "ai:config": "node tools/implementation/sync-ai-config.mjs --write",
-    "ai:config:check": "node tools/implementation/sync-ai-config.mjs --check"
+    "check:production": "node tools/implementation/production-artifacts.mjs --artifact apps/web/dist --graph apps/web/.production/web.json --graph apps/web/.production/pages.json --graph apps/worker/.production/worker.json"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
