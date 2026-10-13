@@ -1,0 +1,13 @@
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+
+ Test Files  7 passed (7)
+      Tests  106 passed (106)
+   Start at  11:28:37
+   Duration  7.91s (transform 51%, tests 26%, import 22%, worker 1%)
+
+  Transform  transforming modules took 2.73s · 51% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

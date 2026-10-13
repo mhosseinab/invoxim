@@ -1,0 +1,115 @@
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+ ❯ test/fx-service.test.ts (12 tests | 1 failed) 207ms
+   × FX-05: bounded Unicode entry IDs produce usable opaque continuation cursors 8ms
+ ❯ test/outlook-content.test.ts (5 tests | 5 failed) 7ms
+   × OUTLOOK-03 supplies inert body and exact decoded attachment bytes with immutable ID requests 3ms
+   × OUTLOOK-03 no accepted checkpoint performs no message content fetch 3ms
+   × OUTLOOK-03 revoked authorization after body response stops the attachment request 1ms
+   × OUTLOOK-03 reference attachment destinations never become network requests 0ms
+   × OUTLOOK-03 oversized declared attachment is rejected before retaining decoded bytes 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/fx-service.test.ts > FX-05: bounded Unicode entry IDs produce usable opaque continuation cursors
+Error: INVALID_FX_INPUT
+ ❯ select ../../packages/adapters/src/fx/service.ts:172:13
+    170|     const parsed = inputSchema.safeParse(value);
+    171|     if (!parsed.success || parsed.data.limit > maximum)
+    172|       throw new Error("INVALID_FX_INPUT");
+       |             ^
+    173|     const input = parsed.data;
+    174|     const key = await fingerprint([
+ ❯ readPage ../../packages/adapters/src/fx/service.ts:237:28
+ ❯ ../../packages/adapters/src/fx/service.ts:378:18
+ ❯ safe ../../packages/adapters/src/fx/service.ts:127:18
+ ❯ Object.readPage ../../packages/adapters/src/fx/service.ts:378:7
+ ❯ test/fx-service.test.ts:399:40
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  test/outlook-content.test.ts > OUTLOOK-03 supplies inert body and exact decoded attachment bytes with immutable ID requests
+Error: CONTENT_UNAVAILABLE
+ ❯ Object.load ../../packages/adapters/src/pipeline/outlook-content.ts:10:13
+      8|   return {
+      9|     async load() {
+     10|       throw new ContentError("CONTENT_UNAVAILABLE");
+       |             ^
+     11|     },
+     12|   };
+ ❯ test/outlook-content.test.ts:56:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  test/outlook-content.test.ts > OUTLOOK-03 no accepted checkpoint performs no message content fetch
+AssertionError: expected [Function] to throw error including 'CONTENT_AUTH_CHANGED' but got 'CONTENT_UNAVAILABLE'
+
+Expected: "CONTENT_AUTH_CHANGED"
+Received: "CONTENT_UNAVAILABLE"
+
+ ❯ test/outlook-content.test.ts:87:54
+     85|     },
+     86|   });
+     87|   await expect(reader.load(input(async () => false))).rejects.toThrow(
+       |                                                      ^
+     88|     "CONTENT_AUTH_CHANGED",
+     89|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  test/outlook-content.test.ts > OUTLOOK-03 revoked authorization after body response stops the attachment request
+AssertionError: expected [Function] to throw error including 'CONTENT_AUTH_CHANGED' but got 'CONTENT_UNAVAILABLE'
+
+Expected: "CONTENT_AUTH_CHANGED"
+Received: "CONTENT_UNAVAILABLE"
+
+ ❯ test/outlook-content.test.ts:106:56
+    104|     },
+    105|   });
+    106|   await expect(reader.load(input(async () => allowed))).rejects.toThro…
+       |                                                        ^
+    107|     "CONTENT_AUTH_CHANGED",
+    108|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  test/outlook-content.test.ts > OUTLOOK-03 reference attachment destinations never become network requests
+Error: CONTENT_UNAVAILABLE
+ ❯ Object.load ../../packages/adapters/src/pipeline/outlook-content.ts:10:13
+      8|   return {
+      9|     async load() {
+     10|       throw new ContentError("CONTENT_UNAVAILABLE");
+       |             ^
+     11|     },
+     12|   };
+ ❯ test/outlook-content.test.ts:137:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  test/outlook-content.test.ts > OUTLOOK-03 oversized declared attachment is rejected before retaining decoded bytes
+Error: CONTENT_UNAVAILABLE
+ ❯ Object.load ../../packages/adapters/src/pipeline/outlook-content.ts:10:13
+      8|   return {
+      9|     async load() {
+     10|       throw new ContentError("CONTENT_UNAVAILABLE");
+       |             ^
+     11|     },
+     12|   };
+ ❯ test/outlook-content.test.ts:176:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  2 failed | 1 passed (3)
+      Tests  6 failed | 20 passed (26)
+   Start at  11:13:44
+   Duration  3.68s (transform 61%, import 22%, tests 16%, worker 1%)
+
+    Isolate  3 workers spawned · ~430ms startup each (spawn + environment, per file)
+             at least ~860ms faster with isolate: false — reuses workers across files instead of one per file
+
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /home/geek/workspace/invoxim/apps/worker
+
