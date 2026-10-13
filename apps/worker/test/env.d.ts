@@ -34,6 +34,10 @@ declare namespace Cloudflare {
   }
 }
 
+declare module "*.json?raw" {
+  const json: string;
+  export default json;
+}
 declare module "*.sql?raw" {
   const sql: string;
   export default sql;
