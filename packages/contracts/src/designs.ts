@@ -148,10 +148,12 @@ export const inferenceExtractionSchema = extractionSchema.extend({
     )
     .max(10),
 });
-export const EXTRACTION_PROMPT_VERSION = "invoice-extraction-v2";
+export const EXTRACTION_PROMPT_VERSION = "invoice-extraction-v3";
 export function supportedExtractionPrompt(version: string): boolean {
   return (
-    version === "invoice-extraction-v1" || version === EXTRACTION_PROMPT_VERSION
+    version === "invoice-extraction-v1" ||
+    version === "invoice-extraction-v2" ||
+    version === EXTRACTION_PROMPT_VERSION
   );
 }
 export const configSchema = z

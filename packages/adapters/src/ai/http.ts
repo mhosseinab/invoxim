@@ -123,10 +123,18 @@ function requestBody(
   maxOutputTokens: number,
   repair: boolean,
 ) {
+  const schema = z.toJSONSchema(inferenceExtractionSchema, {
+    unrepresentable: "any",
+  });
   const body: Record<string, unknown> = {
     model: model.id,
     messages: [
-      { role: "system", content: systemPrompt },
+      {
+        role: "system",
+        content: model.capabilities.jsonSchema
+          ? systemPrompt
+          : `${systemPrompt}\nRequired output JSON schema: ${JSON.stringify(schema)}`,
+      },
       {
         role: "user",
         content: JSON.stringify({ parts, repair: repair }),
@@ -136,9 +144,6 @@ function requestBody(
     [model.capabilities.outputLimit]: maxOutputTokens,
   };
   if (model.capabilities.jsonSchema) {
-    const schema = z.toJSONSchema(inferenceExtractionSchema, {
-      unrepresentable: "any",
-    });
     body.response_format = {
       type: "json_schema",
       json_schema: { name: "receipt_extraction", strict: true, schema },

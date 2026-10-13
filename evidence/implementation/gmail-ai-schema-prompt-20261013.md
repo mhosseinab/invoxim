@@ -1,0 +1,9 @@
+# Gmail runtime dispatch and AI request contract repair
+
+Two scheduler repairs remove an idle cursor-wrap tick and fill up to the configured dispatch batch while preserving serial lease execution. Commits 006c6b1 and 799399d passed full `pnpm verify`: 1374 native Worker tests across 111 files, 84 browser tests, unit checks, lint/format, types, builds and production publication guard; exit 0. Log: `/tmp/invoxim-gmail-runtime-dispatch-verify.txt`.
+
+Production metadata then showed five completed AI extractions classified `needs-review` / `schema`, with no extracted values or model transcripts inspected. The configured Abacus model accepts JSON-object output; the adapter asked for the receipt schema without supplying it. Fallback requests now append the exact code-owned schema to the trusted system message. Strict output validation and selected destination/model are unchanged. Reservations still account for the actual serialized request. New requests use prompt v3; supported v1/v2 checkpoints remain compatible. Existing billed review results are not automatically replayed.
+
+RED: the new request regression failed two fallback cases and passed the schema-capable control, exit 1, 1.52 seconds; `/tmp/invoxim-ai-schema-prompt-red.txt`. Independent read-only source review approved the minimal schema and prompt-version patch. Initial focused run passed 72/75 cases, identifying three old fixtures with insufficient fixed reservations; the three fixtures now reserve their actual request size, preserving the under-reservation refusal test. Final focused GREEN: 123 tests across ten files, exit 0, 19.76 seconds; `/tmp/invoxim-ai-schema-prompt-final-green.txt`. Final full verification remains pending.
+
+Deployment and post-deployment status evidence remain pending. No database migration, provider change, permission widening, allowance increase or active concurrency increase is required.
