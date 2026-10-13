@@ -5,8 +5,12 @@ import {
   type AiUsageStore,
   type ApprovedAiConfig,
   aiRunIdentityKey,
+  type ClassificationUsageStore,
+  EMAIL_CLASSIFICATION_VERSION,
+  type EmailClassification,
   type JobLease,
   type TenantContext,
+  validateEmailClassification,
   validatePersistableAiResult,
 } from "@invoxim/core";
 export interface AiBudgetPolicy {
@@ -221,6 +225,10 @@ function createMeter(
     policy: AiBudgetPolicy;
     pricing: ReadonlyMap<string, AiPriceSnapshot>;
     clock?: () => number;
+    classificationAuthorization?: {
+      config: ApprovedAiConfig;
+      price: AiPriceSnapshot;
+    };
   },
 ) {
   validatePolicy(options.policy);
@@ -238,15 +246,18 @@ function createMeter(
     price: AiPriceSnapshot,
     captured?: Binding,
   ): Sql {
+    const authorityConfig =
+      options.classificationAuthorization?.config ?? input.config;
+    const authorityPrice = options.classificationAuthorization?.price ?? price;
     const text = `SELECT s.generation,s.credential_version FROM ai_settings s JOIN profiles p ON p.user_id=s.user_id WHERE s.user_id=? AND p.status='active' AND s.status='active' AND s.mode=? AND s.provider_id=? AND s.model_id=? AND s.config_version=? AND s.revision=? AND s.consent_version=? AND (s.mode='hosted' OR (s.encrypted_key IS NOT NULL AND s.key_version IS NOT NULL))`;
     const values: unknown[] = [
       userId,
-      input.config.mode,
-      input.config.destinationId,
-      input.config.modelId,
-      price.configVersion,
-      input.config.settingsRevision,
-      price.policyVersion,
+      authorityConfig.mode,
+      authorityConfig.destinationId,
+      authorityConfig.modelId,
+      authorityPrice.configVersion,
+      authorityConfig.settingsRevision,
+      authorityPrice.policyVersion,
     ];
     let additional = "";
     if (captured) {
@@ -259,7 +270,7 @@ function createMeter(
       values.push(sessionId, clock());
     } else {
       const lease = owner.lease;
-      additional += ` AND EXISTS(SELECT 1 FROM jobs j JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id JOIN discovery_source_jobs dj ON dj.user_id=j.user_id AND dj.job_id=j.id JOIN source_messages sm ON sm.user_id=dj.user_id AND sm.id=dj.source_message_id JOIN documents d ON d.user_id=sm.user_id AND d.source_message_id=sm.id WHERE j.user_id=s.user_id AND j.id=? AND j.status='leased' AND j.lease_id=? AND j.fence=? AND j.lease_expires_at>? AND j.connection_generation=? AND j.connection_id=? AND j.consent_id=? AND j.type IN ('source-extract','reprocess') AND c.state='connected' AND c.generation=j.connection_generation AND c.scheduling_state='active' AND pc.revoked_at IS NULL AND pc.accepted_at<=? AND pc.background_authorized=1 AND pc.ai_settings_revision=s.revision AND pc.inference_destination=s.provider_id AND pc.disclosure_version=? AND sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1 AND d.id=? AND d.content_hash=?${price.acceptedConfigurationDigest ? " AND pc.accepted_configuration_digest=?" : ""})`;
+      additional += ` AND EXISTS(SELECT 1 FROM jobs j JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id JOIN discovery_source_jobs dj ON dj.user_id=j.user_id AND dj.job_id=j.id JOIN source_messages sm ON sm.user_id=dj.user_id AND sm.id=dj.source_message_id JOIN documents d ON d.user_id=sm.user_id AND d.source_message_id=sm.id WHERE j.user_id=s.user_id AND j.id=? AND j.status='leased' AND j.lease_id=? AND j.fence=? AND j.lease_expires_at>? AND j.connection_generation=? AND j.connection_id=? AND j.consent_id=? AND j.type IN ('source-extract','reprocess') AND c.state='connected' AND c.generation=j.connection_generation AND c.scheduling_state='active' AND pc.revoked_at IS NULL AND pc.accepted_at<=? AND pc.background_authorized=1 AND pc.ai_settings_revision=s.revision AND pc.inference_destination=s.provider_id AND pc.disclosure_version=? AND sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1 AND d.id=? AND d.content_hash=?${authorityPrice.acceptedConfigurationDigest ? " AND pc.accepted_configuration_digest=?" : ""})`;
       values.push(
         lease.jobId,
         lease.leaseId,
@@ -269,11 +280,11 @@ function createMeter(
         lease.connectionId,
         lease.consentId,
         clock(),
-        price.policyVersion,
+        authorityPrice.policyVersion,
         input.documentId,
         input.contentHash,
-        ...(price.acceptedConfigurationDigest
-          ? [price.acceptedConfigurationDigest]
+        ...(authorityPrice.acceptedConfigurationDigest
+          ? [authorityPrice.acceptedConfigurationDigest]
           : []),
       );
     }
@@ -296,7 +307,16 @@ function createMeter(
       input.tenant.userId !== userId ||
       !integer(input.config.reservationUnits, true) ||
       !integer(input.config.settingsRevision, true) ||
-      !supportedExtractionPrompt(input.config.promptVersion) ||
+      !(options.classificationAuthorization
+        ? input.config.promptVersion === EMAIL_CLASSIFICATION_VERSION &&
+          input.config.mode === "hosted" &&
+          input.config.destinationId === "cloudflare-clef" &&
+          input.config.modelId === "@cf/cloudflare/clef" &&
+          options.classificationAuthorization.config.settingsRevision ===
+            input.config.settingsRevision &&
+          options.classificationAuthorization.config.consentId ===
+            input.config.consentId
+        : supportedExtractionPrompt(input.config.promptVersion)) ||
       input.config.schemaVersion !== 1 ||
       input.runKey.length !== 64 ||
       input.contentHash.length > 128 ||
@@ -351,7 +371,9 @@ function createMeter(
       binding.generation,
       binding.credential_version,
       price.policyVersion,
-      input.config.consentId,
+      options.classificationAuthorization
+        ? EMAIL_CLASSIFICATION_VERSION
+        : input.config.consentId,
       input.config.promptVersion,
       1,
     ]);
@@ -393,7 +415,7 @@ function createMeter(
   ): Sql {
     const p = options.policy;
     return {
-      text: `NOT EXISTS(SELECT 1 FROM usage_buckets b WHERE ((b.scope='tenant' AND b.owner_key=?) OR (b.scope='global' AND b.owner_key='operator' AND ?='hosted')) AND ((b.period_kind='day' AND b.period_start=?) OR (b.period_kind='month' AND b.period_start=?)) AND (b.blocked=1 OR (b.scope='tenant' AND (b.documents+CASE WHEN EXISTS(SELECT 1 FROM ai_extractions e WHERE e.user_id=? AND e.run_key=?) THEN 0 ELSE 1 END>CASE b.period_kind WHEN 'day' THEN ? ELSE ? END OR b.reserved_units+b.spent_units+?>CASE b.period_kind WHEN 'day' THEN ? ELSE ? END)) OR (b.scope='global' AND b.reserved_usd_micros+b.spent_usd_micros+?>CASE b.period_kind WHEN 'day' THEN ? ELSE ? END))) AND NOT EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.destination_id=? AND ev.model_id=? AND ev.cooldown_until>?) AND NOT EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.state='overrun') AND NOT EXISTS(SELECT 1 FROM usage_buckets gb WHERE gb.scope='global' AND gb.blocked=1 AND ?='hosted') AND NOT EXISTS(SELECT 1 FROM hosted_ai_cooldowns hc WHERE hc.destination_id=? AND hc.model_id=? AND hc.cooldown_until>? AND ?='hosted')`,
+      text: `NOT EXISTS(SELECT 1 FROM usage_buckets b WHERE ((b.scope='tenant' AND b.owner_key=?) OR (b.scope='global' AND b.owner_key='operator' AND ?='hosted')) AND ((b.period_kind='day' AND b.period_start=?) OR (b.period_kind='month' AND b.period_start=?)) AND (b.blocked=1 OR (b.scope='tenant' AND (b.documents+CASE WHEN EXISTS(SELECT 1 FROM ai_extractions e WHERE e.user_id=? AND e.run_key=?) THEN 0 ELSE ${options.classificationAuthorization ? 0 : 1} END>CASE b.period_kind WHEN 'day' THEN ? ELSE ? END OR b.reserved_units+b.spent_units+?>CASE b.period_kind WHEN 'day' THEN ? ELSE ? END)) OR (b.scope='global' AND b.reserved_usd_micros+b.spent_usd_micros+?>CASE b.period_kind WHEN 'day' THEN ? ELSE ? END))) AND NOT EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.destination_id=? AND ev.model_id=? AND ev.cooldown_until>?) AND NOT EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.state='overrun') AND NOT EXISTS(SELECT 1 FROM usage_buckets gb WHERE gb.scope='global' AND gb.blocked=1 AND ?='hosted') AND NOT EXISTS(SELECT 1 FROM hosted_ai_cooldowns hc WHERE hc.destination_id=? AND hc.model_id=? AND hc.cooldown_until>? AND ?='hosted')`,
       values: [
         userId,
         input.config.mode,
@@ -533,7 +555,7 @@ function createMeter(
         ),
       db
         .prepare(
-          `UPDATE usage_buckets SET documents=documents+CASE WHEN scope='tenant' AND EXISTS(SELECT 1 FROM ai_extractions e WHERE e.user_id=? AND e.run_key=? AND e.reservation_nonce=?) THEN 1 ELSE 0 END,reserved_units=reserved_units+CASE WHEN scope='tenant' THEN ? ELSE 0 END,reserved_usd_micros=reserved_usd_micros+CASE WHEN scope='global' THEN ? ELSE 0 END WHERE ((scope='tenant' AND owner_key=?) OR (scope='global' AND owner_key='operator')) AND ((period_kind='day' AND period_start=?) OR (period_kind='month' AND period_start=?)) AND EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.attempt_id=? AND ev.reservation_nonce=?) AND ${livePredicate}`,
+          `UPDATE usage_buckets SET documents=documents+CASE WHEN scope='tenant' AND EXISTS(SELECT 1 FROM ai_extractions e WHERE e.user_id=? AND e.run_key=? AND e.reservation_nonce=?) THEN ${options.classificationAuthorization ? 0 : 1} ELSE 0 END,reserved_units=reserved_units+CASE WHEN scope='tenant' THEN ? ELSE 0 END,reserved_usd_micros=reserved_usd_micros+CASE WHEN scope='global' THEN ? ELSE 0 END WHERE ((scope='tenant' AND owner_key=?) OR (scope='global' AND owner_key='operator')) AND ((period_kind='day' AND period_start=?) OR (period_kind='month' AND period_start=?)) AND EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.attempt_id=? AND ev.reservation_nonce=?) AND ${livePredicate}`,
         )
         .bind(
           userId,
@@ -1005,6 +1027,62 @@ async function budgetOperation<T>(operation: () => Promise<T>): Promise<T> {
   } catch {
     throw new Error("AI_BUDGET_UNAVAILABLE");
   }
+}
+export interface ClassificationBudgetOptions extends AiBudgetOptions {
+  readonly authorization: {
+    readonly config: ApprovedAiConfig;
+    readonly price: AiPriceSnapshot;
+  };
+}
+export function createClassificationUsageStore(
+  db: D1Database,
+  options: ClassificationBudgetOptions,
+): ClassificationUsageStore {
+  const meter = createMeter(
+    db,
+    { kind: "extraction", lease: options.lease },
+    { ...options, classificationAuthorization: options.authorization },
+  );
+  return {
+    async checkpoint(input) {
+      return budgetOperation(async () => {
+        const state = await meter.checkpoint(await meter.normal(input));
+        if (state.status !== "completed") return state;
+        const result = validateEmailClassification(state.result);
+        return result
+          ? { status: "completed" as const, result }
+          : { status: "stale" as const };
+      });
+    },
+    reserve: (input) =>
+      budgetOperation(async () => {
+        const normalized = await meter.normal(input, input.attemptNumber);
+        return input.attemptId === `${normalized.runKey}:${input.attemptNumber}`
+          ? meter.reserve(normalized)
+          : "budget";
+      }),
+    authorize: (input) =>
+      budgetOperation(async () => {
+        const normalized = await meter.normal(input, input.attemptNumber);
+        return (
+          input.attemptId === `${normalized.runKey}:${input.attemptNumber}` &&
+          meter.authorize(normalized)
+        );
+      }),
+    settle: (input, settlement) =>
+      budgetOperation(async () => {
+        const normalized = await meter.normal(input, input.attemptNumber);
+        if (input.attemptId === `${normalized.runKey}:${input.attemptNumber}`)
+          await meter.settle(normalized, settlement);
+      }),
+    complete: (input, value: EmailClassification) =>
+      budgetOperation(async () => {
+        const result = validateEmailClassification(value);
+        return (
+          result !== null && meter.complete(await meter.normal(input), result)
+        );
+      }),
+  };
 }
 export function createAiUsageStore(
   db: D1Database,

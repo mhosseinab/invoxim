@@ -7,6 +7,7 @@ import type {
   TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
+import type { ReceiptClassificationConfiguration } from "../ai/clef";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 import {
   buildOnboardingRecoveryStatements,
@@ -58,6 +59,7 @@ export function createJobStore(
     policy: JobPolicy;
     clock?: () => number;
     id?: () => string;
+    classification?: ReceiptClassificationConfiguration;
     processingReview?: (
       metadata: ProcessingReviewMetadata,
     ) => Promise<string | null>;
@@ -649,7 +651,11 @@ export function createJobStore(
           ).results;
           const ids = rows.map((row) => row.id);
           const decisions = options.processingReview
-            ? await reviewRecoveryRows(rows, options.processingReview)
+            ? await reviewRecoveryRows(
+                rows,
+                options.processingReview,
+                options.classification,
+              )
             : [];
           if (decisions === null) {
             await window.advance(user.user_id);

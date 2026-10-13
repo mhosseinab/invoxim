@@ -6,7 +6,11 @@ import type { OnboardingRepository, OnboardingSession } from "@invoxim/core";
 import { OnboardingError } from "@invoxim/core";
 import type { AiConfiguration } from "../ai/configuration";
 import { readActiveOnboardingRun } from "./active-run";
-import { hashOnboardingValue, LOCAL_PARSER_POLICY } from "./configuration";
+import {
+  hashOnboardingValue,
+  LOCAL_PARSER_POLICY,
+  RECEIPT_CLASSIFIER_NOTICE,
+} from "./configuration";
 import { createOnboardingReads, reviewRange, scopeReady } from "./read";
 import { commitOnboardingStart } from "./start";
 import { signReview, verifyReview } from "./token";
@@ -150,6 +154,19 @@ export function createOnboardingRepository(
           noticeRefs: selected.destination.noticeRefs,
           ready: selected.keyReady && selected.noticesReady,
         },
+        ...(options.ai?.classification?.enabled
+          ? {
+              classification: {
+                providerId: "cloudflare-clef",
+                model: options.ai.classification.model,
+                mode: "hosted",
+                policyVersion: 1,
+                notices: [RECEIPT_CLASSIFIER_NOTICE],
+                noticeRefs: [RECEIPT_CLASSIFIER_NOTICE.id],
+                ready: true,
+              },
+            }
+          : {}),
         documentConversion: {
           providerId: LOCAL_PARSER_POLICY.providerId,
           version: LOCAL_PARSER_POLICY.version,

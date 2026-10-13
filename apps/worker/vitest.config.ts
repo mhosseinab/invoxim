@@ -6,6 +6,7 @@ export default defineConfig({
       wrangler: { configPath: "./wrangler.jsonc" },
       remoteBindings: false,
       miniflare: {
+        bindings: { AI_CLASSIFICATION_ENABLED: "false" },
         d1Databases: ["DB"],
         serviceBindings: {
           API: { name: "invoxim-api" },

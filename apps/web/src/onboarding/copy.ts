@@ -89,6 +89,7 @@ export const onboardingCopy = {
   reviewFrozenCutoffExclusive: "Frozen cutoff (exclusive)",
   reviewTimeZone: "Time zone",
   reviewReportingCurrency: "Reporting currency",
+  reviewReceiptClassification: "Email receipt detection and category",
   reviewReceiptProcessing: "Receipt processing",
   reviewSeparatorBeforeValue: " ·",
   reviewOperatorFundedInference: "Operator-funded inference",

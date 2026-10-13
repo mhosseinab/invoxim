@@ -237,6 +237,7 @@ export function financialEntries(fact: VerifiedFinancialFact): {
   };
 }
 
+export * from "./ai/classification";
 export { aiRunIdentityKey, createInferenceEngine } from "./ai/engine";
 export * from "./ai/types";
 export {

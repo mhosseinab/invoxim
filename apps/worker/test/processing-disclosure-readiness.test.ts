@@ -292,11 +292,16 @@ it("AI-03/ONBOARD-04 approved Abacus runtime variables make both read endpoints 
   }
 });
 
-it("AI-03 Worker loads the server-side preset with only Wrangler secrets and no copied AI variables", async () => {
+it("AI-03 Worker loads the server-side preset with Wrangler secrets and the AI binding, without copied AI variables", async () => {
   const base = { ...bindings };
   delete base.AI_ENABLED;
   const configured = {
     ...base,
+    AI: {
+      async run() {
+        throw new Error("UNEXPECTED_CLASSIFICATION_CALL");
+      },
+    },
     AI_HOSTED_KEY: "synthetic-abacus-hosted-key",
     CREDENTIAL_KEYRING: JSON.stringify({
       activeVersion: 1,

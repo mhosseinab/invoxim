@@ -1263,6 +1263,32 @@
         "evidence/implementation/baseline-transition-checklist.md",
         "evidence/implementation/native-d1-restoration-final/provenance.json"
       ]
+    },
+    {
+      "id": "CLEF-01",
+      "title": "Classify receipt emails and category in one Clef request",
+      "milestone": "Runtime refactor",
+      "status": "done",
+      "dependsOn": [],
+      "ownerRole": "ai",
+      "reviewerRole": "principal-reviewer",
+      "read": [
+        "docs/05-ai-and-evaluations.md"
+      ],
+      "scope": "Provider-agnostic email classification before existing financial extraction; disclosed processor, bounded hosted meter, no new migration or provider expansion.",
+      "acceptanceCaseIds": [
+        "CLEF-01",
+        "CLEF-02",
+        "CLEF-03"
+      ],
+      "redFirst": "Clef typed-query tests fail absent classifier; config/consent tests fail ignored processor.",
+      "deliverableEvidence": "Native pipeline, cache and metering tests plus independent review.",
+      "completionEvidence": [
+        "/tmp/invoxim-clef-red.txt",
+        "/tmp/invoxim-clef-configuration-red.txt",
+        "evidence/implementation/clef-email-classification-20261013.md"
+      ],
+      "blockedBy": []
     }
   ]
 }

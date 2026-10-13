@@ -381,6 +381,7 @@ it("ONBOARD-09 AI settings reject old A workspace token with current B session d
     AUTH_GOOGLE_CLIENT_SECRET: "synthetic",
     AUTH_ALLOWED_EMAILS: JSON.stringify([a.loginEmail, b.loginEmail]),
     AI_ENABLED: "true",
+    AI_CLASSIFICATION_ENABLED: "false",
     AI_REGISTRY_JSON: JSON.stringify(configuration.destinations),
     AI_HOSTED_DESTINATION: "qa-onboard-provider",
     AI_HOSTED_MODEL: "qa-small",

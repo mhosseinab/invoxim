@@ -1,11 +1,15 @@
-import type { AiConfiguration, GmailConfiguration } from "@invoxim/adapters";
+import type {
+  AiConfiguration,
+  ClefBinding,
+  TransientContentFactory,
+} from "@invoxim/adapters";
 import {
   createAiProviderFactory,
-  createGmailContentFactory,
   createLocalPdfTextExtractor,
   createPipelineRepository,
   createPipelineService,
   createProcessingReviewResolver,
+  createReceiptClassifierFactory,
 } from "@invoxim/adapters";
 import type { JobHandler } from "@invoxim/core";
 import { createDocumentTextExtractor } from "@invoxim/core";
@@ -13,10 +17,18 @@ import { createDocumentTextExtractor } from "@invoxim/core";
 /** Server-configured external services share the actual invocation database. */
 export function createPipelineRuntime(options: {
   db: D1Database;
-  gmail: GmailConfiguration;
+  content: TransientContentFactory;
   ai: AiConfiguration;
+  classificationBinding?: ClefBinding | undefined;
   remainingStatements: () => number;
 }): JobHandler {
+  if (options.ai.classification?.enabled && !options.classificationBinding) {
+    return {
+      async run() {
+        return { kind: "paused", code: "handler-unavailable" };
+      },
+    };
+  }
   const factory = createAiProviderFactory(options.db, options.ai, {
     requireReviewedConfiguration: true,
   });
@@ -25,7 +37,7 @@ export function createPipelineRuntime(options: {
       remainingStatements: options.remainingStatements,
       processingDigest: createProcessingReviewResolver(options.ai),
     }),
-    content: createGmailContentFactory(options.db, options.gmail),
+    content: options.content,
     documents: createDocumentTextExtractor({
       pdf: createLocalPdfTextExtractor(),
     }),
@@ -39,6 +51,15 @@ export function createPipelineRuntime(options: {
         });
       },
     },
+    ...(options.ai.classification && options.classificationBinding
+      ? {
+          classification: createReceiptClassifierFactory(
+            options.db,
+            options.ai.classification,
+            { binding: options.classificationBinding },
+          ),
+        }
+      : {}),
     budget: options.ai.budget,
     remainingStatements: options.remainingStatements,
   });

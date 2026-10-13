@@ -78,25 +78,32 @@ Keep deterministic CI tests separate from opt-in live-model evaluations. No live
 
 Proposed release thresholds, measured and recorded rather than claimed now:
 
-| Metric | Gate |
-|---|---|
-| Output accepted by schema | Every committed candidate |
-| Explicit non-purchase/unpaid/pending-refund challenge cases | Zero false spending entries |
-| Auto-accepted amount+currency+direction correctness on holdout | At least 99%; report numerator and denominator |
-| Auto-accept coverage on supported clean fixtures | At least 80%, so “review everything” cannot game accuracy |
-| Candidate detection recall on labeled supported messages | At least 95%; publish missed-example classes |
-| Injection challenge behavior | Zero tool/network/destination/authorization changes |
-| Repeated extraction of the same fixture | Same ledger effect, even if wording/category suggestion varies |
-| Category macro F1 | Target at least 0.85 on agreed categories; lower scores do not excuse wrong amounts |
-| Unsupported/unreadable cases | Explicit review/unsupported status, never silently accepted |
+| Metric                                                         | Gate                                                                                |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Output accepted by schema                                      | Every committed candidate                                                           |
+| Explicit non-purchase/unpaid/pending-refund challenge cases    | Zero false spending entries                                                         |
+| Auto-accepted amount+currency+direction correctness on holdout | At least 99%; report numerator and denominator                                      |
+| Auto-accept coverage on supported clean fixtures               | At least 80%, so “review everything” cannot game accuracy                           |
+| Candidate detection recall on labeled supported messages       | At least 95%; publish missed-example classes                                        |
+| Injection challenge behavior                                   | Zero tool/network/destination/authorization changes                                 |
+| Repeated extraction of the same fixture                        | Same ledger effect, even if wording/category suggestion varies                      |
+| Category macro F1                                              | Target at least 0.85 on agreed categories; lower scores do not excuse wrong amounts |
+| Unsupported/unreadable cases                                   | Explicit review/unsupported status, never silently accepted                         |
 
 Record extraction model ID/version if available, parameters, parser/prompt/schema versions, dataset version/hash, usage/cost, latency, accepted/reviewed/rejected counts, and exact failure cases. Do not claim 99% statistically established population accuracy from a small holdout. Thresholds are engineering gates, not guarantees to users.
 
 Changing models, prompts, parsing, candidate rules, or schemas requires rerunning affected evaluations. A cheaper model is accepted only if it preserves financial and security gates. An independent QA reviewer must inspect failure examples, not just a single average score.
-
 
 ## Document totals versus paid/refunded amounts
 
 `total` is the gross document/order total. `paymentAmount` is the amount actually paid in the evidenced event, `refundAmount` is the evidenced refund amount, and `storeCreditAmount` is credit redeemed, if stated. These are separate nullable magnitude strings. Payment/refund completion is still controlled by the evidence enums. A pending refund can have a known amount without generating a refund entry. Never substitute `total` for an ambiguous installment or mixed-tender amount.
 
 For a receipt clearly stating the full total was paid, paymentAmount can equal total when the evidence establishes that relationship. For EUR 100 total with EUR 70 paid by card and EUR 30 store credit redeemed, the cash-spending event is EUR 70, not EUR 100 plus EUR 30. Keep the gross purchase total for the detail view. An ambiguous split goes to financial review. For a EUR 100 order with one EUR 50 installment, record only the EUR 50 payment event. Model output must include input-grounded evidence for the chosen payment/refund magnitude.
+
+## Clef email classification
+
+A narrow `EmailClassifier` port precedes financial inference. The Cloudflare adapter uses `@cf/cloudflare/clef` typed `noul` and `choice` questions in one bounded request, deriving a conservative receipt decision and an existing taxonomy category. The application does not treat model confidence as financial evidence. Invoice, order and refund documents remain candidates.
+
+Classification uses a separate prompt/cache identity and hosted usage reservation but preserves the selected financial provider and encrypted BYOK credentials. The reviewed processing digest includes classifier configuration and its processor notice. Durable infer continuations reuse one classification per source across sibling documents and replay; no raw text or answer transcripts are persisted. Negative classification can skip only a fully readable, unchanged source. Failures and incomplete sources remain reviewable.
+
+Official contracts and tariff: [Clef model](https://developers.cloudflare.com/workers-ai/models/clef/), [input schema](https://developers.cloudflare.com/workers-ai/models/clef/schema-input.json), [output schema](https://developers.cloudflare.com/workers-ai/models/clef/schema-output.json), [Workers AI data use](https://developers.cloudflare.com/workers-ai/platform/data-usage/). Cloudflare lists USD 0.24 per million input tokens with no output-token charge. Model-quality evaluation requires separately recorded synthetic held-out live-model results; transport mocks are not an accuracy benchmark.

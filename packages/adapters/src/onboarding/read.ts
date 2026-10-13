@@ -221,6 +221,7 @@ export function createOnboardingReads(
         settingsRevision: revision,
         destination,
         model,
+        classification: ai.classification,
       }),
     };
   }

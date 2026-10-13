@@ -63,6 +63,7 @@ export function createAiProviderFactory(
             settingsRevision: row.revision,
             destination,
             model,
+            classification: configuration.classification,
           })
         : undefined;
     if (

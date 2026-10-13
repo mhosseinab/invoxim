@@ -9,8 +9,11 @@ export type {
 export {
   createAiProbeUsageStore,
   createAiUsageStore,
+  createClassificationUsageStore,
   readAiAllowance,
 } from "./ai/budget";
+export * from "./ai/classifier-factory";
+export * from "./ai/clef";
 export * from "./ai/configuration";
 export { createChatCompletionsExtractor } from "./ai/http";
 export {

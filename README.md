@@ -148,7 +148,9 @@ flowchart TD
   Jobs --> Discovery[Bounded source discovery]
   Discovery --> Content[Transient mail or attachment bytes]
   Content --> Parser[Bounded text extraction]
-  Parser --> AI[Selected hosted or BYOK inference adapter]
+  Parser --> Clef[Clef: receipt decision and category in one request]
+  Clef -->|Candidate| AI[Selected hosted or BYOK financial extraction]
+  Clef -->|Strong negative| Complete[Complete source without financial writes]
   AI --> Validation[Strict schema, evidence and money validation]
   Validation --> Ledger[Atomic purchase, evidence and ledger writes]
   Ledger --> Data[(D1: structured data and source references)]
@@ -167,6 +169,8 @@ Login and mailbox callbacks do not authorize scanning. AI has no tools or direct
 Start with [START_HERE.md](START_HERE.md) and [AGENTS.md](AGENTS.md) for implementation work. [BLUEPRINT.md](BLUEPRINT.md) defines scope; [architecture](docs/02-architecture.md), [data model](docs/03-data-model.md), [API contracts](docs/12-api-contracts.md) and [onboarding](docs/13-presentation-and-onboarding.md) define detailed behavior. [Release gates](docs/10-decisions-and-release-gates.md) and the operator checklists distinguish local evidence from live readiness.
 
 ## AI provider configuration
+
+Email classification uses Cloudflare Clef before financial extraction. One request asks whether the email contains purchase evidence and selects a category; invoice, order and refund evidence remain candidates. The existing provider handles evidence-backed financial extraction.
 
 The operator default is Abacus RouteLLM with fixed model `gpt-6-luna`; BYOK remains supported. Provider choices are server configuration, not frontend constants:
 
@@ -189,3 +193,13 @@ pnpm --filter @invoxim/worker exec wrangler secret put AI_HOSTED_KEY
 ```
 
 The CLI prompts for the value; never put it in a command argument, repository file or chat. See [Worker configuration](apps/worker/CONFIGURATION.md) for activation prerequisites.
+
+### Email classification configuration
+
+The Worker reads `config/ai.classification.production.json` directly. The `AI` Workers AI binding supplies Clef; no Cloudflare API key is embedded in the file. `AI_CLASSIFICATION_ENABLED=false` disables classification for an intentional rollout/local override; `AI_CLASSIFICATION_JSON` can explicitly override the bundled configuration. Tests disable the remote binding path by default and use synthetic classifier bindings in dedicated integration cases.
+
+A probability at or below 0.1 is a strong negative. All other valid receipt answers continue to financial extraction; a category below the configured 0.5 probability threshold remains uncategorized. Classification cannot establish payment, refund, totals or dates. The classifier result is cached per source and reused across attachments and job replay. Unreadable attachments prevent a negative classification from discarding the entire source. Raw state and model responses remain transient.
+
+Classification is operator funded even when financial extraction uses BYOK. It consumes the same token and USD budget ledgers, preserves conservative charges for missing usage, and does not double-count the document allowance. The existing application caps remain USD 1/day and USD 10/month.
+
+Rollout checklist: run `pnpm verify`, deploy the Worker and web bundle together, and obtain a new processing review/Start approval that includes Cloudflare classification. Existing consent digests do not authorize the additional processor. After renewed Review/Start, Cron recovery rebinds unpaid jobs; compatible completed classification and financial caches are reused without another model charge. Paid stages with a genuinely changed processing digest, unfinished attempts or invalid cache remain paused for review. Completed or reviewed messages are not automatically reclassified or billed again. No database migration is required. This refactor has not been deployed or validated against live private email; deterministic tests do not establish real-model classification accuracy.

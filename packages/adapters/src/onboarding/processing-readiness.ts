@@ -40,6 +40,7 @@ export function createProcessingReviewResolver(configuration: AiConfiguration) {
       settingsRevision: input.settingsRevision,
       destination,
       model,
+      classification: configuration.classification,
     });
     return expected === input.acceptedDigest ? expected : null;
   };

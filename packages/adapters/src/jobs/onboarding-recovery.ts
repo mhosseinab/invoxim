@@ -1,8 +1,13 @@
-import { EXTRACTION_PROMPT_VERSION } from "@invoxim/contracts";
+import {
+  EXTRACTION_PROMPT_VERSION,
+  extractionSchema,
+} from "@invoxim/contracts";
 import { validatePersistableAiResult } from "@invoxim/core";
+import type { ReceiptClassificationConfiguration } from "../ai/clef";
 import {
   LOCAL_PARSER_POLICY,
   onboardingConfigurationDigest,
+  RECEIPT_CLASSIFIER_NOTICE,
 } from "../onboarding/configuration";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 
@@ -28,9 +33,16 @@ export interface OnboardingRecoveryRow {
   cache_json: string | null;
   paid_work: number;
 }
+function completedClassificationSql() {
+  const categories =
+    extractionSchema.shape.records.element.shape.category.options
+      .map((category) => `'${category}'`)
+      .join(",");
+  return `COALESCE((e.extraction_version='email-classification-v1' AND e.destination_id='cloudflare-clef' AND e.model_id='@cf/cloudflare/clef' AND e.result_json IS NOT NULL AND e.completed_at IS NOT NULL AND ev.state IN ('known','uncertain') AND json_valid(e.result_json) AND json_type(e.result_json)='object' AND (SELECT COUNT(*) FROM json_each(e.result_json))=3 AND json_extract(e.result_json,'$.status')='classified' AND json_type(e.result_json,'$.isReceipt') IN ('true','false') AND json_type(e.result_json,'$.category')='text' AND json_extract(e.result_json,'$.category') IN (${categories})),0)`;
+}
 // The existing tenant cursor selects two jobs. Every join below keeps that owner.
 export const recoveryFromSql = `jobs j JOIN profiles p ON p.user_id=j.user_id JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id LEFT JOIN discovery_source_jobs dj ON dj.user_id=j.user_id AND dj.job_id=j.id LEFT JOIN source_messages sm ON sm.user_id=dj.user_id AND sm.id=dj.source_message_id LEFT JOIN sync_states ss ON ss.user_id=j.user_id AND ss.id=j.sync_state_id LEFT JOIN processing_consents oldpc ON oldpc.user_id=j.user_id AND oldpc.id=j.consent_id LEFT JOIN import_runs r ON r.user_id=j.user_id AND r.connection_id=j.connection_id AND r.id=(SELECT rr.id FROM import_runs rr WHERE rr.user_id=j.user_id AND rr.connection_id=j.connection_id AND rr.onboarding_interval_key IS NOT NULL AND rr.connection_generation=c.generation AND rr.completed_at IS NULL AND (ss.import_run_id=rr.id OR (ss.sync_kind='incremental' AND ss.run_key='live' AND ss.slice_key='live') OR (sm.id IS NOT NULL AND oldpc.connection_id=rr.connection_id AND oldpc.background_authorized=1 AND oldpc.query_mode=rr.query_mode AND oldpc.revoked_at IS NOT NULL AND sm.received_at>=CASE WHEN length(rr.frozen_start)=24 AND strftime('%Y-%m-%dT%H:%M:%fZ',rr.frozen_start)=rr.frozen_start THEN unixepoch(rr.frozen_start)*1000+CAST(substr(rr.frozen_start,21,3) AS INTEGER) WHEN length(rr.frozen_start)=20 AND strftime('%Y-%m-%dT%H:%M:%SZ',rr.frozen_start)=rr.frozen_start THEN unixepoch(rr.frozen_start)*1000 ELSE NULL END) OR EXISTS(SELECT 1 FROM discovery_run_sources ds WHERE ds.user_id=rr.user_id AND ds.import_run_id=rr.id AND ds.source_message_id=sm.id)) ORDER BY rr.started_at DESC,rr.id LIMIT 1) LEFT JOIN processing_consents pc ON pc.user_id=r.user_id AND pc.id=r.consent_id LEFT JOIN ai_settings a ON a.user_id=j.user_id LEFT JOIN documents d ON d.user_id=dj.user_id AND d.source_message_id=dj.source_message_id AND d.pipeline_index=dj.document_index`;
-export const recoveryProjectionSql = `j.id,j.fence,j.status,j.consent_id,j.connection_generation,sm.id AS source_id,sm.available AS source_available,dj.pipeline_stage,dj.document_index,dj.extraction_fingerprint,r.id AS target_run,pc.id AS target_consent,c.generation AS target_generation,c.credential_version AS target_credential_version,a.generation AS ai_generation,a.credential_version AS ai_credential_version,oldpc.accepted_configuration_digest AS prior_digest,CASE WHEN ${eligibleSql()} THEN json_object('mode',a.mode,'settingsRevision',a.revision,'providerId',a.provider_id,'modelId',a.model_id,'configVersion',a.config_version,'policyVersion',a.consent_version,'acceptedDigest',pc.accepted_configuration_digest) END AS processing_selection,(SELECT COALESCE(json_group_array(json_object('key',e.run_key,'result',e.result_json,'version',e.extraction_version,'price',(SELECT price_snapshot FROM usage_events ev WHERE ev.user_id=e.user_id AND ev.run_key=e.run_key AND ev.state IN ('known','uncertain') ORDER BY ev.attempt_number DESC LIMIT 1))),'[]') FROM (SELECT * FROM ai_extractions ee WHERE ee.user_id=j.user_id AND ee.document_id=d.id AND ee.content_hash=d.content_hash AND ee.purpose='extraction' AND ee.result_json IS NOT NULL AND ee.completed_at IS NOT NULL AND ee.mode=a.mode AND ee.destination_id=a.provider_id AND ee.model_id=a.model_id AND ee.config_version=a.config_version AND ee.settings_revision=a.revision AND ee.generation=a.generation AND ee.credential_version=a.credential_version ORDER BY ee.created_at DESC,ee.run_key LIMIT 2) e) AS cache_json,EXISTS(SELECT 1 FROM ai_extractions e JOIN usage_events ev ON ev.user_id=e.user_id AND ev.run_key=e.run_key WHERE e.user_id=j.user_id AND e.document_id=d.id AND ev.state IN ('reserved','sent','known','uncertain','overrun')) AS paid_work`;
+export const recoveryProjectionSql = `j.id,j.fence,j.status,j.consent_id,j.connection_generation,sm.id AS source_id,sm.available AS source_available,dj.pipeline_stage,dj.document_index,dj.extraction_fingerprint,r.id AS target_run,pc.id AS target_consent,c.generation AS target_generation,c.credential_version AS target_credential_version,a.generation AS ai_generation,a.credential_version AS ai_credential_version,oldpc.accepted_configuration_digest AS prior_digest,CASE WHEN ${eligibleSql()} THEN json_object('mode',a.mode,'settingsRevision',a.revision,'providerId',a.provider_id,'modelId',a.model_id,'configVersion',a.config_version,'policyVersion',a.consent_version,'acceptedDigest',pc.accepted_configuration_digest) END AS processing_selection,(SELECT COALESCE(json_group_array(json_object('key',e.run_key,'result',e.result_json,'version',e.extraction_version,'price',(SELECT price_snapshot FROM usage_events ev WHERE ev.user_id=e.user_id AND ev.run_key=e.run_key AND ev.state IN ('known','uncertain') ORDER BY ev.attempt_number DESC LIMIT 1))),'[]') FROM (SELECT * FROM ai_extractions ee WHERE ee.user_id=j.user_id AND ee.document_id=d.id AND ee.content_hash=d.content_hash AND ee.purpose='extraction' AND ee.result_json IS NOT NULL AND ee.completed_at IS NOT NULL AND ee.mode=a.mode AND ee.destination_id=a.provider_id AND ee.model_id=a.model_id AND ee.config_version=a.config_version AND ee.settings_revision=a.revision AND ee.generation=a.generation AND ee.credential_version=a.credential_version ORDER BY ee.created_at DESC,ee.run_key LIMIT 2) e) AS cache_json,EXISTS(SELECT 1 FROM ai_extractions e JOIN usage_events ev ON ev.user_id=e.user_id AND ev.run_key=e.run_key WHERE e.user_id=j.user_id AND e.document_id=d.id AND ev.state IN ('reserved','sent','known','uncertain','overrun') AND NOT (${completedClassificationSql()})) AS paid_work`;
 function andSql(conditions: readonly string[]): string {
   if (conditions.length === 1) return conditions[0] ?? "0";
   const midpoint = Math.ceil(conditions.length / 2);
@@ -69,6 +81,7 @@ export interface RecoveryDecision {
 export async function reviewRecoveryRows(
   rows: readonly OnboardingRecoveryRow[],
   resolve: (metadata: ProcessingReviewMetadata) => Promise<string | null>,
+  classification?: ReceiptClassificationConfiguration,
 ): Promise<readonly RecoveryDecision[] | null> {
   if (rows.length > 2) throw new Error("RECOVERY_LIMIT");
   const decisions: RecoveryDecision[] = [];
@@ -109,6 +122,12 @@ export async function reviewRecoveryRows(
             mode: metadata.mode,
             settingsRevision: metadata.settingsRevision,
             aiConfigurationDigest: price.configurationDigest,
+            ...(classification?.enabled
+              ? {
+                  classification,
+                  classificationNotice: RECEIPT_CLASSIFIER_NOTICE,
+                }
+              : {}),
             parser: LOCAL_PARSER_POLICY,
           });
           if (

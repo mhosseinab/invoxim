@@ -62,3 +62,11 @@ The owner selected Abacus RouteLLM `gpt-6-luna` as the operator-funded default a
 For the current Start-import incident, retry the existing review once after diagnostic API deployment `7e0ebb51-a946-4c2d-b064-2793a39cbb3d`. If it fails, provide only the returned error JSON/request ID; do not share cookies, review tokens, API keys or receipt contents. Root can then correlate the allowlisted Worker trace. The queue and background gates are configured; applying the pending Drive archive migration is not a prerequisite for this Gmail Start failure.
 
 Verified Start repair release: API `963f4705-029b-4014-8360-1f5c2eafe323`, Pages `f5566f14`, source `6eebd6c`; full verification passed 1,368 native and 84 browser tests. The actual blocker observed is Google HTTP 403 on Gmail's history-anchor/profile request. Refresh onboarding and retry once to obtain the now-classified reason. If it is `mailbox_api_disabled`, enable Gmail API in the Google Cloud project owning the mailbox OAuth client; if it is `mailbox_reconnect_required`, reconnect with Gmail read permission. No D1 migration is needed for either remedy. Exact reason/live successful import remains unverified. See `evidence/implementation/onboarding-gmail-start-repair-20261013.md`.
+
+## Clef classification rollout
+
+- Deploy the verified Worker and frontend together when approved; classifier settings are bundled from `config/ai.classification.production.json`, and Wrangler supplies the `AI` binding. Financial extraction remains Abacus/BYOK.
+- Renew processing Review/Start so Cloudflare classification is explicitly authorized. Compatible paid caches resume without duplicate charges; changed-policy, unfinished or invalid paid attempts remain review-blocked.
+- Run a separately recorded live synthetic Clef quality/latency/cost smoke; deterministic mocks do not prove model accuracy.
+- Production currently pauses inference at 50 documents/day; use a reviewed Start after reset. Limits were not increased. One exhausted sync needs failure tracing before retry; its original error is unavailable.
+- Historical parser failures and review outcomes are not automatically replayed by this refactor. Correction actions are currently disabled in production.

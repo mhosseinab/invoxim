@@ -31,6 +31,7 @@
     "JOBS_LEASE_MS": "300000",
     "JOBS_REDELIVERY_MS": "300000",
   },
+  "ai": { "binding": "AI" },
   "queues": {
     "producers": [{ "binding": "JOBS", "queue": "invoxim-jobs" }],
     "consumers": [

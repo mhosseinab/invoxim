@@ -3,13 +3,19 @@ import type {
   DocumentInput,
   JobOutcome,
   PersistableAiResult,
+  ReceiptCategory,
 } from "@invoxim/core";
 import {
   aiRunIdentityKey,
+  createClassificationEngine,
   createInferenceEngine,
+  EMAIL_CLASSIFICATION_VERSION,
   planLedgerIngestion,
 } from "@invoxim/core";
-import { createAiUsageStore } from "../ai/budget";
+import {
+  createAiUsageStore,
+  createClassificationUsageStore,
+} from "../ai/budget";
 import { AiSettingsError } from "../ai/settings";
 import { ContentError } from "./gmail-content";
 import type { PipelineDocumentMetadata } from "./repository";
@@ -135,10 +141,14 @@ export function createPipelineService(
           return await reconcile(document, work.extractionFingerprint, cached);
         }
         const selectedPart =
-          work.stage === "infer"
+          work.stage === "infer" && !options.classification
             ? work.documents[work.documentIndex]?.partKey
             : undefined;
-        if (work.stage === "infer" && selectedPart === undefined)
+        if (
+          work.stage === "infer" &&
+          selectedPart === undefined &&
+          !options.classification
+        )
           return await finishFailure("review", "invalid-stage");
         const reader = await options.content.open(lease, guardedControl);
         const content = await reader.load({
@@ -205,6 +215,116 @@ export function createPipelineService(
         }));
         if (!(await authorized())) return stale;
         const selected = await options.inference.open(lease, work, parts);
+        let classifiedCategory: ReceiptCategory | undefined;
+        if (options.classification) {
+          const firstDocument = work.documents[0];
+          if (!firstDocument)
+            return await finishFailure("review", "invalid-stage");
+          if (
+            parsed.documents.length !== work.documents.length ||
+            work.documents.some((metadata) => {
+              const current = parsed.documents.find(
+                (candidate) => candidate.identity.partId === metadata.partKey,
+              );
+              return (
+                !current ||
+                current.contentHash !== metadata.contentHash ||
+                current.parserVersion !== metadata.parserVersion
+              );
+            })
+          )
+            return failCurrentDocument
+              ? await failCurrentDocument("source-changed")
+              : await finishFailure("review", "source-changed");
+          const classificationParts = parsed.documents.flatMap(
+            (candidate, documentIndex) =>
+              candidate.status === "ready"
+                ? candidate.textParts.map((part, partIndex) => ({
+                    id: `document-${documentIndex}-part-${partIndex}`,
+                    text: part.text,
+                  }))
+                : [],
+          );
+          const classifier = await options.classification.open(
+            lease,
+            work,
+            classificationParts,
+            selected,
+          );
+          if (options.remainingStatements() < 23)
+            return { kind: "retry", code: "transient" };
+          const classificationIdentity = {
+            documentId: firstDocument.id,
+            contentHash: firstDocument.contentHash,
+            extractionVersion: EMAIL_CLASSIFICATION_VERSION,
+          };
+          const classificationKey = await aiRunIdentityKey({
+            tenant: lease.context,
+            identity: classificationIdentity,
+            config: classifier.config,
+          });
+          const classification = await createClassificationEngine({
+            classifier: classifier.classifier,
+            store: createClassificationUsageStore(db, {
+              lease,
+              policy: options.budget,
+              pricing: classifier.pricing,
+              authorization: classifier.authorization,
+            }),
+          }).classify(
+            lease.context,
+            classificationIdentity,
+            classificationParts,
+            classifier.config,
+            control.signal,
+          );
+          if (classification.status !== "classified") {
+            if (
+              ["budget", "in-progress", "rate-limit"].includes(
+                classification.reason,
+              )
+            )
+              return { kind: "paused", code: "budget" };
+            if (classification.reason === "settings-changed") return stale;
+            return failCurrentDocument
+              ? await failCurrentDocument(
+                  `classification-${classification.reason}`,
+                )
+              : await finishFailure(
+                  "review",
+                  `classification-${classification.reason}`,
+                );
+          }
+          if (
+            !classification.isReceipt &&
+            parsed.documents.every((candidate) => candidate.status === "ready")
+          ) {
+            if (!options.repository.skipSource)
+              return await finishFailure(
+                "review",
+                "classification-handler-unavailable",
+              );
+            return (await options.repository.skipSource(
+              lease,
+              classificationKey,
+            )) === "committed"
+              ? completed
+              : stale;
+          }
+          classifiedCategory =
+            classification.category === "uncategorized"
+              ? undefined
+              : classification.category;
+          if (work.extractionFingerprint !== classificationKey) {
+            return (await repository.advance(lease, {
+              stage: "infer",
+              documentIndex: work.documentIndex,
+              extractionFingerprint: classificationKey,
+            })) === "committed"
+              ? completed
+              : stale;
+          }
+        }
         // One paid attempt per stage. Preserve room for known/uncertain settlement,
         // cache completion, durable continuation and engine settlement checks.
         if (selected.config.maxAttempts !== 1)
@@ -219,7 +339,42 @@ export function createPipelineService(
           extractionVersion: selected.config.promptVersion,
         };
         const engine = createInferenceEngine({
-          extractor: selected.extractor,
+          extractor:
+            classifiedCategory === undefined
+              ? selected.extractor
+              : {
+                  async extract(parts, config, attempt, signal) {
+                    const response = await selected.extractor.extract(
+                      parts,
+                      config,
+                      attempt,
+                      signal,
+                    );
+                    if (
+                      response.status !== "ok" ||
+                      response.finish !== "complete"
+                    )
+                      return response;
+                    try {
+                      const output = JSON.parse(response.output);
+                      if (!output || !Array.isArray(output.records))
+                        return response;
+                      return {
+                        ...response,
+                        output: JSON.stringify({
+                          ...output,
+                          records: output.records.map((record: unknown) =>
+                            record && typeof record === "object"
+                              ? { ...record, category: classifiedCategory }
+                              : record,
+                          ),
+                        }),
+                      };
+                    } catch {
+                      return response;
+                    }
+                  },
+                },
           store: createAiUsageStore(db, {
             lease,
             policy: options.budget,

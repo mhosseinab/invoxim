@@ -1,6 +1,7 @@
 import type {
   ApprovedAiConfig,
   DocumentTextExtractor,
+  EmailClassifier,
   InvoiceExtractor,
   JobLease,
   JobOutcome,
@@ -19,6 +20,24 @@ export interface TransientContentFactory {
     control: PipelineControl,
   ): Promise<TransientContentReader>;
 }
+export interface PipelineInferenceSelection {
+  config: ApprovedAiConfig;
+  extractor: InvoiceExtractor;
+  pricing: ReadonlyMap<string, AiPriceSnapshot>;
+}
+export interface PipelineClassificationFactory {
+  open(
+    lease: JobLease,
+    work: PipelineWork,
+    parts: readonly { id: string; text: string }[],
+    selected: PipelineInferenceSelection,
+  ): Promise<{
+    config: ApprovedAiConfig;
+    classifier: EmailClassifier;
+    pricing: ReadonlyMap<string, AiPriceSnapshot>;
+    authorization: { config: ApprovedAiConfig; price: AiPriceSnapshot };
+  }>;
+}
 export interface PipelineInferenceFactory {
   open(
     lease: JobLease,
@@ -35,6 +54,7 @@ export interface PipelineServiceOptions {
   readonly content: TransientContentFactory;
   readonly documents: DocumentTextExtractor;
   readonly inference: PipelineInferenceFactory;
+  readonly classification?: PipelineClassificationFactory;
   readonly budget: AiBudgetPolicy;
   readonly remainingStatements: () => number;
 }

@@ -307,6 +307,15 @@ export function ReviewImport({
                 ? text.reviewOperatorFundedInference
                 : text.reviewYourAIKey}
             </dd>
+            {disclosure.classification && (
+              <>
+                <dt>{text.reviewReceiptClassification}</dt>
+                <dd>
+                  {disclosure.classification.providerId} ·{" "}
+                  {disclosure.classification.model}
+                </dd>
+              </>
+            )}
             <dt>{text.reviewDocumentConversion}</dt>
             <dd>
               {disclosure.documentConversion.providerId}{" "}
@@ -318,7 +327,10 @@ export function ReviewImport({
           <section aria-label={text.reviewProcessingPolicies}>
             <h2>{text.reviewWhereReceiptDataGoes}</h2>
             <p>{text.reviewSupportedTextConversionHappensTransientlyInside}</p>
-            {disclosure.inference.notices.map((notice) => (
+            {[
+              ...disclosure.inference.notices,
+              ...(disclosure.classification?.notices ?? []),
+            ].map((notice) => (
               <article className="onboarding-notice" key={notice.id}>
                 <h3>{notice.displayName}</h3>
                 <p>{notice.dataUseSummary}</p>

@@ -6,6 +6,8 @@ import {
 import { z } from "zod";
 import type { AuthBindings } from "../auth/configuration";
 import { createCredentialCipher } from "../security/cipher";
+import type { ClefBinding } from "./clef";
+import { receiptClassificationConfigurationSchema } from "./clef";
 
 export interface AiBindings extends AuthBindings {
   AI_ENABLED?: string;
@@ -15,6 +17,9 @@ export interface AiBindings extends AuthBindings {
   AI_HOSTED_KEY?: string;
   CREDENTIAL_KEYRING?: string;
   AI_BUDGET_JSON?: string;
+  AI_CLASSIFICATION_JSON?: string;
+  AI_CLASSIFICATION_ENABLED?: string;
+  AI?: ClefBinding | undefined;
 }
 const resourceLimit = z.number().int().min(1).max(9000000000000);
 const monetaryLimit = z
@@ -169,7 +174,17 @@ export function aiConfiguration(bindings: AiBindings) {
     const budget = aiBudgetSchema.parse(
       JSON.parse(bindings.AI_BUDGET_JSON ?? "null"),
     );
+    if ((bindings.AI_CLASSIFICATION_JSON?.length ?? 0) > 4096) return null;
+    const classification =
+      bindings.AI_CLASSIFICATION_ENABLED !== "false" &&
+      bindings.AI_CLASSIFICATION_JSON
+        ? receiptClassificationConfigurationSchema.parse(
+            JSON.parse(bindings.AI_CLASSIFICATION_JSON),
+          )
+        : undefined;
+    if (classification?.enabled && !bindings.AI) return null;
     return {
+      ...(classification?.enabled ? { classification } : {}),
       destinations,
       cipher,
       keyVersions: Object.keys(keyring.keys).map(Number),

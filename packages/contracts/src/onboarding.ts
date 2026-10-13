@@ -131,6 +131,7 @@ export const onboardingDisclosureSchema = z.strictObject({
   reportingCurrency: currency,
   inference,
   documentConversion: parser,
+  classification: inference.optional(),
   allowance: allowance.nullable(),
   canStartImport: z.boolean(),
   availability: z.enum([

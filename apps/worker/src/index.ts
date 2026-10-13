@@ -9,6 +9,7 @@ import type {
 import {
   aiConfiguration,
   createFxReportingService,
+  createGmailContentFactory,
   createGmailDiscoveryProviderFactory,
   createJobStore,
   createLifecycleCleanup,
@@ -188,8 +189,9 @@ function configuredJobs(
     gmail && ai && (policy.queryLimit ?? 40) === 40
       ? createPipelineRuntime({
           db: database.db,
-          gmail,
+          content: createGmailContentFactory(database.db, gmail),
           ai,
+          classificationBinding: bindings.AI,
           remainingStatements: database.remainingStatements,
         })
       : null;
@@ -215,6 +217,7 @@ function configuredJobs(
     store: createJobStore(database.db, {
       policy,
       ...(ai ? { processingReview: createProcessingReviewResolver(ai) } : {}),
+      ...(ai?.classification ? { classification: ai.classification } : {}),
     }),
     ...(handler ? { handler } : {}),
     queue: {
