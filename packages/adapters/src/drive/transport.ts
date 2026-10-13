@@ -1,3 +1,4 @@
+import { ArchiveServiceError } from "@invoxim/core";
 import { z } from "zod";
 import {
   DriveArchiveError,
@@ -176,6 +177,7 @@ function verifyOriginal(body: unknown, plan: DriveOriginalPlan) {
 export function createDriveArchiveTransport(
   http: DriveHttpTransport = (request) => fetch(request),
   timeoutMs = 10000,
+  options: { authorize?: () => Promise<void>; signal?: AbortSignal } = {},
 ): DriveArchiveTransport {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000)
     throw new DriveArchiveError("invalid_input");
@@ -191,9 +193,17 @@ export function createDriveArchiveTransport(
       throw new DriveArchiveError("invalid_input");
     const controller = new AbortController();
     const deadline = Date.now() + timeoutMs;
+    const cancel = () => controller.abort();
+    options.signal?.addEventListener("abort", cancel, { once: true });
+    if (options.signal?.aborted) controller.abort();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response | undefined;
     try {
+      if (controller.signal.aborted) throw new DriveArchiveError("timeout");
+      if (options.authorize)
+        await abortable(options.authorize(), controller.signal);
+      if (controller.signal.aborted || Date.now() >= deadline)
+        throw new DriveArchiveError("timeout");
       response = await abortable<Response>(
         http(
           new Request(url, {
@@ -251,12 +261,17 @@ export function createDriveArchiveTransport(
       }
       return { status: response.status, body };
     } catch (error) {
-      if (error instanceof DriveArchiveError) throw error;
+      if (
+        error instanceof DriveArchiveError ||
+        error instanceof ArchiveServiceError
+      )
+        throw error;
       throw new DriveArchiveError(
         controller.signal.aborted ? "timeout" : "unavailable",
       );
     } finally {
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", cancel);
       controller.abort();
       if (response?.body) void response.body.cancel().catch(() => undefined);
     }

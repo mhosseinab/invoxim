@@ -118,6 +118,32 @@ export function createArchiveFolderStore(
       time,
     ];
   }
+  async function readCurrent(
+    context: TenantContext,
+    auth: ArchiveFolderAuthorization,
+  ): Promise<ArchiveFolderPlan | null> {
+    validateAuthorization(auth);
+    const row = await db
+      .prepare(
+        `SELECT f.*,c.provider_subject AS authorized_subject FROM profiles p
+      JOIN connections c ON c.user_id=p.user_id AND c.id=?
+      JOIN archive_settings a ON a.user_id=p.user_id
+      LEFT JOIN archive_folders f ON f.user_id=p.user_id AND f.connection_id=c.id
+      WHERE p.user_id=? AND a.version=? AND c.generation=? AND ${eligible}`,
+      )
+      .bind(
+        auth.connectionId,
+        context.userId,
+        auth.settingsVersion,
+        auth.generation,
+      )
+      .first<FolderRow & { authorized_subject: string }>();
+    if (!row) throw new ArchiveServiceError("CONFLICT");
+    if (!row.connection_id) return null;
+    if (row.storage_subject !== row.authorized_subject)
+      throw new ArchiveServiceError("CONFLICT");
+    return plan(row);
+  }
   async function getOrPlan(
     context: TenantContext,
     auth: ArchiveFolderAuthorization,
@@ -222,6 +248,7 @@ export function createArchiveFolderStore(
     return result.meta.changes === 1;
   }
   return {
+    readCurrent: (context, auth) => safe(() => readCurrent(context, auth)),
     getOrPlan: (context, auth, proposed) =>
       safe(() => getOrPlan(context, auth, proposed)),
     claim: (context, auth) => safe(() => claim(context, auth)),

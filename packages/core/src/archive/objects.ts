@@ -23,6 +23,9 @@ export interface ArchiveUploadPlan {
 export interface ArchiveObjectWork {
   lease: ArchiveObjectLease;
   documentId: string;
+  documentHash: string;
+  documentMime: string;
+  documentSize: number;
   sourceMessageId: string;
   providerMessageId: string;
   partKey: string;
@@ -34,6 +37,15 @@ export interface ArchiveObjectWork {
   settingsVersion: number;
   plan: ArchiveUploadPlan | null;
 }
+export interface ArchiveCredentialFence {
+  subject: string;
+  credentialVersion: number;
+  scopes: string;
+}
+export interface ArchiveCredentialFences {
+  mailbox?: ArchiveCredentialFence;
+  storage?: ArchiveCredentialFence;
+}
 export interface ArchiveObjectStore {
   request(context: TenantContext, input: ArchiveObjectRequest): Promise<string>;
   claim(context: TenantContext, id: string): Promise<ArchiveObjectWork | null>;
@@ -41,10 +53,17 @@ export interface ArchiveObjectStore {
     context: TenantContext,
     lease: ArchiveObjectLease,
     plan: ArchiveUploadPlan,
+    credentials?: ArchiveCredentialFences,
   ): Promise<boolean>;
   authorized(
     context: TenantContext,
     lease: ArchiveObjectLease,
+    credentials?: ArchiveCredentialFences,
   ): Promise<boolean>;
-  complete(context: TenantContext, lease: ArchiveObjectLease): Promise<boolean>;
+  complete(
+    context: TenantContext,
+    lease: ArchiveObjectLease,
+    credentials?: ArchiveCredentialFences,
+  ): Promise<boolean>;
+  release(context: TenantContext, lease: ArchiveObjectLease): Promise<boolean>;
 }

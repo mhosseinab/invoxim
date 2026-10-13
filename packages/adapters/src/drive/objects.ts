@@ -9,6 +9,7 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
+import type { ArchiveCredentialFences } from "../../../core/src/archive/objects";
 
 const identifier = z
   .string()
@@ -63,9 +64,35 @@ const current = `EXISTS(
  AND a.enabled=1 AND a.version=archive_objects.settings_version AND a.connection_id=c.id AND a.connection_generation=c.generation AND a.disclosure_version=1
 )`;
 const leaseGuard = `user_id=? AND id=? AND state='pending' AND lease_id=? AND fence=? AND lease_expires_at=? AND lease_expires_at>? AND ${current}`;
+
+function credentialGuard(value: ArchiveCredentialFences | undefined) {
+  if (!value) return { sql: "", values: [] as (string | number)[] };
+  const clauses: string[] = [];
+  const values: (string | number)[] = [];
+  for (const kind of ["mailbox", "storage"] as const) {
+    const fence = value[kind];
+    if (!fence) continue;
+    if (
+      !identifier.safeParse(fence.subject).success ||
+      !integer.safeParse(fence.credentialVersion).success ||
+      typeof fence.scopes !== "string" ||
+      fence.scopes.length > 4096
+    )
+      throw new ArchiveServiceError("INVALID_INPUT");
+    clauses.push(
+      `EXISTS(SELECT 1 FROM connections pinned WHERE pinned.user_id=archive_objects.user_id AND pinned.id=archive_objects.${kind === "mailbox" ? "mailbox" : "storage"}_connection_id AND pinned.kind='${kind}' AND pinned.provider_subject=? AND pinned.credential_version=? AND pinned.scopes=?)`,
+    );
+    values.push(fence.subject, fence.credentialVersion, fence.scopes);
+  }
+  return { sql: clauses.length ? ` AND ${clauses.join(" AND ")}` : "", values };
+}
+
 interface WorkRow {
   id: string;
   document_id: string;
+  document_hash: string;
+  document_mime: string;
+  document_size: number;
   source_message_id: string;
   provider_message_id: string;
   part_key: string;
@@ -105,6 +132,9 @@ function work(row: WorkRow): ArchiveObjectWork {
       expiresAt: row.lease_expires_at,
     }),
     documentId: row.document_id,
+    documentHash: row.document_hash,
+    documentMime: row.document_mime,
+    documentSize: row.document_size,
     sourceMessageId: row.source_message_id,
     providerMessageId: row.provider_message_id,
     partKey: row.part_key,
@@ -231,13 +261,15 @@ export function createArchiveObjectStore(
     context: TenantContext,
     lease: ArchiveObjectLease,
     value: ArchiveUploadPlan,
+    credentials?: ArchiveCredentialFences,
   ): Promise<boolean> {
+    const pinned = credentialGuard(credentials);
     const parsed = planSchema.safeParse(value);
     if (!parsed.success) throw new ArchiveServiceError("INVALID_INPUT");
     const plan = parsed.data;
     const result = await db
       .prepare(
-        `UPDATE archive_objects SET planned_file_id=?,parent_id=?,workspace_marker=?,original_mime=?,original_size=?,original_sha256=? WHERE ${leaseGuard} AND planned_file_id IS NULL`,
+        `UPDATE archive_objects SET planned_file_id=?,parent_id=?,workspace_marker=?,original_mime=?,original_size=?,original_sha256=? WHERE ${leaseGuard}${pinned.sql} AND planned_file_id IS NULL`,
       )
       .bind(
         plan.fileId,
@@ -247,6 +279,7 @@ export function createArchiveObjectStore(
         plan.size,
         plan.sha256,
         ...leaseArguments(context, lease),
+        ...pinned.values,
       )
       .run();
     if (result.meta.changes === 1) return true;
@@ -254,10 +287,11 @@ export function createArchiveObjectStore(
     return (
       (await db
         .prepare(
-          `SELECT 1 AS ready FROM archive_objects WHERE ${leaseGuard} AND planned_file_id=? AND parent_id=? AND workspace_marker=? AND original_mime=? AND original_size=? AND original_sha256=?`,
+          `SELECT 1 AS ready FROM archive_objects WHERE ${leaseGuard}${pinned.sql} AND planned_file_id=? AND parent_id=? AND workspace_marker=? AND original_mime=? AND original_size=? AND original_sha256=?`,
         )
         .bind(
           ...leaseArguments(context, lease),
+          ...pinned.values,
           plan.fileId,
           plan.parentId,
           plan.workspaceMarker,
@@ -271,34 +305,55 @@ export function createArchiveObjectStore(
   async function authorized(
     context: TenantContext,
     lease: ArchiveObjectLease,
+    credentials?: ArchiveCredentialFences,
   ): Promise<boolean> {
+    const pinned = credentialGuard(credentials);
     return (
       (await db
-        .prepare(`SELECT 1 AS ready FROM archive_objects WHERE ${leaseGuard}`)
-        .bind(...leaseArguments(context, lease))
+        .prepare(
+          `SELECT 1 AS ready FROM archive_objects WHERE ${leaseGuard}${pinned.sql}`,
+        )
+        .bind(...leaseArguments(context, lease), ...pinned.values)
         .first()) !== null
     );
   }
   async function complete(
     context: TenantContext,
     lease: ArchiveObjectLease,
+    credentials?: ArchiveCredentialFences,
   ): Promise<boolean> {
+    const pinned = credentialGuard(credentials);
     const time = now();
     const argumentsList = leaseArguments(context, lease, time);
     const result = await db
       .prepare(
-        `UPDATE archive_objects SET state='archived',remote_id=planned_file_id,archived_at=?,lease_id=NULL,lease_expires_at=0 WHERE ${leaseGuard} AND planned_file_id IS NOT NULL`,
+        `UPDATE archive_objects SET state='archived',remote_id=planned_file_id,archived_at=?,lease_id=NULL,lease_expires_at=0 WHERE ${leaseGuard}${pinned.sql} AND planned_file_id IS NOT NULL`,
       )
-      .bind(time, ...argumentsList)
+      .bind(time, ...argumentsList, ...pinned.values)
+      .run();
+    return result.meta.changes === 1;
+  }
+  async function release(
+    context: TenantContext,
+    lease: ArchiveObjectLease,
+  ): Promise<boolean> {
+    const result = await db
+      .prepare(
+        `UPDATE archive_objects SET lease_id=NULL,lease_expires_at=0 WHERE ${leaseGuard}`,
+      )
+      .bind(...leaseArguments(context, lease))
       .run();
     return result.meta.changes === 1;
   }
   return {
+    release: (context, lease) => safe(() => release(context, lease)),
     request: (context, input) => safe(() => request(context, input)),
     claim: (context, id) => safe(() => claim(context, id)),
-    savePlan: (context, lease, plan) =>
-      safe(() => savePlan(context, lease, plan)),
-    authorized: (context, lease) => safe(() => authorized(context, lease)),
-    complete: (context, lease) => safe(() => complete(context, lease)),
+    savePlan: (context, lease, plan, credentials) =>
+      safe(() => savePlan(context, lease, plan, credentials)),
+    authorized: (context, lease, credentials) =>
+      safe(() => authorized(context, lease, credentials)),
+    complete: (context, lease, credentials) =>
+      safe(() => complete(context, lease, credentials)),
   };
 }

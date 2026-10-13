@@ -24,6 +24,11 @@ export interface ArchiveFolderWork {
   lease: ArchiveFolderLease;
 }
 export interface ArchiveFolderStore {
+  /** Refuses stale authorization; null means authorized with no persisted folder. */
+  readCurrent(
+    context: TenantContext,
+    authorization: ArchiveFolderAuthorization,
+  ): Promise<ArchiveFolderPlan | null>;
   getOrPlan(
     context: TenantContext,
     authorization: ArchiveFolderAuthorization,
