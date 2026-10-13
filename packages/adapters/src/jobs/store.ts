@@ -6,6 +6,7 @@ import type {
   NewJob,
   TenantContext,
 } from "@invoxim/core";
+import { z } from "zod";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 import {
   buildOnboardingRecoveryStatements,
@@ -174,6 +175,18 @@ export function createJobStore(
     return value;
   };
   const live = `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND c.generation=jobs.connection_generation AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND p.status='active' AND pc.id=jobs.consent_id AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=?)`;
+  // Reuse the recovery metadata shape within the existing checkpoint statement.
+  // The current configuration resolver is pure: no provider call or extra D1 read.
+  const processingSelection = `(SELECT json_object('mode',a.mode,'settingsRevision',a.revision,'providerId',a.provider_id,'modelId',a.model_id,'configVersion',a.config_version,'policyVersion',a.consent_version,'acceptedDigest',pc.accepted_configuration_digest) FROM connections c JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id JOIN ai_settings a ON a.user_id=c.user_id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND pc.id=jobs.consent_id AND a.status='active' AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL) AND pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version)`;
+  const processingSelectionSchema = z.strictObject({
+    mode: z.enum(["hosted", "byok"]),
+    settingsRevision: z.number().int().positive(),
+    providerId: z.string().min(1).max(120),
+    modelId: z.string().min(1).max(120),
+    configVersion: z.string().min(1).max(120),
+    policyVersion: z.number().int().nonnegative(),
+    acceptedDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  });
   const columns =
     "id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,status,fence,retry_count,lease_id,lease_expires_at,dispatched_at,dispatch_at";
   // Only internal, validated database rows may acquire opaque job authority.
@@ -493,8 +506,8 @@ export function createJobStore(
       };
     },
     async checkpoint(lease) {
-      return !!(await prepare(
-        `SELECT 1 FROM jobs WHERE user_id=? AND id=? AND status='leased' AND lease_id=? AND fence=? AND lease_expires_at>? AND ${live}`,
+      const row = await prepare(
+        `SELECT ${options.processingReview ? `${processingSelection} AS processing_selection` : "1"} FROM jobs WHERE user_id=? AND id=? AND status='leased' AND lease_id=? AND fence=? AND lease_expires_at>? AND ${live}`,
       )
         .bind(
           lease.context.userId,
@@ -504,7 +517,20 @@ export function createJobStore(
           now(),
           now(),
         )
-        .first());
+        .first<{ processing_selection?: string | null }>();
+      if (!row) return false;
+      if (!options.processingReview) return true;
+      if (!row.processing_selection) return false;
+      try {
+        const selection = processingSelectionSchema.parse(
+          JSON.parse(row.processing_selection),
+        );
+        const current = await options.processingReview(selection);
+        return current !== null && current === selection.acceptedDigest;
+      } catch {
+        // Invalid owned metadata or unavailable review must stop provider work.
+        return false;
+      }
     },
     async finish(lease, outcome) {
       const at = now();

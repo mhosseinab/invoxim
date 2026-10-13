@@ -87,6 +87,18 @@ pnpm --filter @invoxim/web exec wrangler pages deploy dist --project-name invoxi
 
 Pages forwards `/api/*` through its `API` service binding to `invoxim-api`. Confirm that binding and the Worker's `DB` binding in the deployed environment. Configure Google login separately from mailbox and Drive authorization; the exact login callback is `<AUTH_ORIGIN>/api/auth/callback/google`. Secret names and feature prerequisites are documented in [Worker configuration](apps/worker/CONFIGURATION.md).
 
+The production Worker configuration binds `JOBS` to the existing `invoxim-jobs` Queue, consumes one message per invocation and routes exhausted deliveries to `invoxim-jobs-dlq`. A minute Cron dispatches durable pending work; recurring mailbox checks remain hourly in D1. Gmail discovery, extraction and jobs are enabled in that configuration. Import still requires the user's explicit reviewed Start; credentials remain Wrangler secrets.
+
+```bash
+# Restore Cloudflare CLI authentication if needed
+pnpm --filter @invoxim/worker exec wrangler login
+# Inspect existing Queue resources and deployments
+pnpm --filter @invoxim/worker exec wrangler queues list
+pnpm --filter @invoxim/worker exec wrangler deployments list
+# Inspect background events without publishing log contents
+pnpm --filter @invoxim/worker exec wrangler tail invoxim-api
+```
+
 These commands are operator instructions, not a record of deployment. CLI syntax is checked against pinned Wrangler and its [command documentation](https://developers.cloudflare.com/workers/wrangler/commands/); Pages upload details are in [Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/).
 
 ## Modules
