@@ -77,3 +77,13 @@ Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser log
 - [ ] Resolve the login-initiation failure and independently recheck the actual Google redirect after the reviewed fix is deployed.
 - [ ] Verify anonymous private routes offer configured sign-in recovery and fresh anonymous visits use neutral signed-out copy.
 - [ ] Complete login/callback/session/logout with an approved test identity and record refusal, wrong-account and allowlist behavior without retaining tokens or personal screenshots.
+
+## Current additive M1 migration gates
+
+- [ ] Review and exercise additive `0002_archive_upload_sessions.sql`, `0003_recurring_series.sql`, `0004_outlook_folder_exclusions.sql`, `0005_reporting_revision.sql` and `0006_archive_dispatch_backfill.sql` against the intended populated schema before deployment. Some increments remain under active verification; this list is not approval to apply them. Preserve the fresh consolidated `0001_initial.sql` and never replay/reset it on an existing database.
+- [ ] Verify trigger-aware direct-row success/count oracles, atomic rollback and the actual financial pipeline with reporting revision installed. D1 `meta.changes` includes trigger writes; it cannot substitute for direct target-row counts. Measure write amplification separately from submitted query count.
+- [ ] Verify full recurring UI/terms acceptance before advertising recurrence. Keep the server flag disabled until that increment and its operator/live gates are approved.
+- [ ] Verify archive queue authority independently of AI consent, frozen backfill membership/cancellation, combined concurrency, ordered leaf cleanup and actual Worker queue/scheduled entry points before enabling archiving. No new live queue or upload is established by local tests.
+
+- [ ] Confirm the deployed Worker binding is `DB`, and migration tooling resolves `../../packages/adapters/migrations`. Local configuration discovery was verified; remote schema remains unknown.
+- [ ] Inspect the deployed auth tables/columns and resolve the observed 503 `auth_unavailable` before calling login available. Require actual Google redirect plus approved callback/session/logout; local synthetic initiation does not complete this gate.

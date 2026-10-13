@@ -21,7 +21,8 @@
   },
   "d1_databases": [
     {
-      "binding": "invoxim_db",
+      "binding": "DB",
+      "migrations_dir": "../../packages/adapters/migrations",
       "database_name": "invoxim-db",
       "database_id": "68db5cde-c850-4ca9-86cf-91669c70d4dd",
     },
