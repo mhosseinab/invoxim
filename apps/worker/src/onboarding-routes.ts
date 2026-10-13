@@ -8,6 +8,7 @@ import {
   createProfileService,
   gmailConfiguration,
   loginConfiguration,
+  ProcessingNotConfiguredError,
   readAuthJson,
 } from "@invoxim/adapters";
 import { createOnboardingUsecases, OnboardingError } from "@invoxim/core";
@@ -23,6 +24,7 @@ export interface OnboardingBindings
 function error(
   status: 400 | 401 | 403 | 409 | 413 | 415 | 429 | 503,
   code: string,
+  retryable = status === 503,
 ) {
   return Response.json(
     {
@@ -30,7 +32,7 @@ function error(
         code,
         message: "Request unavailable",
         requestId: crypto.randomUUID(),
-        retryable: status === 503,
+        retryable,
       },
     },
     { status, headers: { "Cache-Control": "no-store" } },
@@ -148,6 +150,8 @@ export function createOnboardingRoutes() {
             await current.service.disclosure(current.session, query(c.req.raw)),
           );
     } catch (cause) {
+      if (cause instanceof ProcessingNotConfiguredError)
+        return error(503, "processing_not_configured", false);
       return failure(cause);
     }
   });

@@ -687,3 +687,99 @@ test("ONBOARD-11/RECENT-08 reload resumes actual pending older history without a
   ).toBeVisible();
   expect(starts).toBe(0);
 });
+
+test("ONBOARD-14 missing receipt processing is explained without a review retry loop", async ({
+  page,
+}) => {
+  let disclosureReads = 0;
+  const writes: string[] = [];
+  const requestTrace: { path: string; at: number }[] = [];
+  await page.addInitScript(() => {
+    const events: { event: string; at: number }[] = [];
+    for (const event of ["focus", "pageshow", "visibilitychange"]) {
+      const target = event === "visibilitychange" ? document : window;
+      target.addEventListener(event, () => {
+        events.push({ event, at: Date.now() });
+        sessionStorage.setItem(
+          "qa-processing-foreground-events",
+          JSON.stringify(events),
+        );
+      });
+    }
+  });
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/")) requestTrace.push({ path, at: Date.now() });
+    if (
+      request.method() !== "GET" &&
+      new URL(request.url()).pathname.startsWith("/api/")
+    )
+      writes.push(new URL(request.url()).pathname);
+  });
+  await fixtures(page);
+  await page.route("**/api/processing-disclosure*", (route) => {
+    disclosureReads++;
+    return route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "processing_not_configured",
+          retryable: false,
+          message: "UNTRUSTED_INTERNAL_PROVIDER_DETAIL",
+        },
+      },
+    });
+  });
+  await page.goto("/onboarding/review");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Import is not available yet because receipt processing has not been configured. Your inbox is connected; this review has not started a new import.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Refresh review", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Start import", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "View existing records", exact: true }),
+  ).toHaveAttribute("href", "/purchases");
+  await expect(
+    page.getByText("UNTRUSTED_INTERNAL_PROVIDER_DETAIL"),
+  ).toHaveCount(0);
+  const foregroundEvents = await page.evaluate(() =>
+    sessionStorage.getItem("qa-processing-foreground-events"),
+  );
+  expect(
+    disclosureReads,
+    JSON.stringify({ requestTrace, foregroundEvents }),
+  ).toBe(1);
+  expect(writes).toEqual([]);
+});
+
+for (const error of [
+  { code: "processing_unavailable", retryable: true },
+  { code: "processing_not_configured", retryable: true },
+  { code: "unknown", retryable: false },
+]) {
+  test(`ONBOARD-14 unavailable or invalid processing envelope preserves manual retry (${error.code}/${error.retryable})`, async ({
+    page,
+  }) => {
+    let reads = 0;
+    await fixtures(page);
+    await page.route("**/api/processing-disclosure*", (route) => {
+      reads++;
+      return route.fulfill({ status: 503, json: { error } });
+    });
+    await page.goto("/onboarding/review");
+    await expect(page.getByRole("alert")).toHaveText(
+      "Processing details are unavailable. Import cannot start until approved processing is configured.",
+    );
+    await page
+      .getByRole("button", { name: "Refresh review", exact: true })
+      .click();
+    await expect.poll(() => reads).toBe(2);
+    await expect(
+      page.getByRole("button", { name: "Start import", exact: true }),
+    ).toHaveCount(0);
+  });
+}

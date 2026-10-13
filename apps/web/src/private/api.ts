@@ -1,6 +1,15 @@
 import { profileViewSchema } from "@invoxim/contracts";
+
+type ProcessingFailureCode =
+  | "processing_not_configured"
+  | "processing_unavailable";
+
 export class PrivateLoadError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly code?: ProcessingFailureCode,
+    readonly retryable?: boolean,
+  ) {
     super("Private records unavailable");
   }
 }
@@ -17,7 +26,32 @@ export async function readPrivate<T>(
     cache: "no-store",
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) throw new PrivateLoadError(response.status);
+  if (!response.ok) {
+    if (response.status === 503) {
+      const body: unknown = await response.json().catch(() => null);
+      if (body && typeof body === "object" && "error" in body) {
+        const error = body.error;
+        if (
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          "retryable" in error
+        ) {
+          if (
+            error.code === "processing_not_configured" &&
+            error.retryable === false
+          )
+            throw new PrivateLoadError(503, error.code, false);
+          if (
+            error.code === "processing_unavailable" &&
+            error.retryable === true
+          )
+            throw new PrivateLoadError(503, error.code, true);
+        }
+      }
+    }
+    throw new PrivateLoadError(response.status);
+  }
   const result = schema.safeParse(await response.json());
   if (!result.success) throw new PrivateLoadError(502);
   return result.data;

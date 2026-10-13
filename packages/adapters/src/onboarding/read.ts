@@ -15,6 +15,14 @@ import type { StoredAiSettings } from "../ai/settings";
 import { createAiSettingsService } from "../ai/settings";
 import { readEnvelopeVersion } from "../security/cipher";
 import { selectedOnboardingConfigurationDigest } from "./configuration";
+
+/** Missing operator configuration, distinct from other unavailable read failures. */
+export class ProcessingNotConfiguredError extends OnboardingError {
+  constructor() {
+    super("UNAVAILABLE");
+  }
+}
+
 export interface OnboardingProfile {
   version: number;
   timezone: string;
@@ -145,7 +153,7 @@ export function createOnboardingReads(
   async function selected(
     session: OnboardingSession,
   ): Promise<SelectedInference> {
-    if (!ai) throw new OnboardingError("UNAVAILABLE");
+    if (!ai) throw new ProcessingNotConfiguredError();
     const row = await createAiSettingsService(db, ai).current(session.tenant);
     // Existing user selection is authoritative even when it has become unavailable.
     const initializeHosted = !row?.mode;

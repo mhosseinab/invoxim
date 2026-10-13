@@ -10,7 +10,7 @@ import {
   validTimezone,
 } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { readPrivateForIdentity } from "../private/api";
+import { PrivateLoadError, readPrivateForIdentity } from "../private/api";
 import {
   confirmActor,
   identityFailure,
@@ -55,6 +55,7 @@ export function ReviewImport({
   const [stale, setStale] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [processingNotConfigured, setProcessingNotConfigured] = useState(false);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
   const controller = useRef<AbortController | null>(null);
   const inFlight = useRef(false);
@@ -69,6 +70,7 @@ export function ReviewImport({
       setStale(true);
       setAttempt(null);
       setMessage("");
+      setProcessingNotConfigured(false);
       try {
         let proposed: Partial<Draft> = values ?? {};
         if (
@@ -122,7 +124,16 @@ export function ReviewImport({
             onIdentityChanged();
           else {
             setDisclosure(null);
-            setMessage(text.policyUnavailable);
+            const notConfigured =
+              error instanceof PrivateLoadError &&
+              error.code === "processing_not_configured" &&
+              error.retryable === false;
+            setProcessingNotConfigured(notConfigured);
+            setMessage(
+              notConfigured
+                ? text.processingNotConfigured
+                : text.policyUnavailable,
+            );
           }
         }
       } finally {
@@ -248,9 +259,11 @@ export function ReviewImport({
       {message && <p role="alert">{message}</p>}
       {!disclosure && !busy && (
         <>
-          <button type="button" onClick={() => void loadReview()}>
-            {text.reviewRefreshReview}
-          </button>
+          {!processingNotConfigured && (
+            <button type="button" onClick={() => void loadReview()}>
+              {text.reviewRefreshReview}
+            </button>
+          )}
           <a href="/purchases">{text.pageViewExistingRecords}</a>
         </>
       )}

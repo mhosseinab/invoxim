@@ -70,6 +70,7 @@ export * from "./mailbox/service";
 export * from "./mailbox/types";
 export * from "./onboarding/configuration";
 export * from "./onboarding/processing-readiness";
+export { ProcessingNotConfiguredError } from "./onboarding/read";
 export { createOnboardingRepository } from "./onboarding/repository";
 export * from "./pipeline/gmail-content";
 export { createGmailContentFactory } from "./pipeline/gmail-factory";

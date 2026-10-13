@@ -27,6 +27,8 @@ export const onboardingCopy = {
     "Your changes have not been reviewed yet. Update the review before starting import.",
   processingPaused:
     "Processing is paused. Your existing records are still available.",
+  processingNotConfigured:
+    "Import is not available yet because receipt processing has not been configured. Your inbox is connected; this review has not started a new import.",
   policyUnavailable:
     "Processing details are unavailable. Import cannot start until approved processing is configured.",
   providerUnavailable:
