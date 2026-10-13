@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { JobLease, JobPolicy } from "@invoxim/core";
-import { expect, it } from "vitest";
+import { beforeAll, expect, it } from "vitest";
+import folderExclusionsMigration from "../../../packages/adapters/migrations/0004_outlook_folder_exclusions.sql?raw";
 import type { OutlookGraphDiscoveryPort } from "../../../packages/adapters/src/discovery/outlook";
 import { createOutlookInventoryCoordinator } from "../../../packages/adapters/src/discovery/outlook-coordinator";
 import { createOutlookFolderStore } from "../../../packages/adapters/src/discovery/outlook-state";
@@ -8,6 +9,10 @@ import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { owner } from "./onboarding-qa-fixture";
+
+beforeAll(async () => {
+  await env.DB.prepare(folderExclusionsMigration).run();
+});
 
 const policy: JobPolicy = {
   dispatchLimit: 1,

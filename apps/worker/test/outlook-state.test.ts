@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import type { JobLease, JobPolicy } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, beforeAll, expect, it } from "vitest";
+import folderExclusionsMigration from "../../../packages/adapters/migrations/0004_outlook_folder_exclusions.sql?raw";
 import {
   createOutlookFolderStore,
   type OutlookInventoryPage,
@@ -13,6 +14,10 @@ import { owner } from "./onboarding-qa-fixture";
 
 const fixtureDatabase = env.DB;
 const db = fixtureDatabase;
+
+beforeAll(async () => {
+  await db.prepare(folderExclusionsMigration).run();
+});
 
 const policy: JobPolicy = {
   dispatchLimit: 1,

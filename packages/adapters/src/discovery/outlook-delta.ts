@@ -45,6 +45,17 @@ const metadataSchema = z.object({
   excluded: z.boolean(),
   candidate: z.enum(["matched", "unknown"]),
 });
+const excludedTreeSql = `WITH RECURSIVE excluded(folder_id) AS (SELECT value FROM json_each((SELECT excluded_folder_ids FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND scope_key='root')) UNION SELECT f.folder_id FROM outlook_folders f JOIN excluded e ON f.parent_folder_id=e.folder_id WHERE f.user_id=? AND f.connection_id=? AND f.generation=?)`;
+function exclusionOwner(lease: JobLease) {
+  return [
+    lease.context.userId,
+    lease.connectionId,
+    lease.generation,
+    lease.context.userId,
+    lease.connectionId,
+    lease.generation,
+  ];
+}
 async function sourceKey(lease: JobLease, messageId: string) {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -85,9 +96,10 @@ export function createOutlookDeltaRunner(
       return { kind: "paused", code: "auth" };
     const missing = await db
       .prepare(
-        `SELECT f.folder_id FROM outlook_folders f WHERE f.user_id=? AND f.connection_id=? AND f.generation=? AND NOT EXISTS(SELECT 1 FROM sync_states child WHERE child.user_id=f.user_id AND child.connection_id=f.connection_id AND child.scope_key='outlook:'||f.generation||':'||f.folder_id AND child.run_key=? AND child.slice_key=? AND child.sync_kind=?) ORDER BY f.folder_id LIMIT 1`,
+        `${excludedTreeSql} SELECT f.folder_id FROM outlook_folders f WHERE f.user_id=? AND f.connection_id=? AND f.generation=? AND f.folder_id NOT IN (SELECT folder_id FROM excluded) AND NOT EXISTS(SELECT 1 FROM sync_states child WHERE child.user_id=f.user_id AND child.connection_id=f.connection_id AND child.scope_key='outlook:'||f.generation||':'||f.folder_id AND child.run_key=? AND child.slice_key=? AND child.sync_kind=?) ORDER BY f.folder_id LIMIT 1`,
       )
       .bind(
+        ...exclusionOwner(lease),
         lease.context.userId,
         lease.connectionId,
         lease.generation,
@@ -99,15 +111,16 @@ export function createOutlookDeltaRunner(
     const paused = !missing
       ? await db
           .prepare(
-            `SELECT 1 FROM sync_states child WHERE child.user_id=? AND child.connection_id=? AND child.run_key=? AND child.slice_key=? AND child.sync_kind=? AND child.scope_key LIKE ? AND child.stage='paused_rate' LIMIT 1`,
+            `${excludedTreeSql} SELECT 1 FROM sync_states child JOIN outlook_folders f ON f.user_id=child.user_id AND f.connection_id=child.connection_id AND f.generation=? AND child.scope_key='outlook:'||f.generation||':'||f.folder_id WHERE child.user_id=? AND child.connection_id=? AND child.run_key=? AND child.slice_key=? AND child.sync_kind=? AND child.stage='paused_rate' AND f.folder_id NOT IN (SELECT folder_id FROM excluded) LIMIT 1`,
           )
           .bind(
+            ...exclusionOwner(lease),
+            lease.generation,
             lease.context.userId,
             lease.connectionId,
             parent.run_key,
             parent.slice_key,
             parent.sync_kind,
-            `outlook:${lease.generation}:%`,
           )
           .first()
       : null;
@@ -118,13 +131,14 @@ export function createOutlookDeltaRunner(
       parent.stage === "idle"
         ? await db
             .prepare(
-              `SELECT 1 FROM sync_states child WHERE child.user_id=? AND child.connection_id=? AND child.run_key=? AND child.slice_key='live' AND child.sync_kind='incremental' AND child.scope_key LIKE ? AND child.stage='idle' LIMIT 1`,
+              `${excludedTreeSql} SELECT 1 FROM sync_states child JOIN outlook_folders f ON f.user_id=child.user_id AND f.connection_id=child.connection_id AND f.generation=? AND child.scope_key='outlook:'||f.generation||':'||f.folder_id WHERE child.user_id=? AND child.connection_id=? AND child.run_key=? AND child.slice_key='live' AND child.sync_kind='incremental' AND child.stage='idle' AND f.folder_id NOT IN (SELECT folder_id FROM excluded) LIMIT 1`,
             )
             .bind(
+              ...exclusionOwner(lease),
+              lease.generation,
               lease.context.userId,
               lease.connectionId,
               parent.run_key,
-              `outlook:${lease.generation}:%`,
             )
             .first()
         : null;
@@ -189,9 +203,10 @@ export function createOutlookDeltaRunner(
       statements.push(
         db
           .prepare(
-            `INSERT INTO sync_states(id,user_id,connection_id,import_run_id,scope_key,sync_kind,run_key,slice_key,frozen_start,frozen_cutoff,stage,query_mode,coverage_code) SELECT lower(hex(randomblob(16))),f.user_id,f.connection_id,?,('outlook:'||f.generation||':'||f.folder_id),?,?,?,?,?,'queued','filtered','candidate_unknown' FROM outlook_folders f WHERE f.user_id=? AND f.connection_id=? AND f.generation=? AND ${marker} AND ${leaseGuard.sql} AND NOT EXISTS(SELECT 1 FROM sync_states existing WHERE existing.user_id=f.user_id AND existing.connection_id=f.connection_id AND existing.scope_key='outlook:'||f.generation||':'||f.folder_id AND existing.run_key=? AND existing.slice_key=? AND existing.sync_kind=?) ORDER BY f.folder_id LIMIT 5`,
+            `${excludedTreeSql} INSERT INTO sync_states(id,user_id,connection_id,import_run_id,scope_key,sync_kind,run_key,slice_key,frozen_start,frozen_cutoff,stage,query_mode,coverage_code) SELECT lower(hex(randomblob(16))),f.user_id,f.connection_id,?,('outlook:'||f.generation||':'||f.folder_id),?,?,?,?,?,'queued','filtered','candidate_unknown' FROM outlook_folders f WHERE f.user_id=? AND f.connection_id=? AND f.generation=? AND f.folder_id NOT IN (SELECT folder_id FROM excluded) AND ${marker} AND ${leaseGuard.sql} AND NOT EXISTS(SELECT 1 FROM sync_states existing WHERE existing.user_id=f.user_id AND existing.connection_id=f.connection_id AND existing.scope_key='outlook:'||f.generation||':'||f.folder_id AND existing.run_key=? AND existing.slice_key=? AND existing.sync_kind=?) ORDER BY f.folder_id LIMIT 5`,
           )
           .bind(
+            ...exclusionOwner(lease),
             parent.import_run_id,
             parent.sync_kind,
             parent.run_key,
@@ -212,13 +227,16 @@ export function createOutlookDeltaRunner(
       statements.push(
         db
           .prepare(
-            `UPDATE sync_states SET stage='queued' WHERE user_id=? AND connection_id=? AND run_key=? AND slice_key='live' AND sync_kind='incremental' AND scope_key LIKE ? AND stage='idle' AND ${marker} AND ${leaseGuard.sql}`,
+            `${excludedTreeSql} UPDATE sync_states SET stage='queued' WHERE user_id=? AND connection_id=? AND run_key=? AND slice_key='live' AND sync_kind='incremental' AND scope_key IN (SELECT 'outlook:'||f.generation||':'||f.folder_id FROM outlook_folders f WHERE f.user_id=? AND f.connection_id=? AND f.generation=? AND f.folder_id NOT IN (SELECT folder_id FROM excluded)) AND stage='idle' AND ${marker} AND ${leaseGuard.sql}`,
           )
           .bind(
+            ...exclusionOwner(lease),
             lease.context.userId,
             lease.connectionId,
             parent.run_key,
-            `outlook:${lease.generation}:%`,
+            lease.context.userId,
+            lease.connectionId,
+            lease.generation,
             ...markerValues,
             ...leaseGuard.values,
           ),
@@ -490,6 +508,14 @@ export function createOutlookDeltaRunner(
       if (!lease.syncStateId)
         return { kind: "paused", code: "handler-unavailable" };
       const now = clock();
+      const exclusions = await db
+        .prepare(
+          "SELECT excluded_folder_ids FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND scope_key='root' AND state='complete'",
+        )
+        .bind(lease.context.userId, lease.connectionId, lease.generation)
+        .first<{ excluded_folder_ids: string | null }>();
+      if (!exclusions?.excluded_folder_ids)
+        return { kind: "paused", code: "auth" };
       const parent = await db
         .prepare(
           "SELECT id,import_run_id,run_key,slice_key,sync_kind,stage,frozen_start,frozen_cutoff,discovery_version FROM sync_states WHERE user_id=? AND id=? AND connection_id=? AND scope_key='mailbox'",
@@ -521,9 +547,10 @@ export function createOutlookDeltaRunner(
         return { kind: "terminal", code: "malformed" };
       const folder = await db
         .prepare(
-          `SELECT s.id,f.folder_id,s.discovery_version,s.page_token,s.history_cursor,s.stage,s.history_reset_count,s.consecutive_failures,s.retry_at,s.frozen_start,s.frozen_cutoff FROM sync_states s JOIN outlook_folders f ON f.user_id=s.user_id AND f.connection_id=s.connection_id AND f.generation=? AND s.scope_key='outlook:'||f.generation||':'||f.folder_id WHERE s.user_id=? AND s.connection_id=? AND s.run_key=? AND s.slice_key=? AND s.sync_kind=? AND s.stage IN ('queued','recovering','recovering_delta') ORDER BY f.folder_id LIMIT 1`,
+          `${excludedTreeSql} SELECT s.id,f.folder_id,s.discovery_version,s.page_token,s.history_cursor,s.stage,s.history_reset_count,s.consecutive_failures,s.retry_at,s.frozen_start,s.frozen_cutoff FROM sync_states s JOIN outlook_folders f ON f.user_id=s.user_id AND f.connection_id=s.connection_id AND f.generation=? AND s.scope_key='outlook:'||f.generation||':'||f.folder_id WHERE s.user_id=? AND s.connection_id=? AND s.run_key=? AND s.slice_key=? AND s.sync_kind=? AND s.stage IN ('queued','recovering','recovering_delta') AND f.folder_id NOT IN (SELECT folder_id FROM excluded) ORDER BY f.folder_id LIMIT 1`,
         )
         .bind(
+          ...exclusionOwner(lease),
           lease.generation,
           lease.context.userId,
           lease.connectionId,

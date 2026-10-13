@@ -27,6 +27,7 @@ export interface OutlookInventoryContinuation {
   jobId: string;
   priority: 0 | 1 | 2;
   dispatchAt: number;
+  excludedFolderIds?: string[];
 }
 type CommitResult =
   | { kind: "committed"; version: number }
@@ -39,11 +40,24 @@ type InventoryResult =
       parentFolderId: string | null;
       expectedVersion: number;
       nextLink: string | null;
+      excludedFolderIds?: string[];
     }
-  | { kind: "complete" }
+  | { kind: "complete"; excludedFolderIds?: string[] }
   | { kind: "stale" }
   | { kind: "limit" };
 const maximumFolders = 2000;
+const excludedIdsSchema = z
+  .array(id)
+  .length(4)
+  .refine((ids) => new Set(ids).size === ids.length);
+function parseExcludedIds(value: string | null): string[] | null {
+  if (value === null) return null;
+  try {
+    return excludedIdsSchema.parse(JSON.parse(value));
+  } catch {
+    throw new DiscoveryError("UNAVAILABLE");
+  }
+}
 
 function authorization(lease: JobLease, now: number) {
   return {
@@ -116,10 +130,13 @@ export function createOutlookFolderStore(db: D1Database) {
     else {
       const row = await db
         .prepare(
-          "SELECT scope_key FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? LIMIT 1",
+          "SELECT excluded_folder_ids FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND scope_key='root'",
         )
         .bind(...owner(lease))
-        .first<{ scope_key: string }>();
+        .first<{ excluded_folder_ids: string | null }>();
+      const excludedFolderIds = parseExcludedIds(
+        row?.excluded_folder_ids ?? null,
+      );
       if (!row)
         result = {
           kind: "ready",
@@ -130,9 +147,13 @@ export function createOutlookFolderStore(db: D1Database) {
       else {
         const pending = await db
           .prepare(
-            "SELECT parent_folder_id,version,next_link FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND state='pending' ORDER BY CASE WHEN scope_key='root' THEN 0 ELSE 1 END,scope_key LIMIT 1",
+            `WITH RECURSIVE excluded(folder_id) AS (SELECT value FROM json_each(?) UNION SELECT f.folder_id FROM outlook_folders f JOIN excluded e ON f.parent_folder_id=e.folder_id WHERE f.user_id=? AND f.connection_id=? AND f.generation=?) SELECT parent_folder_id,version,next_link FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND state='pending' AND (scope_key='root' OR parent_folder_id NOT IN (SELECT folder_id FROM excluded)) ORDER BY CASE WHEN scope_key='root' THEN 0 ELSE 1 END,scope_key LIMIT 1`,
           )
-          .bind(...owner(lease))
+          .bind(
+            JSON.stringify(excludedFolderIds ?? []),
+            ...owner(lease),
+            ...owner(lease),
+          )
           .first<{
             parent_folder_id: string | null;
             version: number;
@@ -144,11 +165,219 @@ export function createOutlookFolderStore(db: D1Database) {
               parentFolderId: pending.parent_folder_id,
               expectedVersion: pending.version,
               nextLink: pending.next_link,
+              ...(excludedFolderIds ? { excludedFolderIds } : {}),
             }
-          : { kind: "complete" };
+          : {
+              kind: "complete",
+              ...(excludedFolderIds ? { excludedFolderIds } : {}),
+            };
       }
     }
     return (await allowed(lease)) ? result : { kind: "stale" };
+  }
+
+  async function saveExclusions(lease: JobLease, ids: string[]) {
+    const validated = excludedIdsSchema.parse(ids);
+    const guard = authorization(lease, Date.now());
+    const result = await db
+      .prepare(
+        `UPDATE outlook_inventory_states SET excluded_folder_ids=? WHERE user_id=? AND connection_id=? AND generation=? AND scope_key='root' AND excluded_folder_ids IS NULL AND ${guard.sql}`,
+      )
+      .bind(JSON.stringify(validated), ...owner(lease), ...guard.values)
+      .run();
+    if (result.meta.changes === 1) return true;
+    const existing = await db
+      .prepare(
+        "SELECT excluded_folder_ids FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND scope_key='root'",
+      )
+      .bind(...owner(lease))
+      .first<{ excluded_folder_ids: string | null }>();
+    return (
+      JSON.stringify(
+        parseExcludedIds(existing?.excluded_folder_ids ?? null),
+      ) === JSON.stringify(validated) && (await allowed(lease))
+    );
+  }
+
+  async function stageExclusions(
+    lease: JobLease,
+    ids: string[],
+    continuation: OutlookInventoryContinuation,
+  ) {
+    const exclusions = excludedIdsSchema.parse(ids);
+    const guard = authorization(lease, Date.now());
+    const nonce = crypto.randomUUID();
+    const marker =
+      "EXISTS(SELECT 1 FROM outlook_inventory_states root WHERE root.user_id=? AND root.connection_id=? AND root.generation=? AND root.scope_key='root' AND root.commit_id=? AND root.excluded_folder_ids=?)";
+    const markerValues = [...owner(lease), nonce, JSON.stringify(exclusions)];
+    const dedupeKey = `outlook:inventory:${lease.jobId}`;
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id,excluded_folder_ids) SELECT ?,?,?,'root',NULL,1,NULL,'pending',?,? WHERE ${guard.sql} ON CONFLICT(user_id,connection_id,generation,scope_key) DO NOTHING`,
+        )
+        .bind(
+          ...owner(lease),
+          nonce,
+          JSON.stringify(exclusions),
+          ...guard.values,
+        ),
+      db
+        .prepare(
+          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${marker} AND ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
+        )
+        .bind(
+          continuation.jobId,
+          lease.context.userId,
+          lease.connectionId,
+          lease.consentId,
+          lease.generation,
+          lease.syncStateId,
+          lease.type,
+          dedupeKey,
+          continuation.dispatchAt,
+          continuation.priority,
+          ...markerValues,
+          ...guard.values,
+        ),
+      db
+        .prepare(
+          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
+        )
+        .bind(
+          lease.context.userId,
+          lease.jobId,
+          ...markerValues,
+          ...guard.values,
+          lease.context.userId,
+          dedupeKey,
+        ),
+    ]);
+    return Boolean(
+      await db
+        .prepare(
+          "SELECT 1 FROM jobs WHERE user_id=? AND id=? AND status='completed'",
+        )
+        .bind(lease.context.userId, lease.jobId)
+        .first(),
+    );
+  }
+
+  async function deferRate(lease: JobLease, retryAfterMs: number) {
+    const guard = authorization(lease, Date.now());
+    if (!Number.isFinite(retryAfterMs) || retryAfterMs > 86400000) {
+      const parent = await db
+        .prepare(
+          "SELECT discovery_version,import_run_id FROM sync_states WHERE user_id=? AND id=? AND connection_id=?",
+        )
+        .bind(lease.context.userId, lease.syncStateId, lease.connectionId)
+        .first<{
+          discovery_version: number;
+          import_run_id: string | null;
+        }>();
+      if (!parent) return false;
+      const nonce = crypto.randomUUID();
+      const marker =
+        "EXISTS(SELECT 1 FROM sync_states parent WHERE parent.user_id=? AND parent.id=? AND parent.discovery_version=? AND parent.pending_history_id=? AND parent.stage='paused_rate')";
+      const markerValues = [
+        lease.context.userId,
+        lease.syncStateId,
+        parent.discovery_version + 1,
+        nonce,
+      ];
+      const statements: D1PreparedStatement[] = [
+        db
+          .prepare(
+            `UPDATE sync_states SET stage='paused_rate',discovery_version=discovery_version+1,pending_history_id=? WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${guard.sql}`,
+          )
+          .bind(
+            nonce,
+            lease.context.userId,
+            lease.syncStateId,
+            lease.connectionId,
+            parent.discovery_version,
+            ...guard.values,
+          ),
+      ];
+      if (parent.import_run_id)
+        statements.push(
+          db
+            .prepare(
+              `UPDATE import_runs SET stage='paused_rate' WHERE user_id=? AND id=? AND connection_id=? AND ${marker} AND ${guard.sql}`,
+            )
+            .bind(
+              lease.context.userId,
+              parent.import_run_id,
+              lease.connectionId,
+              ...markerValues,
+              ...guard.values,
+            ),
+        );
+      statements.push(
+        db
+          .prepare(
+            `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='rate_paused' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql}${parent.import_run_id ? " AND EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.id=? AND r.stage='paused_rate')" : ""}`,
+          )
+          .bind(
+            lease.context.userId,
+            lease.jobId,
+            ...markerValues,
+            ...guard.values,
+            ...(parent.import_run_id
+              ? [lease.context.userId, parent.import_run_id]
+              : []),
+          ),
+      );
+      await db.batch(statements);
+      return Boolean(
+        await db
+          .prepare(
+            "SELECT 1 FROM jobs WHERE user_id=? AND id=? AND status='completed' AND outcome_code='rate_paused'",
+          )
+          .bind(lease.context.userId, lease.jobId)
+          .first(),
+      );
+    }
+    const dispatchAt = Date.now() + Math.max(1000, retryAfterMs);
+    const dedupeKey = `outlook:rate:${lease.jobId}`;
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          lease.context.userId,
+          lease.connectionId,
+          lease.consentId,
+          lease.generation,
+          lease.syncStateId,
+          lease.type,
+          dedupeKey,
+          dispatchAt,
+          lease.type === "sync" ? 0 : 1,
+          ...guard.values,
+        ),
+      db
+        .prepare(
+          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='rate_deferred' WHERE user_id=? AND id=? AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
+        )
+        .bind(
+          lease.context.userId,
+          lease.jobId,
+          ...guard.values,
+          lease.context.userId,
+          dedupeKey,
+        ),
+    ]);
+    return Boolean(
+      await db
+        .prepare(
+          "SELECT 1 FROM jobs WHERE user_id=? AND id=? AND status='completed'",
+        )
+        .bind(lease.context.userId, lease.jobId)
+        .first(),
+    );
   }
 
   async function commitInventoryPage(
@@ -167,6 +396,9 @@ export function createOutlookFolderStore(db: D1Database) {
         continuation.dispatchAt < 0)
     )
       throw new DiscoveryError("INVALID_RANGE");
+    const exclusions = continuation?.excludedFolderIds
+      ? excludedIdsSchema.parse(continuation.excludedFolderIds)
+      : null;
     if (!(await allowed(lease))) return { kind: "stale" };
     if (
       await exceedsLimit(
@@ -190,7 +422,7 @@ export function createOutlookFolderStore(db: D1Database) {
     const statements: D1PreparedStatement[] = [
       db
         .prepare(
-          `INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) SELECT ?,?,?,?,?,1,?,?,? WHERE ((?=0 AND ? IS NULL) OR EXISTS(SELECT 1 FROM outlook_inventory_states prior WHERE prior.user_id=? AND prior.connection_id=? AND prior.generation=? AND prior.scope_key=? AND prior.version=?)) AND ${guard.sql} AND ${cap} AND ${acyclic} ON CONFLICT(user_id,connection_id,generation,scope_key) DO UPDATE SET version=outlook_inventory_states.version+1,next_link=excluded.next_link,state=excluded.state,commit_id=excluded.commit_id WHERE outlook_inventory_states.version=? AND outlook_inventory_states.version<2147483646 AND ${guard.sql} AND ${cap} AND ${acyclic}`,
+          `INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id,excluded_folder_ids) SELECT ?,?,?,?,?,1,?,?,?,? WHERE ((?=0 AND ? IS NULL) OR EXISTS(SELECT 1 FROM outlook_inventory_states prior WHERE prior.user_id=? AND prior.connection_id=? AND prior.generation=? AND prior.scope_key=? AND prior.version=?)) AND ${guard.sql} AND ${cap} AND ${acyclic} ON CONFLICT(user_id,connection_id,generation,scope_key) DO UPDATE SET version=outlook_inventory_states.version+1,next_link=excluded.next_link,state=excluded.state,commit_id=excluded.commit_id,excluded_folder_ids=COALESCE(outlook_inventory_states.excluded_folder_ids,excluded.excluded_folder_ids) WHERE outlook_inventory_states.version=? AND outlook_inventory_states.version<2147483646 AND ${guard.sql} AND ${cap} AND ${acyclic}`,
         )
         .bind(
           ...owner(lease),
@@ -199,6 +431,7 @@ export function createOutlookFolderStore(db: D1Database) {
           page.nextLink,
           page.nextLink ? "pending" : "complete",
           nonce,
+          key === "root" && exclusions ? JSON.stringify(exclusions) : null,
           page.expectedVersion,
           page.parentFolderId,
           ...owner(lease),
@@ -275,5 +508,12 @@ export function createOutlookFolderStore(db: D1Database) {
         ? { kind: "stale" }
         : { kind: "conflict" };
   }
-  return { getNextInventory, commitInventoryPage, checkpoint: allowed };
+  return {
+    getNextInventory,
+    saveExclusions,
+    stageExclusions,
+    deferRate,
+    commitInventoryPage,
+    checkpoint: allowed,
+  };
 }
