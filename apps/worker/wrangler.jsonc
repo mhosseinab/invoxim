@@ -19,4 +19,11 @@
     "LIFECYCLE_GOOGLE_REVOCATION_ENABLED": "false",
     "JOBS_QUERY_LIMIT": "40",
   },
+  "d1_databases": [
+    {
+      "binding": "invoxim_db",
+      "database_name": "invoxim-db",
+      "database_id": "68db5cde-c850-4ca9-86cf-91669c70d4dd",
+    },
+  ],
 }
