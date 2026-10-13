@@ -74,7 +74,7 @@ T13–T15 and T29 local verification is complete: 770 distinct tests, 79 repeate
 Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser login QA ran against that URL; Google initiation failed before redirect. Evidence: `evidence/implementation/deployed-login-browser-qa-20261013.md`. Existing unchecked release gates remain unchecked.
 
 - [ ] Record the actual deployed commit, Pages/Worker build identities and intended D1 binding; do not assume they match the local worktree.
-- [ ] Resolve the login-initiation failure and independently recheck the actual Google redirect after the reviewed fix is deployed.
+- [x] Recheck the deployed login initiation: POST200 and actual UI button reaches Google account-entry screen; full account completion remains unchecked.
 - [ ] Verify anonymous private routes offer configured sign-in recovery and fresh anonymous visits use neutral signed-out copy.
 - [ ] Complete login/callback/session/logout with an approved test identity and record refusal, wrong-account and allowlist behavior without retaining tokens or personal screenshots.
 
@@ -96,3 +96,10 @@ Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser log
 - [ ] Complete full-period FX/list/export integration after the reporting revision foundation; four actual pipeline/quote checks do not prove whole-period totals.
 - [ ] Run fresh repository verification/build after integrating unfinished M1 increments. Narrow green tests and historical CI do not certify the current source.
 - [ ] Repair and retest deployed login initiation, then approved Google callback/session/logout. The remote schema/build remains unconfirmed; do not reset a populated database or blindly apply draft migrations.
+
+## Production artifact isolation
+
+- [ ] Run `pnpm build` on the release commit and retain `pnpm check:production` success. This gate checks the browser, Pages Function and Worker bundle inventories and the public Pages directory for test/debug tooling, browser binaries, dependency folders, reports and source maps.
+- [ ] Publish only the built Pages `dist` and Worker runtime bundle; keep private `.production` inventories and local Worker debug maps outside publication. Do not enable source-map uploads without a separate reviewed change. Local guard results do not inspect an older deployed build.
+
+Latest remote check: migrations list exited0 with no pending migrations; journal records0001–0006 and checked auth tables exist. This is read-only verification, not approval or execution of a new migration. Endpoint recheck and actual Google button initiation passed; callback/session/logout remains open. See `evidence/implementation/deployed-login-endpoint-recheck-20261013.md`.
