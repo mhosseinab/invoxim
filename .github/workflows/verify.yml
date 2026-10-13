@@ -23,6 +23,8 @@ jobs:
           node-version-file: .node-version
           package-manager-cache: false
       - run: npm install --global pnpm@12.6.0 --ignore-scripts
+      # Only pnpm's reviewed native bootstrap runs; workspace scripts stay blocked.
+      - run: node "$(npm root --global)/pnpm/install.js"
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm verify
