@@ -60,3 +60,6 @@ temp/
 .playwright-mcp/
 evidence/
 spikes/
+
+# Private production bundle inventories
+.production/

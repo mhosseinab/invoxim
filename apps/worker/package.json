@@ -6,7 +6,7 @@
     "dev": "wrangler dev --local",
     "typecheck": "tsc --noEmit",
     "test:integration": "vitest run",
-    "build": "wrangler deploy --dry-run --outdir dist"
+    "build": "node -e \"require('node:fs').mkdirSync('.production', { recursive: true })\" && wrangler deploy --dry-run --outdir dist --metafile .production/worker.json --no-upload-source-maps"
   },
   "dependencies": {
     "hono": "4.13.13",

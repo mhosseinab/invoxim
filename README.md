@@ -39,7 +39,8 @@ Vite does not provide the production Pages service-binding proxy. Running both p
 | `pnpm db:check`                        | Run database, pipeline and lifecycle integrity suites                                                                                          |
 | `pnpm test:eval:offline`               | Run the synthetic extraction corpus; not live-model evaluation                                                                                 |
 | `pnpm check:deps`                      | Check dependency policy and registry advisories                                                                                                |
-| `pnpm build`                           | Build frontend/Pages Function and dry-run the Worker bundle; does not deploy                                                                   |
+| `pnpm check:production`                | Inspect built publication artifacts and all three bundle inventories for test/debug tooling; requires a completed build                        |
+| `pnpm build`                           | Build frontend/Pages Function, dry-run the Worker bundle, and check production artifacts; does not deploy                                      |
 
 For a focused native test:
 
@@ -75,7 +76,7 @@ Apply runs all remaining discovered migrations. The migration directory includes
 
 ## Deployment commands
 
-Worker and Pages deployments are separate. Use a reviewed build, compatible schema, configured secrets and the [deployment checklist](DEPLOYMENT_CHECKLIST.md) before running these commands against the configured remote resources:
+Worker and Pages deployments are separate. Only compiled runtime assets are deployed; installed development dependencies and browser binaries stay on the build machine. `pnpm build` checks the browser, Pages Function and Worker module inventories for test/debug tooling, and checks the public directory for test artifacts and source maps. Inventories stay in ignored package-local `.production/` directories outside `dist`. Worker dry-run source maps remain local and source-map upload is explicitly disabled. Use a reviewed build, compatible schema, configured secrets and the [deployment checklist](DEPLOYMENT_CHECKLIST.md) before running these commands against the configured remote resources:
 
 ```sh
 pnpm --filter @invoxim/worker exec wrangler login

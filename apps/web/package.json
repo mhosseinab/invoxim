@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "build": "vite build && wrangler pages functions build functions --outdir dist/_worker.js"
+    "build": "vite build && wrangler pages functions build functions --outdir dist/_worker.js --metafile .production/pages.json"
   },
   "dependencies": {
     "react": "19.3.0",
