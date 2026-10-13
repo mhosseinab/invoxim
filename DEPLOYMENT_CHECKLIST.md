@@ -107,4 +107,6 @@ Latest remote check: migrations list exited0 with no pending migrations; journal
 - [ ] Redeploy Pages with the reviewed signed-out onboarding visual increment and check desktop/mobile live. Its 28 synthetic login/onboarding regressions, scoped build and independent screenshot review passed; the remote page has not been changed by this patch.
 
 - [ ] Verify release of typed processing configuration errors and revised review/sign-in UI on the actual Pages/Worker versions. Local37native+40browser checks passed; this does not activate inference.
-- [ ] For Abacus activation, supply `AI_HOSTED_KEY` on `invoxim-api`, reviewed registry/pricing/notices and budget; keep BYOK available through the same validated service and retain explicit import consent. The public preset is inactive until these gates pass.
+- [ ] For Abacus activation, retain the now-present `AI_HOSTED_KEY` on `invoxim-api` and supply reviewed registry/pricing/notices and budget; keep BYOK available through the same validated service and retain explicit import consent. The public preset is inactive until these gates pass.
+
+Verified runtime release on 2026-10-13: Worker `583847d3-f076-4dff-93fc-5331f5728682` and Pages `67b48d01` deployed after `pnpm verify` passed. Production sign-in initiation reaches Google; full account callback and authenticated processing smoke remain separate checks. See `evidence/implementation/release-runtime-20261013.md`. AI activation remains pending registry/pricing/budget/background configuration.
