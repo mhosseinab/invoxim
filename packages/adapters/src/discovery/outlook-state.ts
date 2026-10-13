@@ -223,5 +223,5 @@ export function createOutlookFolderStore(db: D1Database) {
         ? { kind: "stale" }
         : { kind: "conflict" };
   }
-  return { getNextInventory, commitInventoryPage };
+  return { getNextInventory, commitInventoryPage, checkpoint: allowed };
 }
