@@ -8,17 +8,22 @@ export class AuthRequestError extends Error {
     super(code);
   }
 }
-export async function readAuthJson(request: Request): Promise<unknown> {
+export async function readAuthJson(
+  request: Request,
+  maxBytes = 4096,
+): Promise<unknown> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 40960)
+    throw new AuthRequestError(400, "invalid_request");
   if (
     request.headers.get("content-type")?.split(";")[0]?.trim() !==
     "application/json"
   )
     throw new AuthRequestError(415, "unsupported_media_type");
-  if (Number(request.headers.get("content-length") ?? 0) > 4096)
+  if (Number(request.headers.get("content-length") ?? 0) > maxBytes)
     throw new AuthRequestError(413, "request_too_large");
   const reader = request.body?.getReader();
   if (!reader) throw new AuthRequestError(400, "invalid_request");
-  const bytes = new Uint8Array(4096);
+  const bytes = new Uint8Array(maxBytes);
   let length = 0;
   let dataChunks = 0;
   let emptyChunks = 0;

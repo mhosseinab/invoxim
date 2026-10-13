@@ -1,0 +1,42 @@
+$ turbo run typecheck
+
+   • turbo 2.11.7
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/testkit, @invoxim/web, @invoxim/worker
+   • Running typecheck in 6 packages
+   • Remote caching disabled
+
+@invoxim/contracts:typecheck: cache miss, executing bb16436785e40b2e
+@invoxim/contracts:typecheck: $ tsc --noEmit
+@invoxim/core:typecheck: cache miss, executing 4f0603cb39629118
+@invoxim/core:typecheck: $ tsc --noEmit
+@invoxim/adapters:typecheck: cache miss, executing 895b5375a0c8b8f8
+@invoxim/web:typecheck: cache miss, executing 88159e11924daffd
+@invoxim/web:typecheck: $ tsc --noEmit
+@invoxim/adapters:typecheck: $ tsc --noEmit
+@invoxim/adapters:typecheck: src/drive/resumable.ts(166,9): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(167,10): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(168,11): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(169,35): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(170,10): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(170,37): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(173,11): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(175,11): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(176,46): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(178,19): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(179,21): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(181,13): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(181,52): error TS2345: Argument of type 'Response | undefined' is not assignable to parameter of type 'Response'.
+@invoxim/adapters:typecheck:   Type 'undefined' is not assignable to type 'Response'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(183,40): error TS2345: Argument of type 'Response | undefined' is not assignable to parameter of type 'Response'.
+@invoxim/adapters:typecheck:   Type 'undefined' is not assignable to type 'Response'.
+@invoxim/adapters:typecheck: src/drive/resumable.ts(202,9): error TS18048: 'response' is possibly 'undefined'.
+@invoxim/adapters:typecheck: [ELIFECYCLE] Command failed with exit code 2.
+@invoxim/adapters#typecheck:  ERROR  command (/home/geek/workspace/invoxim/packages/adapters) /home/geek/.local/bin/pnpm run typecheck exited (2)
+
+ Tasks:    3 successful, 4 total
+Cached:    0 cached, 4 total
+  Time:    5.534s 
+Failed:    @invoxim/adapters#typecheck
+
+ ERROR  run failed: command  exited (2)
+[ELIFECYCLE] Command failed with exit code 2.

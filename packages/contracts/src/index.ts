@@ -4,6 +4,7 @@ export * from "./connections";
 export * from "./corrections";
 export * from "./designs";
 export * from "./fx";
+export * from "./fx-reporting";
 export * from "./jobs";
 export * from "./lifecycle";
 export * from "./mailbox";
