@@ -87,3 +87,12 @@ Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser log
 
 - [ ] Confirm the deployed Worker binding is `DB`, and migration tooling resolves `../../packages/adapters/migrations`. Local configuration discovery was verified; remote schema remains unknown.
 - [ ] Inspect the deployed auth tables/columns and resolve the observed 503 `auth_unavailable` before calling login available. Require actual Google redirect plus approved callback/session/logout; local synthetic initiation does not complete this gate.
+
+## Current increment readiness — 13 October 2026
+
+- [x] Save reviewed bounded recurring API (`bba6d27`, 26 native cases) and Outlook exclusions/rate-pause (`673e14d`, 49 native cases) in separate recoverable commits.
+- [x] Complete the recurring UI final Biome gate and save its seven-case browser/screenshot-reviewed increment (local evidence only).
+- [ ] Complete archive page admission, queue consumption, Worker composition and cleanup integration before enabling archiving; initial three queue/backfill cases plus 158 existing Drive regression cases are local evidence only.
+- [ ] Complete full-period FX/list/export integration after the reporting revision foundation; four actual pipeline/quote checks do not prove whole-period totals.
+- [ ] Run fresh repository verification/build after integrating unfinished M1 increments. Narrow green tests and historical CI do not certify the current source.
+- [ ] Repair and retest deployed login initiation, then approved Google callback/session/logout. The remote schema/build remains unconfirmed; do not reset a populated database or blindly apply draft migrations.

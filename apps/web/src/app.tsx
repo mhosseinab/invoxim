@@ -7,6 +7,7 @@ import { BrandMark, Icon } from "./icons";
 import { OnboardingPage } from "./onboarding/page";
 import { readPrivate } from "./private/api";
 import { PrivatePage } from "./private/page";
+import { RecurringPage } from "./private/recurring/page";
 
 const unavailable = copy["release.unavailable"];
 
@@ -444,6 +445,8 @@ export function App({
   displayName?: PublicConfig["displayName"];
 }) {
   const path = window.location.pathname;
+  if (path === "/recurring" || path.startsWith("/recurring/"))
+    return <RecurringPage displayName={displayName} />;
   if (path === "/onboarding" || path === "/onboarding/review")
     return <OnboardingPage displayName={displayName} />;
   if (
