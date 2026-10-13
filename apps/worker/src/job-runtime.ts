@@ -12,7 +12,10 @@ export function createJobRuntime(options: {
   admission?: JobAdmission;
   clock?: () => number;
 }) {
-  const engine = createJobEngine(options);
+  const engine = createJobEngine({
+    ...options,
+    onSettled: async () => options.queue.wakeDispatch?.(),
+  });
   return {
     scheduled: () => engine.dispatch(),
     async queue(batch: MessageBatch<unknown>) {
@@ -23,7 +26,22 @@ export function createJobRuntime(options: {
       const message = batch.messages[0];
       if (message) {
         try {
-          if ((await engine.consume(message.body)) === "ack") {
+          const body = message.body;
+          const dispatchWakeup =
+            typeof body === "object" &&
+            body !== null &&
+            !Array.isArray(body) &&
+            Object.keys(body).length === 2 &&
+            "schemaVersion" in body &&
+            body.schemaVersion === 1 &&
+            "dispatch" in body &&
+            body.dispatch === true;
+          let outcome: "ack" | "retry";
+          if (dispatchWakeup) {
+            await engine.dispatchReady();
+            outcome = "ack";
+          } else outcome = await engine.consume(body);
+          if (outcome === "ack") {
             message.ack();
             acknowledgedCount++;
           } else {

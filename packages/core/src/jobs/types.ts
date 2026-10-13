@@ -66,6 +66,8 @@ export interface JobStore {
 }
 export interface JobQueue {
   send(body: { schemaVersion: 1; jobId: string }): Promise<void>;
+  /** Internal dispatch hint only; durable jobs remain the authoritative outbox. */
+  wakeDispatch?(): Promise<void>;
 }
 export interface JobHandler {
   run(

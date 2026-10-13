@@ -6,24 +6,37 @@ export function createJobEngine(options: {
   handler?: JobHandler;
   admission?: JobAdmission;
   clock?: () => number;
+  onSettled?: () => Promise<void>;
 }) {
   const { store, queue, handler, admission } = options;
   const clock = options.clock ?? Date.now;
+  async function dispatchReady() {
+    let sent = 0;
+    for (const candidate of await store.candidates()) {
+      try {
+        if (!(await store.dispatched(candidate))) continue;
+        await queue.send({ schemaVersion: 1, jobId: candidate.jobId });
+        sent++;
+      } catch {
+        /* Reservation expires; the durable outbox survives send failure. */
+      }
+    }
+    return { sent };
+  }
+  async function acknowledgeSettlement(): Promise<"ack"> {
+    try {
+      await options.onSettled?.();
+    } catch {
+      // A lost wakeup cannot undo a durable result; Cron repairs the outbox.
+    }
+    return "ack";
+  }
   return {
+    dispatchReady,
     async dispatch() {
       await store.recover();
       const scheduled = await store.scheduleDue();
-      let sent = 0;
-      for (const candidate of await store.candidates()) {
-        try {
-          if (!(await store.dispatched(candidate))) continue;
-          await queue.send({ schemaVersion: 1, jobId: candidate.jobId });
-          sent++;
-        } catch {
-          /* Reservation expires; the durable outbox survives send failure. */
-        }
-      }
-      return { scheduled, sent };
+      return { scheduled, ...(await dispatchReady()) };
     },
     async consume(body: unknown): Promise<"ack" | "retry"> {
       if (
@@ -78,14 +91,18 @@ export function createJobEngine(options: {
             kind: "paused",
             code: "handler-unavailable",
           });
-          return won || (await store.isSettled(lease.jobId)) ? "ack" : "retry";
+          return won || (await store.isSettled(lease.jobId))
+            ? acknowledgeSettlement()
+            : "retry";
         }
         if (admission && !(await bounded(admission.allow(lease)))) {
           const won = await store.finish(lease, {
             kind: "paused",
             code: "budget",
           });
-          return won || (await store.isSettled(lease.jobId)) ? "ack" : "retry";
+          return won || (await store.isSettled(lease.jobId))
+            ? acknowledgeSettlement()
+            : "retry";
         }
         if (!(await checkpoint())) return "retry";
         const outcome = await bounded(
@@ -94,16 +111,20 @@ export function createJobEngine(options: {
             checkpoint,
           }),
         );
-        if (await store.isSettled(lease.jobId)) return "ack";
+        if (await store.isSettled(lease.jobId)) return acknowledgeSettlement();
         await store.finish(lease, outcome);
-        return (await store.isSettled(lease.jobId)) ? "ack" : "retry";
+        return (await store.isSettled(lease.jobId))
+          ? acknowledgeSettlement()
+          : "retry";
       } catch {
-        if (await store.isSettled(lease.jobId)) return "ack";
+        if (await store.isSettled(lease.jobId)) return acknowledgeSettlement();
         await store.finish(lease, {
           kind: "retry",
           code: controller.signal.aborted ? "timeout" : "transient",
         });
-        return (await store.isSettled(lease.jobId)) ? "ack" : "retry";
+        return (await store.isSettled(lease.jobId))
+          ? acknowledgeSettlement()
+          : "retry";
       } finally {
         clearTimeout(timer);
       }
