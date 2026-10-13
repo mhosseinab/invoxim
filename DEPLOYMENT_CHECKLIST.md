@@ -104,9 +104,11 @@ Reported deployed URL: `https://invoxim-web.pages.dev/`. Independent browser log
 
 Latest remote check: migrations list exited0 with no pending migrations; journal records0001–0006 and checked auth tables exist. This is read-only verification, not approval or execution of a new migration. Endpoint recheck and actual Google button initiation passed; callback/session/logout remains open. See `evidence/implementation/deployed-login-endpoint-recheck-20261013.md`.
 
-- [ ] Redeploy Pages with the reviewed signed-out onboarding visual increment and check desktop/mobile live. Its 28 synthetic login/onboarding regressions, scoped build and independent screenshot review passed; the remote page has not been changed by this patch.
+- [x] Deploy reviewed signed-out onboarding visuals: Pages `67b48d01`; desktop live render and Google redirect checked.
+- [ ] Check the production onboarding view on mobile and complete account callback/session/logout smoke.
 
 - [ ] Verify release of typed processing configuration errors and revised review/sign-in UI on the actual Pages/Worker versions. Local37native+40browser checks passed; this does not activate inference.
-- [ ] For Abacus activation, retain the now-present `AI_HOSTED_KEY` on `invoxim-api` and supply reviewed registry/pricing/notices and budget; keep BYOK available through the same validated service and retain explicit import consent. The public preset is inactive until these gates pass.
+- [x] Configure Abacus default and retain `AI_HOSTED_KEY`: registry/notices/prices and owner-approved $1/day, $10/month budget deployed in Worker `da0a5f26-11e9-46bf-b576-042650853cbb`.
+- [ ] Check authenticated settings/disclosure and explicit synthetic provider test. Configure the Queue/background runtime before enabling import; retain BYOK and explicit review/start consent.
 
-Verified runtime release on 2026-10-13: Worker `583847d3-f076-4dff-93fc-5331f5728682` and Pages `67b48d01` deployed after `pnpm verify` passed. Production sign-in initiation reaches Google; full account callback and authenticated processing smoke remain separate checks. See `evidence/implementation/release-runtime-20261013.md`. AI activation remains pending registry/pricing/budget/background configuration.
+Verified runtime release on 2026-10-13: Worker `583847d3-f076-4dff-93fc-5331f5728682` and Pages `67b48d01` deployed after `pnpm verify` passed. Production sign-in initiation reaches Google; full account callback and authenticated processing smoke remain separate checks. See `evidence/implementation/release-runtime-20261013.md`. The subsequent AI registry/budget deployment is recorded above; background processing and live provider smoke remain pending.

@@ -40,6 +40,8 @@ Vite does not provide the production Pages service-binding proxy. Running both p
 | `pnpm test:eval:offline`               | Run the synthetic extraction corpus; not live-model evaluation                                                                                 |
 | `pnpm check:deps`                      | Check dependency policy and registry advisories                                                                                                |
 | `pnpm check:production`                | Inspect built publication artifacts and all three bundle inventories for test/debug tooling; requires a completed build                        |
+| `pnpm ai:config`                       | Generate the five AI Wrangler variables from the selected production preset; secrets are unchanged                                             |
+| `pnpm ai:config:check`                 | Fail if runtime AI variables differ from the preset; included in `pnpm verify`                                                                 |
 | `pnpm build`                           | Build frontend/Pages Function, dry-run the Worker bundle, and check production artifacts; does not deploy                                      |
 
 For a focused native test:
@@ -166,7 +168,11 @@ The operator default is Abacus RouteLLM with fixed model `gpt-6-luna`; BYOK rema
 | Allowance and cost caps                                 | Worker variable `AI_BUDGET_JSON`                               |
 | User mode/provider/model and encrypted BYOK credential  | D1 `ai_settings`, using the server `CREDENTIAL_KEYRING`        |
 
-Start from [the Abacus preparation template](config/ai.abacus.example.json). It is inactive until pricing/notices, credentials and budgets are reviewed; placeholders must not be copied as an approved runtime registry. Configure the key securely on the intended Worker:
+[The production preset](config/ai.abacus.production.json) is the readable source for the selected provider, processor notices, verified tariff and approved application budget ($1/day, $10/month). The inactive [preparation template](config/ai.abacus.example.json) remains an example. After editing the production preset, run `pnpm ai:config`, review the resulting Wrangler diff, then run `pnpm verify`. The Worker reads the generated environment variables; it does not load the preset file directly. The consistency check prevents drift without changing OAuth bindings or secrets.
+
+Missing or unusable provider usage metadata does not reject otherwise valid output. The adapter emits `ai_usage_unavailable` and retains conservative reserved usage/cost; it never treats missing accounting as zero cost.
+
+Configure the key securely on the intended Worker:
 
 ```sh
 pnpm --filter @invoxim/worker exec wrangler secret put AI_HOSTED_KEY
