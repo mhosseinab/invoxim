@@ -139,3 +139,26 @@ it("Schema-capable model retains the exact constrained output schema and request
       1024,
   );
 });
+it.each([true, false])(
+  "DATE-01 actual HTTP schema explicitly constrains document and event dates; native schema=%s",
+  async (nativeSchema) => {
+    const { body } = await request(nativeSchema, true);
+    const emitted = nativeSchema
+      ? body.response_format.json_schema.schema
+      : JSON.parse(
+          body.messages[0].content.split("Required output JSON schema: ")[1],
+        );
+    for (const field of ["documentDate", "eventDate"]) {
+      const definition = emitted.properties.records.items.properties[field];
+      expect(
+        definition.anyOf.find(
+          (branch: { type: string }) => branch.type === "string",
+        ).pattern,
+      ).toBe("^\\d{4}-\\d{2}-\\d{2}$");
+    }
+    expect(body.messages[0].content).toContain("YYYY-MM-DD");
+    expect(body.messages[0].content).toContain(
+      "Never use email sent or received dates",
+    );
+  },
+);

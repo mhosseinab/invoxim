@@ -121,8 +121,10 @@ export function validateExtraction(
     )
       return { status: "needs-review", reason: "incomplete" };
     if (
-      !quotes("currency").some((quote) =>
-        new RegExp(`\\b${record.currency}\\b`).test(quote),
+      !quotes("currency").some(
+        (quote) =>
+          new RegExp(`\\b${record.currency}\\b`).test(quote) ||
+          (record.currency === "EUR" && quote.includes("€")),
       )
     )
       return { status: "needs-review", reason: "evidence" };
@@ -399,12 +401,44 @@ export function validateExtraction(
     })),
   };
 }
+const printedMonthPatterns = [
+  "jan(?:uary)?",
+  "feb(?:ruary)?",
+  "mar(?:ch)?",
+  "apr(?:il)?",
+  "may",
+  "jun(?:e)?",
+  "jul(?:y)?",
+  "aug(?:ust)?",
+  "sep(?:t(?:ember)?)?",
+  "oct(?:ober)?",
+  "nov(?:ember)?",
+  "dec(?:ember)?",
+] as const;
 function groundedDate(quote: string, date: string): boolean {
   if (new RegExp(`(?<![0-9])${date}(?![0-9])`).test(quote)) return true;
   const [year, month, day] = date.split("-");
-  return new RegExp(`(?<![0-9])${day}\\.${month}\\.${year}(?![0-9])`).test(
-    quote,
-  );
+  if (!year || !month || !day) return false;
+  const monthNumber = Number(month),
+    dayNumber = Number(day);
+  const printedDay = dayNumber < 10 ? `0?${dayNumber}` : String(dayNumber);
+  const printedMonth =
+    monthNumber < 10 ? `0?${monthNumber}` : String(monthNumber);
+  if (
+    new RegExp(
+      `(?<![0-9])${printedDay}\\.${printedMonth}\\.${year}(?![0-9])`,
+    ).test(quote)
+  )
+    return true;
+  const monthName = printedMonthPatterns[monthNumber - 1];
+  if (!monthName) return false;
+  // Named months have an explicit order; numeric slash dates remain unsupported.
+  const monthToken = `(?:${monthName})\\.?`;
+  const dayToken = `${printedDay}(?:st|nd|rd|th)?`;
+  return new RegExp(
+    `(?<![A-Za-z0-9])(?:${monthToken}\\s+${dayToken},?\\s+${year}|${dayToken}\\s+${monthToken}\\s+${year})(?![A-Za-z0-9])`,
+    "i",
+  ).test(quote);
 }
 function groundedAmount(
   quote: string,
@@ -618,6 +652,16 @@ function monetaryCurrencies(text: string): string[] {
     } catch {
       // Uppercase words outside the supported currency registry are ignored.
     }
+  }
+  if (text.includes("€")) codes.add("EUR");
+  // Other symbols cannot borrow an unrelated EUR marker from another line.
+  for (const [symbol, explicitCode] of [
+    ["$", "USD"],
+    ["£", "GBP"],
+    ["¥", "JPY"],
+  ] as const) {
+    if (text.includes(symbol) && !codes.has(explicitCode))
+      codes.add("unsupported-symbol");
   }
   return Array.from(codes);
 }

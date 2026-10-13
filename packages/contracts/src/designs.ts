@@ -28,10 +28,18 @@ export const extractionSchema = z.strictObject({
         merchant: z.string().max(200).nullable(),
         documentDate: z
           .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .describe(
+            "Explicit document date normalized to YYYY-MM-DD, or null when missing or ambiguous; never substitute email sent/received or invoice due dates.",
+          )
           .refine(validCalendarDate, "Invalid calendar date")
           .nullable(),
         eventDate: z
           .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .describe(
+            "Explicit payment/refund event date normalized to YYYY-MM-DD, or null when missing or ambiguous; never substitute email sent/received dates.",
+          )
           .refine(validCalendarDate, "Invalid calendar date")
           .nullable(),
         currency: z
@@ -148,11 +156,12 @@ export const inferenceExtractionSchema = extractionSchema.extend({
     )
     .max(10),
 });
-export const EXTRACTION_PROMPT_VERSION = "invoice-extraction-v3";
+export const EXTRACTION_PROMPT_VERSION = "invoice-extraction-v4";
 export function supportedExtractionPrompt(version: string): boolean {
   return (
     version === "invoice-extraction-v1" ||
     version === "invoice-extraction-v2" ||
+    version === "invoice-extraction-v3" ||
     version === EXTRACTION_PROMPT_VERSION
   );
 }

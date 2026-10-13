@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { EXTRACTION_PROMPT_VERSION } from "@invoxim/contracts";
 import {
   type ApprovedAiConfig,
   createDocumentTextExtractor,
@@ -153,7 +154,7 @@ beforeEach(async () => {
     settingsRevision: 1,
     consentId: "consent",
     fingerprint,
-    promptVersion: "invoice-extraction-v3",
+    promptVersion: EXTRACTION_PROMPT_VERSION,
     schemaVersion: 1,
     maxInputBytes: 24000,
     maxOutputBytes: 4096,
@@ -1132,3 +1133,106 @@ for (const pauseAfter of [
     ).toBe(1);
   });
 }
+it("DATE-01 multipart plain boilerplate plus complete HTML euro invoice becomes exactly one purchase", async () => {
+  const content: DocumentInput = {
+    connectionId: "c",
+    providerMessageId: "m",
+    root: {
+      partId: "",
+      mimeType: "multipart/alternative",
+      children: [
+        {
+          partId: "plain",
+          mimeType: "text/plain",
+          bytes: new TextEncoder().encode("View your receipt online."),
+        },
+        {
+          partId: "html",
+          mimeType: "text/html",
+          bytes: new TextEncoder().encode(
+            "<p>Synthetic Store</p><p>Invoice date: October 13, 2026</p><p>Total €15.00</p><p>Unpaid invoice</p>",
+          ),
+        },
+      ],
+    },
+  };
+  await sourceDocuments(content);
+  const { pipeline, run, extract } = service(0.9, policy, content);
+  const financial = {
+    schemaVersion: 1,
+    documentType: "invoice",
+    warnings: [],
+    records: [
+      {
+        merchant: "Synthetic Store",
+        documentDate: "2026-10-13",
+        eventDate: null,
+        currency: "EUR",
+        total: "15.00",
+        tax: null,
+        invoiceNumber: null,
+        orderReference: null,
+        paymentReference: null,
+        refundReference: null,
+        category: "shopping",
+        paymentEvidence: "explicitly-unpaid",
+        refundEvidence: "none",
+        paymentMethodHint: "unknown",
+        recurringCadence: "unknown",
+        paymentAmount: null,
+        refundAmount: null,
+        storeCreditAmount: null,
+        evidence: [
+          { field: "merchant", quote: "Synthetic Store" },
+          { field: "documentDate", quote: "October 13, 2026" },
+          { field: "currency", quote: "€" },
+          { field: "total", quote: "Total €15.00" },
+          { field: "payment", quote: "Unpaid invoice" },
+        ].map((item) => ({ ...item, inputPartId: "part-0" })),
+      },
+    ],
+  };
+  extract.mockImplementation(async (...args: unknown[]) => {
+    const parts = args[0] as { id: string; text: string }[];
+    expect(parts).toHaveLength(1);
+    expect(parts[0]?.text).toContain("October 13, 2026");
+    expect(parts[0]?.text).toContain("Total €15.00");
+    expect(parts[0]?.text).not.toContain("View your receipt online");
+    return {
+      status: "ok",
+      output: JSON.stringify(financial),
+      finish: "complete",
+      usage: { input: 20, output: 1, other: 0, source: "reported" },
+    };
+  });
+  let current = lease;
+  for (let stage = 0; stage < 3; stage++) {
+    expect(await pipeline.run(current, control)).toEqual({ kind: "completed" });
+    if (stage < 2) current = await continueLease();
+  }
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(
+    await db
+      .prepare(
+        "SELECT category,currency,total_minor,document_date FROM purchases WHERE user_id=?",
+      )
+      .bind(tenant.userId)
+      .all(),
+  ).toMatchObject({
+    results: [
+      {
+        category: "software",
+        currency: "EUR",
+        total_minor: 1500,
+        document_date: "2026-10-13",
+      },
+    ],
+  });
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(0);
+});
