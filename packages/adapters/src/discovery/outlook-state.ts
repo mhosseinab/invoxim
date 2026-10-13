@@ -23,6 +23,11 @@ const pageSchema = z.strictObject({
   nextLink: z.string().min(1).max(4096).nullable(),
 });
 export type OutlookInventoryPage = z.infer<typeof pageSchema>;
+export interface OutlookInventoryContinuation {
+  jobId: string;
+  priority: 0 | 1 | 2;
+  dispatchAt: number;
+}
 type CommitResult =
   | { kind: "committed"; version: number }
   | { kind: "stale" }
@@ -42,7 +47,7 @@ const maximumFolders = 2000;
 
 function authorization(lease: JobLease, now: number) {
   return {
-    sql: `EXISTS(SELECT 1 FROM jobs j JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN profiles p ON p.user_id=j.user_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id WHERE j.user_id=? AND j.id=? AND j.connection_id=? AND j.consent_id=? AND j.connection_generation=? AND j.status='leased' AND j.lease_id=? AND j.fence=? AND j.lease_expires_at>? AND j.type IN ('mailbox-backfill','sync') AND c.provider='outlook' AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND p.status='active' AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=COALESCE((SELECT a.revision FROM ai_settings a WHERE a.user_id=p.user_id AND a.status='active'),0) AND EXISTS(SELECT 1 FROM json_each(c.scopes) WHERE value='https://graph.microsoft.com/Mail.Read'))`,
+    sql: `EXISTS(SELECT 1 FROM jobs j JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN profiles p ON p.user_id=j.user_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id WHERE j.user_id=? AND j.id=? AND j.connection_id=? AND j.consent_id=? AND j.connection_generation=? AND j.status='leased' AND j.lease_id=? AND j.fence=? AND j.lease_expires_at>? AND j.type IN ('mailbox-backfill','discover','sync') AND c.provider='outlook' AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND p.status='active' AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=COALESCE((SELECT a.revision FROM ai_settings a WHERE a.user_id=p.user_id AND a.status='active'),0) AND EXISTS(SELECT 1 FROM json_each(c.scopes) WHERE value='https://graph.microsoft.com/Mail.Read'))`,
     values: [
       lease.context.userId,
       lease.jobId,
@@ -149,8 +154,19 @@ export function createOutlookFolderStore(db: D1Database) {
   async function commitInventoryPage(
     lease: JobLease,
     input: OutlookInventoryPage,
+    continuation?: OutlookInventoryContinuation,
   ): Promise<CommitResult> {
     const page = validatePage(input);
+    if (
+      continuation &&
+      (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        continuation.jobId,
+      ) ||
+        ![0, 1, 2].includes(continuation.priority) ||
+        !Number.isSafeInteger(continuation.dispatchAt) ||
+        continuation.dispatchAt < 0)
+    )
+      throw new DiscoveryError("INVALID_RANGE");
     if (!(await allowed(lease))) return { kind: "stale" };
     if (
       await exceedsLimit(
@@ -171,7 +187,7 @@ export function createOutlookFolderStore(db: D1Database) {
       "((SELECT COUNT(*) FROM outlook_folders WHERE user_id=? AND connection_id=? AND generation=?)+(SELECT COUNT(*) FROM json_each(?) f WHERE NOT EXISTS(SELECT 1 FROM outlook_folders existing WHERE existing.user_id=? AND existing.connection_id=? AND existing.generation=? AND existing.folder_id=json_extract(f.value,'$.id'))))<=2000";
     const acyclic = `NOT EXISTS(WITH RECURSIVE proposed(id,parent) AS (SELECT folder_id,parent_folder_id FROM outlook_folders WHERE user_id=? AND connection_id=? AND generation=? AND folder_id NOT IN(SELECT json_extract(value,'$.id') FROM json_each(?)) UNION ALL SELECT json_extract(value,'$.id'),json_extract(value,'$.parentFolderId') FROM json_each(?)),ancestry(origin,id,depth) AS (SELECT json_extract(value,'$.id'),json_extract(value,'$.parentFolderId'),1 FROM json_each(?) UNION ALL SELECT a.origin,p.parent,a.depth+1 FROM ancestry a JOIN proposed p ON p.id=a.id WHERE a.id IS NOT NULL AND a.id!=a.origin AND a.depth<2001) SELECT 1 FROM ancestry WHERE id=origin OR depth>=2001 LIMIT 1)`;
     const acyclicValues = [...owner(lease), folders, folders, folders];
-    await db.batch([
+    const statements: D1PreparedStatement[] = [
       db
         .prepare(
           `INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) SELECT ?,?,?,?,?,1,?,?,? WHERE ((?=0 AND ? IS NULL) OR EXISTS(SELECT 1 FROM outlook_inventory_states prior WHERE prior.user_id=? AND prior.connection_id=? AND prior.generation=? AND prior.scope_key=? AND prior.version=?)) AND ${guard.sql} AND ${cap} AND ${acyclic} ON CONFLICT(user_id,connection_id,generation,scope_key) DO UPDATE SET version=outlook_inventory_states.version+1,next_link=excluded.next_link,state=excluded.state,commit_id=excluded.commit_id WHERE outlook_inventory_states.version=? AND outlook_inventory_states.version<2147483646 AND ${guard.sql} AND ${cap} AND ${acyclic}`,
@@ -210,7 +226,43 @@ export function createOutlookFolderStore(db: D1Database) {
           `INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id) SELECT ?,?,?,'folder:'||json_extract(f.value,'$.id'),json_extract(f.value,'$.id'),1,NULL,'pending',? FROM json_each(?) f WHERE json_extract(f.value,'$.childFolderCount')>0 AND ${marker} ON CONFLICT(user_id,connection_id,generation,scope_key) DO NOTHING`,
         )
         .bind(...owner(lease), nonce, folders, ...markerValues),
-    ]);
+    ];
+    if (continuation) {
+      const dedupeKey = `outlook:inventory:${lease.jobId}`;
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${marker} AND ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
+          )
+          .bind(
+            continuation.jobId,
+            lease.context.userId,
+            lease.connectionId,
+            lease.consentId,
+            lease.generation,
+            lease.syncStateId,
+            lease.type,
+            dedupeKey,
+            continuation.dispatchAt,
+            continuation.priority,
+            ...markerValues,
+            ...guard.values,
+          ),
+        db
+          .prepare(
+            `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
+          )
+          .bind(
+            lease.context.userId,
+            lease.jobId,
+            ...markerValues,
+            ...guard.values,
+            lease.context.userId,
+            dedupeKey,
+          ),
+      );
+    }
+    await db.batch(statements);
     const committed = await db
       .prepare(
         "SELECT version FROM outlook_inventory_states WHERE user_id=? AND connection_id=? AND generation=? AND scope_key=? AND commit_id=?",

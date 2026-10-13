@@ -1,0 +1,7 @@
+# Outlook durable job checkpoint
+
+The bounded provider-neutral Outlook runner persists folder inventory continuation, per-folder delta state, source references and durable continuations under current tenant/lease/consent fences. Recent completion releases older work without claiming whole-mailbox completion; hourly reuse preserves opaque delta URLs; 410 recovery uses the accepted historical range; stale child CAS produces no source or continuation writes.
+
+Native broker command: `pnpm --filter @invoxim/worker exec vitest run test/outlook-job.test.ts`, with metrics disabled and unique Wrangler log. Latest `/tmp/invoxim-outlook-durable-final-v1.txt`: exit 0, nine tests passed, 2.00 seconds. Earlier seeding behavior RED was handler-unavailable versus completed, `/tmp/invoxim-outlook-recent-red-v2.txt`. Added progression/hourly/reset/stale proof cases were already GREEN; they are regression verification, not manufactured RED. Whole typecheck `/tmp/invoxim-next-typecheck-v4.txt` passed five uncached tasks.
+
+This is a recoverable local checkpoint, not T17 completion or final independent approval. Required remaining code: Worker/provider composition and accepted-import branch; durable provider-rate-limit deferral without consuming ordinary failure attempts; current approved-range filtering for initial live delta; excluded-folder identity handling. Live personal/work account Graph testing and deployment remain separate gates. Production files are frozen while new behavioral RED fixtures are prepared.
