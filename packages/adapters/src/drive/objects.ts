@@ -357,3 +357,27 @@ export function createArchiveObjectStore(
       safe(() => complete(context, lease, credentials)),
   };
 }
+
+/** Shared concrete SQL authority for the separately stored encrypted upload session. */
+export function archiveObjectAuthorization(
+  context: TenantContext,
+  lease: ArchiveObjectLease,
+  time: number,
+  credentials: ArchiveCredentialFences,
+): { sql: string; values: (string | number)[] } {
+  if (!leaseSchema.safeParse(lease).success || !integer.safeParse(time).success)
+    throw new ArchiveServiceError("INVALID_INPUT");
+  const pinned = credentialGuard(credentials);
+  return {
+    sql: `${leaseGuard}${pinned.sql}`,
+    values: [
+      context.userId,
+      lease.id,
+      lease.leaseId,
+      lease.fence,
+      lease.expiresAt,
+      time,
+      ...pinned.values,
+    ],
+  };
+}

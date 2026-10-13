@@ -3,7 +3,8 @@ export type SecretPurpose =
   | "mailbox-credentials"
   | "storage-credentials"
   | "byok-key"
-  | "oauth-pkce";
+  | "oauth-pkce"
+  | "archive-upload-session";
 export interface ProviderCredentials {
   accessToken?: string;
   refreshToken?: string;
@@ -14,6 +15,7 @@ export interface SecretPayloads {
   "storage-credentials": ProviderCredentials;
   "byok-key": { key: string };
   "oauth-pkce": { verifier: string };
+  "archive-upload-session": { url: string; fileId: string; sha256: string };
 }
 export interface CipherBinding<P extends SecretPurpose = SecretPurpose> {
   entityId: string;

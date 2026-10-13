@@ -378,3 +378,38 @@ it("SECRETS-04: reconnect save without refresh token preserves existing valid re
     refreshToken: "synthetic-connect-refresh",
   });
 });
+
+it("SECRETS-02 binds encrypted archive upload sessions to tenant and object identity", async () => {
+  const cipher = createCredentialCipher({ activeVersion: 1, keys: { 1: key } });
+  const binding = {
+    entityId: "archive-object-a",
+    purpose: "archive-upload-session",
+  } as const;
+  const value = {
+    url: "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=synthetic",
+    fileId: "synthetic-file",
+    sha256: "a".repeat(64),
+  };
+  const envelope = await cipher.seal(tenant("vault-a"), binding, value);
+  expect(envelope).not.toContain(value.url);
+  expect(await cipher.open(tenant("vault-a"), binding, envelope)).toEqual(
+    value,
+  );
+  await expect(
+    cipher.open(tenant("vault-b"), binding, envelope),
+  ).rejects.toThrow();
+  await expect(
+    cipher.open(
+      tenant("vault-a"),
+      { ...binding, entityId: "archive-object-b" },
+      envelope,
+    ),
+  ).rejects.toThrow();
+  await expect(
+    cipher.open(
+      tenant("vault-a"),
+      { ...binding, purpose: "storage-credentials" },
+      envelope,
+    ),
+  ).rejects.toThrow();
+});

@@ -34,7 +34,7 @@ function checkTarget(target: CredentialTarget) {
 function purpose(
   row: StoredCredential,
   target: CredentialTarget,
-): SecretPurpose {
+): Exclude<SecretPurpose, "oauth-pkce" | "archive-upload-session"> {
   if (target.kind === "byok") return "byok-key";
   if (row.kind === "mailbox") return "mailbox-credentials";
   if (row.kind === "storage") return "storage-credentials";

@@ -90,6 +90,35 @@ function payload<P extends SecretPurpose>(
     if (verifier.length < 43 || !/^[A-Za-z0-9._~-]+$/.test(verifier))
       throw new CredentialError("INVALID_SECRET");
     output = { verifier };
+  } else if (purpose === "archive-upload-session") {
+    if (
+      Object.keys(input).some(
+        (field) => !["url", "fileId", "sha256"].includes(field),
+      )
+    )
+      throw new CredentialError("INVALID_SECRET");
+    const url = text(input.url, 4096);
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new CredentialError("INVALID_SECRET");
+    }
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.username ||
+      parsed.password ||
+      parsed.hash
+    )
+      throw new CredentialError("INVALID_SECRET");
+    const fileId = text(input.fileId, 128);
+    const sha256 = text(input.sha256, 64);
+    if (
+      !/^[A-Za-z0-9_-]{1,128}$/.test(fileId) ||
+      !/^[0-9a-f]{64}$/.test(sha256)
+    )
+      throw new CredentialError("INVALID_SECRET");
+    output = { url, fileId, sha256 };
   } else if (
     purpose === "mailbox-credentials" ||
     purpose === "storage-credentials"

@@ -1,0 +1,44 @@
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+ ❯ test/drive-resumable-session.test.ts (3 tests | 1 failed | 2 skipped) 91ms
+   × diagnoses synthetic native session SQL using the unchanged parent authorization guard 15ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/drive-resumable-session.test.ts > diagnoses synthetic native session SQL using the unchanged parent authorization guard
+AssertionError: promise rejected "Error: D1_ERROR: Expression tree is too l…" instead of resolving
+ ❯ test/drive-resumable-session.test.ts:280:4
+    278|       .bind(owner.userId, work.lease.id, ...values)
+    279|       .first(),
+    280|   ).resolves.toBeNull();
+       |    ^
+    281|   const value = await reference();
+    282|   await expect(
+
+Caused by: Error: D1_ERROR: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+ ❯ D1DatabaseSessionAlwaysPrimary._sendOrThrow cloudflare-internal:d1-api:188:19
+ ❯ cloudflare-internal:d1-api:440:19
+ ❯ test/drive-resumable-session.test.ts:273:3
+
+Caused by: Error: Expression tree is too large (maximum depth 100): SQLITE_ERROR
+ ❯ D1DatabaseSessionAlwaysPrimary._sendOrThrow cloudflare-internal:d1-api:189:24
+ ❯ cloudflare-internal:d1-api:440:19
+ ❯ test/drive-resumable-session.test.ts:273:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 skipped (3)
+   Start at  13:23:36
+   Duration  6.29s (transform 79%, import 19%, tests 2%)
+
+  Transform  transforming modules took 4.31s · 79% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /home/geek/workspace/invoxim/apps/worker
+
