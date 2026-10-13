@@ -59,7 +59,10 @@ function decodeRaw(raw: string, maxBytes: number) {
   )
     throw new UnsupportedOriginal("invalid_encoding");
   if (decoded.length > maxBytes) throw new UnsupportedOriginal("byte_limit");
-  return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  const bytes = new Uint8Array(decoded.length);
+  for (let index = 0; index < decoded.length; index++)
+    bytes[index] = decoded.charCodeAt(index);
+  return bytes;
 }
 /** Header shape only: preserves every byte and does not parse/rewrite MIME or recipients. */
 function looksLikeOriginal(bytes: Uint8Array) {

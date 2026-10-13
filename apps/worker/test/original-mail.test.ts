@@ -95,6 +95,51 @@ it.each([false, true])(
     expect(calls[0]?.init?.redirect).toBe("manual");
   },
 );
+it("Gmail archive reader preserves every byte of a six-MiB binary EML under the existing ten-second deadline", async () => {
+  const bodySize = 6 * 1024 * 1024;
+  const mimeHeader =
+    "From: synthetic@example.test\r\nSubject: Synthetic \u00e9\r\nContent-Type: application/octet-stream\r\nContent-Transfer-Encoding: binary\r\n\r\n";
+  const pattern = String.fromCharCode(
+    ...new Uint8Array(256).map((_, index) => index),
+  );
+  const binary = `${mimeHeader}${pattern.repeat(bodySize / 256)}\r\n`;
+  const expected = new Uint8Array(mimeHeader.length + bodySize + 2);
+  for (let index = 0; index < mimeHeader.length; index++)
+    expected[index] = mimeHeader.charCodeAt(index);
+  for (let index = 0; index < bodySize; index++)
+    expected[mimeHeader.length + index] = index % 256;
+  expected[expected.length - 2] = 13;
+  expected[expected.length - 1] = 10;
+  const fetcher = vi.fn<typeof fetch>(async () =>
+    Response.json({
+      id: gmailId,
+      raw: btoa(binary)
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, ""),
+    }),
+  );
+  const result = await createOriginalMailReader(
+    {
+      provider: "gmail",
+      accessToken: "synthetic-original-access",
+      policy: { maxOriginalBytes: 4 * 1024 * 1024, deadlineMs: 10000 },
+    },
+    { fetcher, archiveByteLimit: 16 * 1024 * 1024 },
+  ).read(inputFor("gmail"));
+  expect(result.status).toBe("ready");
+  if (result.status !== "ready")
+    throw new Error("Synthetic Gmail archive original unavailable");
+  expect(result.bytes.length).toBe(expected.length);
+  expect(result.mimeType).toBe("message/rfc822");
+  expect(result.providerMessageId).toBe(gmailId);
+  expect(
+    new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new Uint8Array(result.bytes)),
+    ),
+  ).toEqual(new Uint8Array(await crypto.subtle.digest("SHA-256", expected)));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
 it.each([
   "message/rfc822",
   "text/plain; charset=utf-8",
