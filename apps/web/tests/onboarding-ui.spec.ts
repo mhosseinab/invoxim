@@ -756,6 +756,48 @@ test("ONBOARD-14 missing receipt processing is explained without a review retry 
   expect(writes).toEqual([]);
 });
 
+test("ONBOARD-14 resolved processing disclosure explains service configuration without claiming details are unavailable", async ({
+  page,
+}) => {
+  const starts: unknown[] = [];
+  await fixtures(page, (body) => {
+    starts.push(body);
+    return { body: { importRunId: "run-b", reused: false } };
+  });
+  await page.route("**/api/processing-disclosure*", (route) =>
+    route.fulfill({
+      json: {
+        ...disclosure,
+        canStartImport: false,
+        availability: "configuration",
+      },
+    }),
+  );
+  await page.goto("/onboarding/review");
+  await expect(
+    page.getByText("synthetic-hosted-processor", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Import is not enabled on this service yet. Your inbox is connected; no new import has started.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Processing details are unavailable.", { exact: false }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Start import", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByLabel(
+      "I authorize the displayed processing and hourly receipt checks.",
+      { exact: true },
+    ),
+  ).toBeDisabled();
+  expect(starts).toEqual([]);
+});
+
 for (const error of [
   { code: "processing_unavailable", retryable: true },
   { code: "processing_not_configured", retryable: true },

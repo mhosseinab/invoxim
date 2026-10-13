@@ -369,7 +369,9 @@ export function ReviewImport({
                     ? text.reviewThisMailboxDoesNotHaveThe
                     : disclosure.availability === "connection"
                       ? text["import.paused.auth"]
-                      : text.policyUnavailable}
+                      : disclosure.availability === "configuration"
+                        ? text.configurationBlocked
+                        : text.policyUnavailable}
             </p>
           )}
           <details>

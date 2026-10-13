@@ -31,6 +31,8 @@ export const onboardingCopy = {
     "Import is not available yet because receipt processing has not been configured. Your inbox is connected; this review has not started a new import.",
   policyUnavailable:
     "Processing details are unavailable. Import cannot start until approved processing is configured.",
+  configurationBlocked:
+    "Import is not enabled on this service yet. Your inbox is connected; no new import has started.",
   providerUnavailable:
     "The mailbox authorization could not be started. Your workspace is still available; retry only when you are ready.",
   progressTitle: "Your import",
