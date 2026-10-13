@@ -752,7 +752,8 @@
       "blockedBy": [],
       "localProgressEvidence": [
         "evidence/implementation/t17-outlook-service-checkpoint.md",
-        "evidence/implementation/outlook-durable-job-checkpoint-20261013.md"
+        "evidence/implementation/outlook-durable-job-checkpoint-20261013.md",
+        "evidence/implementation/t17-outlook-floor-review-20261013.md"
       ]
     },
     {
@@ -816,7 +817,9 @@
       "completionEvidence": [],
       "blockedBy": [],
       "localProgressEvidence": [
-        "evidence/implementation/t19-fx-service-checkpoint.md"
+        "evidence/implementation/t19-fx-service-checkpoint.md",
+        "evidence/implementation/t19-period-integration-plan-20261013.md",
+        "evidence/implementation/t19-reporting-revision-checkpoint.md"
       ]
     },
     {
@@ -847,7 +850,11 @@
       "completionEvidence": [],
       "blockedBy": [],
       "localProgressEvidence": [
-        "evidence/implementation/recurring-persistence-checkpoint-20261013.md"
+        "evidence/implementation/recurring-persistence-checkpoint-20261013.md",
+        "evidence/implementation/t20-recurring-api-checkpoint-20261013.md",
+        "evidence/implementation/t20-recurring-api-review-20261013.md",
+        "evidence/implementation/t20-recurring-ui-checkpoint-20261013.md",
+        "evidence/implementation/t20-recurring-ui-review-20261013.md"
       ]
     },
     {
