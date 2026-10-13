@@ -13,4 +13,5 @@ export * from "./presentation";
 export * from "./primitives";
 export * from "./purchases";
 export * from "./recurring";
+export * from "./recurring-api";
 export * from "./storage";

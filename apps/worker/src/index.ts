@@ -15,6 +15,7 @@ import {
   createProcessingDiscoveryReadiness,
   createProcessingReviewResolver,
   createPublicReferenceRateReader,
+  createRecurringService,
   fxReferenceConfiguration,
   gmailConfiguration,
   lifecycleDependencies,
@@ -42,6 +43,7 @@ import {
 } from "./operational-configuration";
 import { createPipelineRuntime } from "./pipeline-runtime";
 import { createPurchaseRoutes } from "./purchase-routes";
+import { createRecurringRoutes } from "./recurring-routes";
 import { createStorageRoutes } from "./storage-routes";
 
 const app = new Hono<{ Bindings: WorkerBindings }>();
@@ -97,6 +99,17 @@ app.route(
     },
   }),
 );
+app.route(
+  "/",
+  createRecurringRoutes({
+    service(db, bindings) {
+      return "RECURRING_ENABLED" in bindings &&
+        bindings.RECURRING_ENABLED === "true"
+        ? createRecurringService(db)
+        : null;
+    },
+  }),
+);
 app.route("/", createJobRoutes());
 app.route("/", createLifecycleRoutes());
 app.route("/", createStorageRoutes());
@@ -115,6 +128,7 @@ type WorkerBindings = DriveBindings &
   AiBindings & {
     GMAIL_DISCOVERY_ENABLED?: string;
     EXTRACTION_ENABLED?: string;
+    RECURRING_ENABLED?: string;
   } & LifecycleBindings &
   OperationalBindings &
   FxReferenceBindings;

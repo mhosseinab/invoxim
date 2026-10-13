@@ -80,6 +80,7 @@ export * from "./pipeline/types";
 export * from "./purchase-views";
 export type { PurchaseRow } from "./purchases";
 export { createPurchaseRepository } from "./purchases";
+export * from "./recurring/service";
 export * from "./security/cipher";
 export * from "./security/oauth-state";
 export * from "./security/types";

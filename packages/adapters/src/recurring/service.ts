@@ -7,6 +7,7 @@ import {
   recurringAutomaticPreviewSchema,
   recurringCreateSchema,
   recurringDecisionInputSchema,
+  recurringPageLimit,
 } from "@invoxim/contracts";
 import { deriveRecurringSuggestion, type TenantContext } from "@invoxim/core";
 import { z } from "zod";
@@ -57,6 +58,17 @@ export type RecurringWriteResult =
   | { status: "stored"; version: number }
   | { status: "conflict" }
   | { status: "invalid_evidence"; reason: string };
+export interface RecurringListInput {
+  limit: number;
+  after?: string;
+}
+export type RecurringListPage =
+  | { status: "stale" }
+  | {
+      status: "current";
+      records: Exclude<RecurringSeriesRead, { status: "missing" }>[];
+      nextCursor: string | null;
+    };
 const joins =
   "ledger_entries e JOIN purchases p ON p.user_id=e.user_id AND p.id=e.purchase_id JOIN profiles owner ON owner.user_id=e.user_id";
 // Canonical cash eligibility plus active purchase inclusion, never invoice-derived payments.
@@ -313,7 +325,51 @@ export function createRecurringService(
     if (!rows) return { status: "conflict" as const };
     return deriveRecurringSuggestion({ payments: payments(rows) });
   }
+  async function list(
+    context: TenantContext,
+    value: RecurringListInput,
+  ): Promise<RecurringListPage> {
+    const input = parse(
+      z
+        .strictObject({
+          limit: z.number().int().min(1).max(recurringPageLimit),
+          after: recurringCreateSchema.shape.id.optional(),
+        })
+        .safeParse(value),
+    );
+    const active = () =>
+      db
+        .prepare(
+          "SELECT 1 AS current FROM profiles WHERE user_id=? AND status='active'",
+        )
+        .bind(context.userId)
+        .first();
+    if (!(await active())) return { status: "stale" };
+    const ids = (
+      await db
+        .prepare(
+          "SELECT id FROM recurring_series WHERE user_id=? AND id>? ORDER BY id LIMIT ?",
+        )
+        .bind(context.userId, input.after ?? "", input.limit + 1)
+        .all<{ id: string }>()
+    ).results;
+    const records: Exclude<RecurringSeriesRead, { status: "missing" }>[] = [];
+    for (const item of ids.slice(0, input.limit)) {
+      const record = await read(context, item.id);
+      if (record.status === "missing") return { status: "stale" };
+      records.push(record);
+    }
+    if (!(await active())) return { status: "stale" };
+    return {
+      status: "current",
+      records,
+      nextCursor:
+        ids.length > input.limit ? (ids.at(input.limit - 1)?.id ?? null) : null,
+    };
+  }
   return {
+    list: (context: TenantContext, input: RecurringListInput) =>
+      safe(() => list(context, input)),
     createUserSeries: (context: TenantContext, input: RecurringCreateInput) =>
       safe(() => createUserSeries(context, input)),
     read: (context: TenantContext, id: string) => safe(() => read(context, id)),
