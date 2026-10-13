@@ -381,3 +381,8 @@ export function archiveObjectAuthorization(
     ],
   };
 }
+
+/** Read-only correlated authority for queue admission; caller keeps the tenant/object predicates. */
+export function archiveObjectEligibilitySql(): string {
+  return current;
+}

@@ -6,6 +6,7 @@ import {
 } from "@invoxim/core";
 import type {
   ArchiveCredentialFences,
+  ArchiveObjectLease,
   ArchiveUploadPlan,
 } from "../../../core/src/archive/objects";
 import { createArchiveWorkflow } from "../../../core/src/archive/workflow";
@@ -35,6 +36,7 @@ import { DriveArchiveError, type DriveHttpTransport } from "./types";
 export interface DriveArchiveWorkflowOptions {
   db: D1Database;
   remainingStatements(): number;
+  onClaim?(lease: ArchiveObjectLease): void;
   cipher: CredentialCipher;
   driveAuthorization(authorize: () => Promise<void>): ArchiveAuthorizationPort;
   refreshMailbox(
@@ -134,6 +136,19 @@ export function createDriveArchiveWorkflow(
       },
       objects: {
         ...objects,
+        async claim(owner, id) {
+          const claimed = await objects.claim(owner, id);
+          if (claimed && options.onClaim) {
+            try {
+              options.onClaim(claimed.lease);
+            } catch {
+              if (!(await objects.release(owner, claimed.lease)))
+                throw new ArchiveServiceError("CONFLICT");
+              throw new ArchiveServiceError("UNAVAILABLE");
+            }
+          }
+          return claimed;
+        },
         authorized: (owner, lease) => objects.authorized(owner, lease, fences),
         savePlan: (owner, lease, plan) =>
           objects.savePlan(owner, lease, plan, fences),
