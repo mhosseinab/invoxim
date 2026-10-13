@@ -114,7 +114,13 @@ it.each(["gmail", "outlook"] as const)(
     ).resolves.toEqual({ importRunId: "synthetic-run", reused: false });
     expect(prepare).toHaveBeenCalledWith(
       session.tenant,
-      { provider, connectionId: input.connectionId, generation: 1 },
+      {
+        provider,
+        connectionId: input.connectionId,
+        generation: 1,
+        credentialVersion: 1,
+        scopes: value.scopes,
+      },
       expect.any(AbortSignal),
     );
     expect(repo.commit).toHaveBeenCalledWith(session, value, seed);
