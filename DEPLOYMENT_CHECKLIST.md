@@ -112,3 +112,7 @@ Latest remote check: migrations list exited0 with no pending migrations; journal
 - [ ] Check authenticated settings/disclosure and explicit synthetic provider test. Configure the Queue/background runtime before enabling import; retain BYOK and explicit review/start consent.
 
 Verified runtime release on 2026-10-13: Worker `583847d3-f076-4dff-93fc-5331f5728682` and Pages `67b48d01` deployed after `pnpm verify` passed. Production sign-in initiation reaches Google; full account callback and authenticated processing smoke remain separate checks. See `evidence/implementation/release-runtime-20261013.md`. The subsequent AI registry/budget deployment is recorded above; background processing and live provider smoke remain pending.
+
+AI configuration now loads directly from the server JSON preset. Keep `AI_HOSTED_KEY` and `CREDENTIAL_KEYRING` in Wrangler secrets; no generator or copied provider/budget variables are required. Before deploying removal of legacy copies, compare remote plain-variable names and retain unrelated OAuth/runtime settings.
+
+Final file-based AI deployment: Worker `f16337fc-4321-4f39-b0cd-6a36907a5080` serves 100% after full verification (1,214 native integration tests and 82 browser tests). The copied AI variables are removed and required secret names retained. Authenticated endpoint/provider smoke and background-import activation remain open; see `evidence/implementation/ai-runtime-activation-20261013.md`.
