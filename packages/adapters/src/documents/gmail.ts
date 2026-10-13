@@ -10,7 +10,7 @@ import { z } from "zod";
 const bodySchema = z.object({
   size: z.number().int().min(0),
   data: z.string().optional(),
-  attachmentId: z.string().min(1).max(256).optional(),
+  attachmentId: z.string().min(1).max(4096).optional(),
 });
 const partSchema = z.object({
   partId: z.string().max(256),

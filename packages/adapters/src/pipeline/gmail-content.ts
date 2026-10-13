@@ -195,7 +195,10 @@ export function createGmailContentReader(
           if (bytes > DOCUMENT_LIMITS.bytes)
             return { status: "incomplete", code: "byte_limit" };
           if (part.body.attachmentId !== undefined) {
-            if (!validId(part.body.attachmentId))
+            if (
+              typeof part.body.attachmentId !== "string" ||
+              !/^[A-Za-z0-9_-]{1,4096}$/.test(part.body.attachmentId)
+            )
               return { status: "unreadable", code: "invalid_mime" };
             refs.push({
               id: part.body.attachmentId,

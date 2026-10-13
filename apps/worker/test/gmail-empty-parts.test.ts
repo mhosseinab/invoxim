@@ -113,3 +113,57 @@ it("Gmail enforces byte bounds on an empty-parts attachment before download", as
   expect(result).toEqual({ status: "incomplete", code: "byte_limit" });
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it("Gmail attachment handles can exceed message ID bounds without losing valid receipt bytes", async () => {
+  const attachmentId = "A".repeat(600);
+  const fetcher = vi.fn(async (url: string | URL | Request) =>
+    Response.json(
+      String(url).includes("/attachments/")
+        ? { size: 4, data: "JVBERg" }
+        : {
+            id: "synthetic-message",
+            payload: {
+              partId: "pdf",
+              mimeType: "application/pdf",
+              body: { size: 4, attachmentId },
+            },
+          },
+    ),
+  );
+  const result = await createGmailContentReader("synthetic-token", {
+    fetcher,
+  }).load({
+    connectionId: "synthetic-connection",
+    providerMessageId: "synthetic-message",
+    signal: new AbortController().signal,
+    checkpoint: async () => true,
+  });
+  expect(result.status).toBe("ready");
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(String(fetcher.mock.calls[1]?.[0])).toContain(
+    `/attachments/${attachmentId}`,
+  );
+});
+
+it("Gmail rejects an oversized attachment handle before downloading it", async () => {
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      id: "synthetic-message",
+      payload: {
+        partId: "pdf",
+        mimeType: "application/pdf",
+        body: { size: 4, attachmentId: "A".repeat(4097) },
+      },
+    }),
+  );
+  const result = await createGmailContentReader("synthetic-token", {
+    fetcher,
+  }).load({
+    connectionId: "synthetic-connection",
+    providerMessageId: "synthetic-message",
+    signal: new AbortController().signal,
+    checkpoint: async () => true,
+  });
+  expect(result).toEqual({ status: "unreadable", code: "invalid_mime" });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});

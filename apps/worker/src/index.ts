@@ -224,6 +224,9 @@ function configuredJobs(
       async send(body) {
         await queue.send(body);
       },
+      async wakeDispatch() {
+        await queue.send({ schemaVersion: 1, dispatch: true });
+      },
     },
   });
 }

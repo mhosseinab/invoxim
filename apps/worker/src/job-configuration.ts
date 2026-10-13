@@ -3,7 +3,9 @@ import { z } from "zod";
 
 export interface JobBindings {
   DB?: D1Database;
-  JOBS?: Queue<{ schemaVersion: 1; jobId: string }>;
+  JOBS?: Queue<
+    { schemaVersion: 1; jobId: string } | { schemaVersion: 1; dispatch: true }
+  >;
   JOBS_ENABLED?: string;
   JOBS_QUERY_LIMIT?: string;
   JOBS_DISPATCH_LIMIT?: string;
