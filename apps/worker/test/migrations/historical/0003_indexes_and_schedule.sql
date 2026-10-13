@@ -1,0 +1,11 @@
+ALTER TABLE connections ADD COLUMN scheduling_state TEXT NOT NULL DEFAULT 'awaiting_import' CHECK(scheduling_state IN ('awaiting_import','active','paused'));
+CREATE INDEX purchases_tenant_date ON purchases(user_id,document_date DESC,id);
+CREATE INDEX purchases_tenant_merchant ON purchases(user_id,merchant_normalized,id);
+CREATE INDEX observations_tenant_review ON observations(user_id,review_state,id);
+CREATE INDEX documents_tenant_hash ON documents(user_id,content_hash);
+CREATE INDEX ledger_tenant_date ON ledger_entries(user_id,event_date,id);
+CREATE INDEX jobs_due ON jobs(status,dispatch_at,user_id,id);
+CREATE INDEX connections_due ON connections(scheduling_state,next_sync_at,user_id,id);
+CREATE INDEX sessions_user ON "session"(userId);
+CREATE INDEX accounts_user ON "account"(userId);
+CREATE INDEX ledger_tenant_currency_id ON ledger_entries(user_id,currency,id);
