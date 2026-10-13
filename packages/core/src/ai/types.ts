@@ -4,6 +4,8 @@ import type { TenantContext } from "../tenant-context";
 export interface AiTextPart {
   readonly id: string;
   readonly text: string;
+  readonly interpretation?: "model";
+  readonly mimeType?: "text/plain" | "text/html";
 }
 export interface ApprovedAiConfig {
   readonly destinationId: string;

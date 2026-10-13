@@ -2,7 +2,7 @@ import {
   EXTRACTION_PROMPT_VERSION,
   inferenceExtractionSchema,
 } from "@invoxim/contracts";
-import type { ApprovedAiConfig } from "@invoxim/core";
+import type { AiTextPart, ApprovedAiConfig } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import presetText from "../../../config/ai.abacus.example.json?raw";
@@ -22,7 +22,11 @@ const parts = [
   },
 ];
 afterEach(() => vi.restoreAllMocks());
-async function request(jsonSchema: boolean, jsonObject: boolean) {
+async function request(
+  jsonSchema: boolean,
+  jsonObject: boolean,
+  inputParts: readonly AiTextPart[] = parts,
+) {
   const preset = JSON.parse(presetText);
   const destination = aiDestinationSchema.parse({
     ...preset.registry[0],
@@ -61,7 +65,7 @@ async function request(jsonSchema: boolean, jsonObject: boolean) {
     maxOutputTokens: destination.maxOutputTokens,
     maxAttempts: 1,
     reservationUnits: chatReservationUnits(
-      parts,
+      inputParts,
       model,
       destination.maxOutputTokens,
     ),
@@ -92,7 +96,7 @@ async function request(jsonSchema: boolean, jsonObject: boolean) {
     destination,
     model,
     "synthetic-key",
-  ).extract(parts, config, { id: "synthetic-attempt", repair: false });
+  ).extract(inputParts, config, { id: "synthetic-attempt", repair: false });
   expect(result.status).toBe("ok");
   expect(calls).toHaveLength(1);
   const body = calls[0];
@@ -162,3 +166,21 @@ it.each([true, false])(
     );
   },
 );
+
+it("MODEL-14 actual request retains raw foreign-language HTML and gives model interpretation instructions without tools", async () => {
+  const raw = {
+    id: "synthetic-html",
+    text: "<p>Épicerie &amp; Cie</p><p>Total <b>15,00 &euro;</b></p>",
+    interpretation: "model" as const,
+    mimeType: "text/html" as const,
+  };
+  const { body } = await request(true, true, [raw]);
+  expect(JSON.parse(body.messages[1].content).parts).toEqual([raw]);
+  expect(body.messages[0].content).toContain(
+    "Read every language, HTML entities and nested tags directly",
+  );
+  expect(body.messages[0].content).toContain(
+    "Do not infer payment from an invoice",
+  );
+  expect(body).not.toHaveProperty("tools");
+});

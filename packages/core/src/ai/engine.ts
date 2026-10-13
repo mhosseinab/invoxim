@@ -9,7 +9,7 @@ import type {
   InvoiceExtractor,
   PersistableAiResult,
 } from "./types";
-import { validateExtraction } from "./validation";
+import { validateExtraction, validateModelExtraction } from "./validation";
 export function createInferenceEngine(dependencies: {
   extractor: InvoiceExtractor;
   store: AiUsageStore;
@@ -125,7 +125,9 @@ export function createInferenceEngine(dependencies: {
         result =
           response.finish === "truncated"
             ? { status: "needs-review", reason: "incomplete" }
-            : validateExtraction(
+            : (snapshot.every((part) => part.interpretation === "model")
+                ? validateModelExtraction
+                : validateExtraction)(
                 response.output,
                 snapshot,
                 config.maxOutputBytes,
