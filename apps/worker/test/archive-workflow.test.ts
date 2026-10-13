@@ -8,6 +8,7 @@ import type {
 } from "@invoxim/core";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
+import backfillMigration from "../../../packages/adapters/migrations/0006_archive_dispatch_backfill.sql?raw";
 import { createArchiveFolderStore } from "../../../packages/adapters/src/drive/folders";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { createDriveArchiveWorkflow } from "../../../packages/adapters/src/drive/workflow";
@@ -34,8 +35,11 @@ const login = {
 };
 
 beforeAll(async () => {
-  for (const statement of baseline.split(";").filter((value) => value.trim()))
-    await db.prepare(statement).run();
+  for (const migration of [baseline, backfillMigration])
+    for (const statement of migration
+      .split(";")
+      .filter((value) => value.trim()))
+      await db.prepare(statement).run();
   const now = Date.now();
   await db
     .prepare(

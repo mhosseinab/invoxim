@@ -4,6 +4,7 @@ import type { ArchiveAuthorizationPort, TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import sessionMigration from "../../../packages/adapters/migrations/0002_archive_upload_sessions.sql?raw";
+import backfillMigration from "../../../packages/adapters/migrations/0006_archive_dispatch_backfill.sql?raw";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { createDriveArchiveWorkflow } from "../../../packages/adapters/src/drive/workflow";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
@@ -42,7 +43,7 @@ const login = {
 beforeAll(async () => {
   sha256 = await hash(bytes);
   originalHash = await hash(originalBytes);
-  for (const sql of [baseline, sessionMigration])
+  for (const sql of [baseline, sessionMigration, backfillMigration])
     for (const statement of sql.split(";").filter((value) => value.trim()))
       await db.prepare(statement).run();
   const now = Date.now();

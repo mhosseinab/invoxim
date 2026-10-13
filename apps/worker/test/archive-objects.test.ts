@@ -3,6 +3,7 @@
 import { env } from "cloudflare:workers";
 import type { ArchiveUploadPlan, TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
+import backfillMigration from "../../../packages/adapters/migrations/0006_archive_dispatch_backfill.sql?raw";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { cleanupM1Leaves } from "../../../packages/adapters/src/lifecycle/m1-leaf-cleanup";
 import { createInvocationDatabase } from "../src/invocation-database";
@@ -115,6 +116,10 @@ beforeAll(async () => {
       .run();
   }
   for (const statement of m18.split(";").filter((value) => value.trim()))
+    await db.prepare(statement).run();
+  for (const statement of backfillMigration
+    .split(";")
+    .filter((value) => value.trim()))
     await db.prepare(statement).run();
 });
 beforeEach(async () => {

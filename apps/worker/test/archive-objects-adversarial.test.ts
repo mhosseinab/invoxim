@@ -7,6 +7,7 @@ import {
 import type { ArchiveUploadPlan, TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
+import backfillMigration from "../../../packages/adapters/migrations/0006_archive_dispatch_backfill.sql?raw";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { createInvocationDatabase } from "../src/invocation-database";
 
@@ -21,7 +22,7 @@ const login: LoginConfiguration = {
 };
 let tenant: TenantContext;
 beforeAll(async () => {
-  for (const sql of [baseline])
+  for (const sql of [baseline, backfillMigration])
     for (const statement of sql.split(";").filter((v) => v.trim()))
       await db.prepare(statement).run();
 

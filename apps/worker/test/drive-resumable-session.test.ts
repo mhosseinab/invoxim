@@ -4,6 +4,7 @@ import type { TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import sessionMigration from "../../../packages/adapters/migrations/0002_archive_upload_sessions.sql?raw";
+import backfillMigration from "../../../packages/adapters/migrations/0006_archive_dispatch_backfill.sql?raw";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { createDriveResumableTransport } from "../../../packages/adapters/src/drive/resumable";
 import { createDriveResumableWorkflow } from "../../../packages/adapters/src/drive/resumable-workflow";
@@ -114,7 +115,7 @@ async function verified(id: string, email: string): Promise<TenantContext> {
   return profile.tenant;
 }
 beforeAll(async () => {
-  for (const sql of [baseline, sessionMigration])
+  for (const sql of [baseline, sessionMigration, backfillMigration])
     for (const statement of sql.split(";").filter((value) => value.trim()))
       await db.prepare(statement).run();
   owner = await verified("synthetic-upload-owner", "upload-owner@example.test");
