@@ -11,6 +11,7 @@ import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw
 import { createArchiveFolderStore } from "../../../packages/adapters/src/drive/folders";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { createDriveArchiveWorkflow } from "../../../packages/adapters/src/drive/workflow";
+import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import { createArchiveWorkflow } from "../../../packages/core/src/archive/workflow";
 import type {
@@ -137,6 +138,13 @@ beforeEach(async () => {
     .bind(tenant.userId, Date.now())
     .run();
 });
+async function financialSnapshot() {
+  const rows = await db
+    .prepare("SELECT * FROM ledger_entries WHERE user_id=? ORDER BY id")
+    .bind(tenant.userId)
+    .all();
+  return rows.results;
+}
 function ports(remote: ArchiveWorkflowRemote): ArchiveWorkflowPorts {
   return {
     objects: createArchiveObjectStore(db),
@@ -209,12 +217,7 @@ describe("T18 native archive workflow first multipart slice", () => {
       },
     };
     const objectId = await pendingObject();
-    const before = await db
-      .prepare(
-        "SELECT id,kind,amount_minor,currency,version FROM ledger_entries WHERE user_id=? ORDER BY id",
-      )
-      .bind(tenant.userId)
-      .first();
+    const before = await financialSnapshot();
     await expect(
       createArchiveWorkflow(ports(remote)).run(
         tenant,
@@ -230,14 +233,7 @@ describe("T18 native archive workflow first multipart slice", () => {
         .bind(tenant.userId, objectId)
         .first(),
     ).toEqual({ state: "archived", remote_id: "synthetic-file-id" });
-    expect(
-      await db
-        .prepare(
-          "SELECT id,kind,amount_minor,currency,version FROM ledger_entries WHERE user_id=? ORDER BY id",
-        )
-        .bind(tenant.userId)
-        .first(),
-    ).toEqual(before);
+    expect(await financialSnapshot()).toEqual(before);
     expect(generated).toBe(2);
   });
   it("does not allocate remote IDs after source identity bytes no longer match the admitted document", async () => {
@@ -447,12 +443,7 @@ it("composes actual encrypted credentials, exact Gmail original bytes and fenced
     return Response.json(result);
   });
   const meter = createInvocationDatabase(db, 40);
-  const before = await db
-    .prepare(
-      "SELECT id,kind,amount_minor,currency,version FROM ledger_entries WHERE user_id=?",
-    )
-    .bind(tenant.userId)
-    .all();
+  const before = await financialSnapshot();
   await expect(
     createDriveArchiveWorkflow({
       db: meter.db,
@@ -465,18 +456,11 @@ it("composes actual encrypted credentials, exact Gmail original bytes and fenced
       mailFetcher,
     }).run(tenant, objectId, new AbortController().signal),
   ).resolves.toEqual({ status: "archived" });
-  console.info("synthetic-archive-multipart-sql", meter.executedStatements());
+  expect(meter.executedStatements()).toBe(33);
   expect(meter.executedStatements()).toBeLessThanOrEqual(40);
   expect(mailFetcher).toHaveBeenCalledTimes(1);
   expect(ids).toBe(2);
-  expect(
-    await db
-      .prepare(
-        "SELECT id,kind,amount_minor,currency,version FROM ledger_entries WHERE user_id=?",
-      )
-      .bind(tenant.userId)
-      .all(),
-  ).toEqual(before);
+  expect(await financialSnapshot()).toEqual(before);
 });
 
 it.each(["synthetic-mail", "synthetic-drive"] as const)(
@@ -504,12 +488,7 @@ it.each(["synthetic-mail", "synthetic-drive"] as const)(
     const driveHttp = vi.fn(async () => {
       throw new Error("Synthetic revoked source must not reach Drive");
     });
-    const before = await db
-      .prepare(
-        "SELECT id,kind,amount_minor,currency,version FROM ledger_entries WHERE user_id=?",
-      )
-      .bind(tenant.userId)
-      .all();
+    const before = await financialSnapshot();
     await expect(
       createDriveArchiveWorkflow({
         db,
@@ -532,14 +511,7 @@ it.each(["synthetic-mail", "synthetic-drive"] as const)(
         .bind(tenant.userId, objectId)
         .first(),
     ).toEqual({ planned_file_id: null, state: "pending" });
-    expect(
-      await db
-        .prepare(
-          "SELECT id,kind,amount_minor,currency,version FROM ledger_entries WHERE user_id=?",
-        )
-        .bind(tenant.userId)
-        .all(),
-    ).toEqual(before);
+    expect(await financialSnapshot()).toEqual(before);
   },
 );
 
@@ -601,10 +573,7 @@ it("defers after one fenced Drive refresh with zero original reads or ID allocat
   expect(refresh).toHaveBeenCalledTimes(1);
   expect(mailFetcher).not.toHaveBeenCalled();
   expect(driveHttp).not.toHaveBeenCalled();
-  console.info(
-    "synthetic-archive-deferred-refresh-sql",
-    meter.executedStatements(),
-  );
+  expect(meter.executedStatements()).toBe(19);
   expect(meter.executedStatements()).toBeLessThanOrEqual(40);
   expect(
     await db
@@ -649,4 +618,151 @@ it("refuses to release a replaced object lease or clear its higher fence", async
       .bind(tenant.userId, objectId)
       .first(),
   ).toEqual({ lease_id: "synthetic-newer-lease", fence: work.lease.fence + 1 });
+});
+
+it("archives a canonical Outlook Mail.Read grant as exact original EML without external reference fetches", async () => {
+  await sealFreshCredentials();
+  const content = "Synthetic receipt body";
+  const selected = new TextEncoder().encode(content);
+  const selectedHash = [
+    ...new Uint8Array(await crypto.subtle.digest("SHA-256", selected)),
+  ]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const original = new TextEncoder().encode(
+    "From: synthetic@example.test\r\nSubject: Synthetic receipt\r\nContent-Type: text/plain\r\n\r\n" +
+      content,
+  );
+  const originalHash = [
+    ...new Uint8Array(await crypto.subtle.digest("SHA-256", original)),
+  ]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  await db
+    .prepare(
+      "UPDATE connections SET provider='outlook',scopes=? WHERE user_id=? AND id='synthetic-mail'",
+    )
+    .bind(JSON.stringify(OUTLOOK_AUTHORIZATION_SCOPES), tenant.userId)
+    .run();
+  await db
+    .prepare(
+      "UPDATE documents SET part_key='body',content_hash=?,mime='text/plain',byte_length=? WHERE user_id=? AND id='synthetic-doc'",
+    )
+    .bind(selectedHash, selected.length, tenant.userId)
+    .run();
+  const objectId = await pendingObject();
+  const mailUrls: string[] = [];
+  const mailFetcher: typeof fetch = vi.fn(async (input) => {
+    const url = String(input);
+    mailUrls.push(url);
+    const base =
+      "https://graph.microsoft.com/v1.0/me/messages/synthetic-message";
+    if (url === `${base}?$select=id,body,hasAttachments`)
+      return Response.json({
+        id: "synthetic-message",
+        body: { contentType: "text", content },
+        hasAttachments: false,
+      });
+    if (url === `${base}/attachments?$top=8`)
+      return Response.json({ value: [] });
+    if (url === `${base}?$select=id`)
+      return Response.json({ id: "synthetic-message" });
+    expect(url).toBe(`${base}/$value`);
+    return new Response(original, {
+      headers: { "Content-Type": "message/rfc822" },
+    });
+  });
+  const saved = new Map<string, Record<string, unknown>>();
+  let ids = 0;
+  const driveHttp = vi.fn(async (request: Request) => {
+    const url = new URL(request.url);
+    if (url.pathname.endsWith("/generateIds"))
+      return Response.json({
+        kind: "drive#generatedIds",
+        space: "drive",
+        ids: [
+          ++ids === 1 ? "synthetic-outlook-folder" : "synthetic-outlook-eml",
+        ],
+      });
+    if (request.method === "GET") {
+      const id = url.pathname.split("/").at(-1) ?? "";
+      return saved.has(id)
+        ? Response.json(saved.get(id))
+        : new Response(null, { status: 404 });
+    }
+    if (url.pathname === "/drive/v3/files") {
+      const input = (await request.json()) as Record<string, unknown>;
+      const value = { ...input, ownedByMe: true, trashed: false };
+      saved.set(String(input.id), value);
+      return Response.json(value);
+    }
+    expect(url.pathname).toBe("/upload/drive/v3/files");
+    const body = new Uint8Array(await request.arrayBuffer());
+    const text = new TextDecoder().decode(body);
+    const prefix = text.slice(text.indexOf("{")).split("\r\n")[0];
+    if (!prefix) throw new Error("Synthetic EML metadata missing");
+    const input = JSON.parse(prefix) as Record<string, unknown>;
+    expect(input.mimeType).toBe("message/rfc822");
+    expect(input.appProperties).toMatchObject({ sha256: originalHash });
+    expect(text).toContain(new TextDecoder().decode(original));
+    const value = {
+      ...input,
+      size: String(original.length),
+      sha256Checksum: originalHash,
+      ownedByMe: true,
+      trashed: false,
+    };
+    saved.set(String(input.id), value);
+    return Response.json(value);
+  });
+  const meter = createInvocationDatabase(db, 40);
+  await expect(
+    createDriveArchiveWorkflow({
+      db: meter.db,
+      cipher,
+      driveAuthorization: () => unusedAuthorization,
+      refreshMailbox: async () => {
+        throw new Error("Synthetic fresh Outlook mailbox must not refresh");
+      },
+      driveHttp,
+      mailFetcher,
+    }).run(tenant, objectId, new AbortController().signal),
+  ).resolves.toEqual({ status: "archived" });
+  expect(mailUrls).toEqual([
+    "https://graph.microsoft.com/v1.0/me/messages/synthetic-message?$select=id,body,hasAttachments",
+    "https://graph.microsoft.com/v1.0/me/messages/synthetic-message/attachments?$top=8",
+    "https://graph.microsoft.com/v1.0/me/messages/synthetic-message?$select=id",
+    "https://graph.microsoft.com/v1.0/me/messages/synthetic-message/$value",
+  ]);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+it("refuses a shortened ungranted Outlook scope before any source or Drive HTTP", async () => {
+  await sealFreshCredentials();
+  await db
+    .prepare(
+      "UPDATE connections SET provider='outlook',scopes=? WHERE user_id=? AND id='synthetic-mail'",
+    )
+    .bind(JSON.stringify(["openid", "Mail.Read"]), tenant.userId)
+    .run();
+  const objectId = await pendingObject();
+  const mailFetcher: typeof fetch = vi.fn(async () => {
+    throw new Error("Synthetic missing canonical scope must not fetch");
+  });
+  const driveHttp = vi.fn(async () => {
+    throw new Error("Synthetic missing canonical scope must not allocate IDs");
+  });
+  await expect(
+    createDriveArchiveWorkflow({
+      db,
+      cipher,
+      driveAuthorization: () => unusedAuthorization,
+      refreshMailbox: async () => {
+        throw new Error("Synthetic missing canonical scope must not refresh");
+      },
+      driveHttp,
+      mailFetcher,
+    }).run(tenant, objectId, new AbortController().signal),
+  ).rejects.toMatchObject({ code: "MISSING_PERMISSION" });
+  expect(mailFetcher).not.toHaveBeenCalled();
+  expect(driveHttp).not.toHaveBeenCalled();
 });

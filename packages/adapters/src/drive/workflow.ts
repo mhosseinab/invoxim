@@ -152,7 +152,7 @@ export function createDriveArchiveWorkflow(
             current.mail_scopes,
             provider === "gmail"
               ? "https://www.googleapis.com/auth/gmail.readonly"
-              : "Mail.Read",
+              : "https://graph.microsoft.com/Mail.Read",
           ) ||
           !granted(
             current.storage_scopes,

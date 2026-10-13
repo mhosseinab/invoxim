@@ -1,0 +1,65 @@
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+ ❯ test/archive-workflow.test.ts (9 tests | 2 failed | 7 skipped) 98ms
+   × archives a canonical Outlook Mail.Read grant as exact original EML without external reference fetches 16ms
+   × refuses a shortened ungranted Outlook scope before any source or Drive HTTP 16ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/archive-workflow.test.ts > archives a canonical Outlook Mail.Read grant as exact original EML without external reference fetches
+AssertionError: promise rejected "Error: MISSING_PERMISSION { code: 'M…' }" instead of resolving
+ ❯ test/archive-workflow.test.ts:728:4
+    726|       mailFetcher,
+    727|     }).run(tenant, objectId, new AbortController().signal),
+    728|   ).resolves.toEqual({ status: "archived" });
+       |    ^
+    729|   expect(mailUrls).toEqual([
+    730|     "https://graph.microsoft.com/v1.0/me/messages/synthetic-message?$s…
+
+Caused by: Error: MISSING_PERMISSION
+ ❯ Object.openRemote ../../packages/adapters/src/drive/workflow.ts:162:17
+ ❯ Object.run ../../packages/core/src/archive/workflow.ts:44:20
+ ❯ Object.run ../../packages/adapters/src/drive/workflow.ts:394:14
+ ❯ test/archive-workflow.test.ts:717:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'MISSING_PERMISSION' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/archive-workflow.test.ts > refuses a shortened ungranted Outlook scope before any source or Drive HTTP
+AssertionError: expected Error: UNAVAILABLE { code: 'UNAVAILA…' } to match object { code: 'MISSING_PERMISSION' }
+
+- Expected
++ Received
+
+- {
+-   "code": "MISSING_PERMISSION",
++ ArchiveServiceError {
++   "code": "UNAVAILABLE",
+  }
+
+ ❯ test/archive-workflow.test.ts:762:4
+    760|       mailFetcher,
+    761|     }).run(tenant, objectId, new AbortController().signal),
+    762|   ).rejects.toMatchObject({ code: "MISSING_PERMISSION" });
+       |    ^
+    763|   expect(mailFetcher).not.toHaveBeenCalled();
+    764|   expect(driveHttp).not.toHaveBeenCalled();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 7 skipped (9)
+   Start at  11:41:07
+   Duration  5.88s (transform 79%, import 19%, tests 2%)
+
+  Transform  transforming modules took 4.06s · 79% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /home/geek/workspace/invoxim/apps/worker
+
