@@ -4,6 +4,7 @@ import {
   aiConfiguration,
   createGmailDiscoveryProviderFactory,
   createLoginAuth,
+  createOnboardingImportPreparation,
   createOnboardingRepository,
   createProfileService,
   gmailConfiguration,
@@ -125,9 +126,12 @@ export function createOnboardingRoutes() {
       },
       service: createOnboardingUsecases({
         repository,
-        providers: gmail
-          ? createGmailDiscoveryProviderFactory(database.db, gmail)
-          : null,
+        preparation: createOnboardingImportPreparation(
+          gmail
+            ? createGmailDiscoveryProviderFactory(database.db, gmail)
+            : null,
+          false,
+        ),
       }),
     };
   }

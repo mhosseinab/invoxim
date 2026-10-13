@@ -47,8 +47,8 @@ beforeAll(async () => {
 it("ONBOARD-04 login A and owned mailbox B remain distinct and read-only before explicit Start", async () => {
   const usecases = createOnboardingUsecases({
     repository: createOnboardingRepository(db, options),
-    providers: {
-      open: async () => {
+    preparation: {
+      prepare: async () => {
         throw new Error("pre-Start provider must not open");
       },
     },
@@ -172,24 +172,11 @@ it("explicit Start keeps reviewed cutoff and seeds the delayed anchor gap withou
       ready: true,
       clock: () => clock,
     }),
-    providers: {
-      open: async () => {
+    preparation: {
+      prepare: async () => {
         opens++;
-        return {
-          anchor: async () => {
-            clock += 60000;
-            return "998877";
-          },
-          list: async () => {
-            throw new Error("No listing during Start");
-          },
-          metadata: async () => {
-            throw new Error("No bodies during Start");
-          },
-          history: async () => {
-            throw new Error("No history during Start");
-          },
-        };
+        clock += 60000;
+        return { provider: "gmail", historyAnchor: "998877" };
       },
     },
   });
@@ -464,8 +451,8 @@ it("fresh explicit review after recipient drift resumes the same frozen scan and
       ready: true,
       clock: () => at + 7200000,
     }),
-    providers: {
-      open: async () => {
+    preparation: {
+      prepare: async () => {
         throw new Error("Resume must preserve existing anchor");
       },
     },
@@ -688,8 +675,8 @@ it("actual invalid_grant and canceled auth work resume after same-subject reconn
       ready: true,
       clock: () => now + 300002,
     }),
-    providers: {
-      open: async () => {
+    preparation: {
+      prepare: async () => {
         throw new Error("Recovery cannot rescan or reanchor");
       },
     },

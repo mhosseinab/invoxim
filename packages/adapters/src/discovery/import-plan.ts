@@ -1,4 +1,8 @@
-import type { DiscoveryPlan, TenantContext } from "@invoxim/core";
+import type {
+  DiscoveryPlan,
+  OnboardingImportSeed,
+  TenantContext,
+} from "@invoxim/core";
 export interface AcceptedImportBatchInput {
   readonly context: TenantContext;
   readonly connectionId: string;
@@ -11,7 +15,7 @@ export interface AcceptedImportBatchInput {
   readonly recentId: string;
   readonly olderId: string;
   readonly liveId: string;
-  readonly anchor: string;
+  readonly seed: OnboardingImportSeed;
   readonly now: number;
   readonly plan: DiscoveryPlan;
   readonly guard: { sql: string; values: (string | number | null)[] };
@@ -27,9 +31,11 @@ export function buildAcceptedImportStatements(
   db: D1Database,
   input: AcceptedImportBatchInput,
 ): D1PreparedStatement[] {
-  const { context, runId, recentId, olderId, liveId, anchor, now, plan } =
-    input;
-  const catchup = Boolean(input.onboarding && now > plan.range.cutoffMs);
+  const { context, runId, recentId, olderId, liveId, seed, now, plan } = input;
+  const anchor = seed.provider === "gmail" ? seed.historyAnchor : null;
+  const catchup = Boolean(
+    seed.provider === "gmail" && input.onboarding && now > plan.range.cutoffMs,
+  );
   const guard = input.guard.sql,
     bindings = input.guard.values;
   const start = new Date(plan.range.startMs).toISOString(),
@@ -80,7 +86,11 @@ export function buildAcceptedImportStatements(
         new Date(slice.range.cutoffMs).toISOString(),
         slice.kind === "recent" ? "queued" : "waiting_recent",
         input.queryMode,
-        input.queryMode === "broad" ? "broad_metadata" : "filtered_query",
+        input.queryMode === "broad"
+          ? "broad_metadata"
+          : seed.provider === "outlook"
+            ? "candidate_unknown"
+            : "filtered_query",
         context.userId,
         runId,
       ],

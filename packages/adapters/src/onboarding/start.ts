@@ -1,5 +1,9 @@
 import { onboardingStartResponseSchema } from "@invoxim/contracts";
-import type { OnboardingSession, PreparedOnboardingStart } from "@invoxim/core";
+import type {
+  OnboardingImportSeed,
+  OnboardingSession,
+  PreparedOnboardingStart,
+} from "@invoxim/core";
 import { OnboardingError, planDiscoveryRange } from "@invoxim/core";
 import { buildAcceptedImportStatements } from "../discovery/import-plan";
 import { onboardingHistoryCompleteSql } from "./active-run";
@@ -9,9 +13,19 @@ export async function commitOnboardingStart(
   db: D1Database,
   session: OnboardingSession,
   p: PreparedOnboardingStart,
-  anchor: string,
+  seed: OnboardingImportSeed | null,
   options: OnboardingRepositoryOptions,
 ) {
+  if (
+    p.resume
+      ? seed !== null
+      : !seed ||
+        seed.provider !== p.provider ||
+        (seed.provider === "gmail" &&
+          (typeof seed.historyAnchor !== "string" ||
+            !/^[0-9]{1,100}$/.test(seed.historyAnchor)))
+  )
+    throw new OnboardingError("UNAVAILABLE");
   const now = (options.clock ?? Date.now)();
   if (!Number.isSafeInteger(now) || now < p.cutoffMs)
     throw new OnboardingError("UNAVAILABLE");
@@ -23,7 +37,7 @@ export async function commitOnboardingStart(
     olderId = crypto.randomUUID(),
     liveId = crypto.randomUUID();
   const user = session.tenant.userId;
-  const fresh = `EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active' AND version=?) AND EXISTS(SELECT 1 FROM "session" WHERE "userId"=? AND id=? AND "expiresAt">?) AND EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND state='connected' AND provider='gmail' AND credential_ciphertext IS NOT NULL AND json_valid(scopes) AND EXISTS(SELECT 1 FROM json_each(scopes) WHERE value='https://www.googleapis.com/auth/gmail.readonly') AND NOT EXISTS(SELECT 1 FROM json_each(scopes) WHERE value LIKE 'https://www.googleapis.com/auth/gmail.%' AND value<>'https://www.googleapis.com/auth/gmail.readonly')) AND ${p.resume ? `EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.connection_id=? AND r.id=? AND r.consent_id=? AND r.connection_generation=? AND r.completed_at IS NULL AND NOT (${onboardingHistoryCompleteSql}))` : `NOT EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.connection_id=? AND r.completed_at IS NULL AND NOT (${onboardingHistoryCompleteSql}))`} AND ${p.expectedAiSettingsRevision === 0 ? "NOT EXISTS(SELECT 1 FROM ai_settings WHERE user_id=? AND revision<>0)" : "EXISTS(SELECT 1 FROM ai_settings WHERE user_id=? AND revision=? AND generation=? AND credential_version=? AND status='active')"}`;
+  const fresh = `EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active' AND version=?) AND EXISTS(SELECT 1 FROM "session" WHERE "userId"=? AND id=? AND "expiresAt">?) AND EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND state='connected' AND provider=? AND scopes=? AND credential_ciphertext IS NOT NULL) AND ${p.resume ? `EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.connection_id=? AND r.id=? AND r.consent_id=? AND r.connection_generation=? AND r.completed_at IS NULL AND NOT (${onboardingHistoryCompleteSql}))` : `NOT EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.connection_id=? AND r.completed_at IS NULL AND NOT (${onboardingHistoryCompleteSql}))`} AND ${p.expectedAiSettingsRevision === 0 ? "NOT EXISTS(SELECT 1 FROM ai_settings WHERE user_id=? AND revision<>0)" : "EXISTS(SELECT 1 FROM ai_settings WHERE user_id=? AND revision=? AND generation=? AND credential_version=? AND status='active')"}`;
   const freshValues: (string | number | null)[] = [
     user,
     p.expectedProfileVersion,
@@ -34,6 +48,8 @@ export async function commitOnboardingStart(
     p.connectionId,
     p.generation,
     p.credentialVersion,
+    p.provider,
+    p.scopes,
     user,
     p.connectionId,
     ...(p.resume
@@ -94,6 +110,18 @@ export async function commitOnboardingStart(
     ],
   );
   if (p.resume) {
+    if (p.provider === "outlook" && p.resume.priorGeneration !== p.generation)
+      add(
+        `UPDATE sync_states SET scope_key='outlook:'||?||':'||substr(scope_key,length('outlook:'||?||':')+1) WHERE user_id=? AND connection_id=? AND scope_key LIKE 'outlook:'||?||':%' AND (import_run_id=? OR (sync_kind='incremental' AND run_key='live' AND slice_key='live')) AND ${claim}`,
+        [
+          String(p.generation),
+          String(p.resume.priorGeneration),
+          user,
+          p.connectionId,
+          String(p.resume.priorGeneration),
+          runId,
+        ],
+      );
     add(
       `UPDATE processing_consents SET revoked_at=? WHERE user_id=? AND id=? AND ${claim}`,
       [now, user, p.resume.consentId],
@@ -119,6 +147,7 @@ export async function commitOnboardingStart(
       [now + 3600000, user, p.connectionId],
     );
   } else {
+    if (!seed) throw new OnboardingError("UNAVAILABLE");
     statements.push(
       ...buildAcceptedImportStatements(db, {
         context: session.tenant,
@@ -132,7 +161,7 @@ export async function commitOnboardingStart(
         recentId,
         olderId,
         liveId,
-        anchor,
+        seed,
         now,
         plan: planDiscoveryRange({
           startMs: p.startMs,

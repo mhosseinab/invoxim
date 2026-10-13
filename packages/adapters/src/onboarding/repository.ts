@@ -40,6 +40,9 @@ export function createOnboardingRepository(
         : !scopeReady(connection)
           ? "permission"
           : !options.ready ||
+              !(options.mailboxProviders ?? ["gmail"]).includes(
+                connection.provider,
+              ) ||
               !selected.keyReady ||
               !selected.noticesReady ||
               !connection.credential_ciphertext
@@ -65,7 +68,7 @@ export function createOnboardingRepository(
         options.ready,
         options.mailboxLimit,
         connectionId,
-        options.mailboxProviders ?? [],
+        options.mailboxProviders ?? ["gmail"],
       ),
     async disclosure(session, query) {
       const { profile, connection, selected, allowance, availability } =
@@ -76,6 +79,8 @@ export function createOnboardingRepository(
         userId: session.tenant.userId,
         sessionId: session.sessionId,
         connectionId: connection.id,
+        provider: connection.provider,
+        scopeDigest: await hashOnboardingValue(connection.scopes),
         generation: connection.generation,
         credentialVersion: connection.credential_version,
         profileVersion: profile.version,
@@ -205,7 +210,9 @@ export function createOnboardingRepository(
         token.configurationDigest !== selected.configurationDigest ||
         token.selectedAiSettingsRevision !== selected.revision ||
         token.credentialVersion !== connection.credential_version ||
-        token.generation !== connection.generation
+        token.generation !== connection.generation ||
+        token.provider !== connection.provider ||
+        token.scopeDigest !== (await hashOnboardingValue(connection.scopes))
       )
         throw new OnboardingError("PROCESSING_REVIEW_REQUIRED");
       const active = await readActiveOnboardingRun(db, session, connection.id);
@@ -278,6 +285,8 @@ export function createOnboardingRepository(
               }
             : {}),
           connectionId: connection.id,
+          provider: connection.provider,
+          scopes: connection.scopes,
           generation: connection.generation,
           credentialVersion: connection.credential_version,
           expectedProfileVersion: profile.version,
@@ -307,7 +316,7 @@ export function createOnboardingRepository(
         },
       };
     },
-    commitStart: (session, prepared, anchor) =>
-      commitOnboardingStart(db, session, prepared, anchor, options),
+    commitStart: (session, prepared, seed) =>
+      commitOnboardingStart(db, session, prepared, seed, options),
   };
 }

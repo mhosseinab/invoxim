@@ -1,5 +1,8 @@
 import { env } from "cloudflare:workers";
-import type { OnboardingDisclosure } from "@invoxim/contracts";
+import type {
+  OnboardingDisclosure,
+  OnboardingStartRequest,
+} from "@invoxim/contracts";
 import type {
   DiscoveryProviderFactory,
   OnboardingSession,
@@ -9,6 +12,7 @@ import { createOnboardingUsecases } from "@invoxim/core";
 import { afterEach, beforeAll } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import { aiConfiguration } from "../../../packages/adapters/src/ai/configuration";
+import { createOnboardingImportPreparation } from "../../../packages/adapters/src/onboarding/import-preparation";
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
 
@@ -161,18 +165,24 @@ export function runtime(
   const repository = createOnboardingRepository(meter.db, {
     ai,
     ready: true,
+    mailboxProviders: ["gmail", "outlook"],
     signingSecret: "synthetic-onboarding-review-secret-12345",
     mailboxLimit: 3,
     remainingStatements: meter.remainingStatements,
     clock,
   });
   return {
-    usecases: createOnboardingUsecases({ repository, providers }),
+    usecases: createOnboardingUsecases({
+      repository,
+      preparation: createOnboardingImportPreparation(providers, true),
+    }),
     opens: () => opens,
     meter,
   };
 }
-export function startBody(disclosure: OnboardingDisclosure) {
+export function startBody(
+  disclosure: OnboardingDisclosure,
+): OnboardingStartRequest {
   return {
     connectionId: disclosure.connectionId,
     expectedConnectionGeneration: disclosure.connectionGeneration,

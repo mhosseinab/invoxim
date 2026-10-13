@@ -11,6 +11,20 @@ export interface OnboardingSession {
   readonly sessionId: string;
   readonly loginEmail: string;
 }
+export type OnboardingImportSeed =
+  | { readonly provider: "gmail"; readonly historyAnchor: string }
+  | { readonly provider: "outlook" };
+export interface OnboardingStartPreparationPort {
+  prepare(
+    context: TenantContext,
+    input: {
+      provider: "gmail" | "outlook";
+      connectionId: string;
+      generation: number;
+    },
+    signal: AbortSignal,
+  ): Promise<OnboardingImportSeed>;
+}
 export interface PreparedOnboardingStart {
   readonly resume?: {
     readonly runId: string;
@@ -18,6 +32,8 @@ export interface PreparedOnboardingStart {
     readonly priorGeneration: number;
   };
   readonly connectionId: string;
+  readonly provider: "gmail" | "outlook";
+  readonly scopes: string;
   readonly generation: number;
   readonly credentialVersion: number;
   readonly expectedProfileVersion: number;
@@ -65,7 +81,7 @@ export interface OnboardingRepository {
   commitStart(
     session: OnboardingSession,
     prepared: PreparedOnboardingStart,
-    historyAnchor: string,
+    seed: OnboardingImportSeed | null,
   ): Promise<OnboardingStartResponse>;
 }
 export class OnboardingError extends Error {

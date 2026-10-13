@@ -69,6 +69,7 @@ export * from "./mailbox/outlook-configuration";
 export * from "./mailbox/service";
 export * from "./mailbox/types";
 export * from "./onboarding/configuration";
+export { createOnboardingImportPreparation } from "./onboarding/import-preparation";
 export * from "./onboarding/processing-readiness";
 export { ProcessingNotConfiguredError } from "./onboarding/read";
 export { createOnboardingRepository } from "./onboarding/repository";

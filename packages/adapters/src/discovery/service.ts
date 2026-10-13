@@ -200,7 +200,7 @@ export function createDiscoveryService(
       recentId,
       olderId,
       liveId,
-      anchor,
+      seed: { provider: "gmail", historyAnchor: anchor },
       now,
       plan,
       guard: { sql: guard, values: bindings },

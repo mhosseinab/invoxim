@@ -7,6 +7,8 @@ export const reviewPayloadSchema = z.strictObject({
   userId: z.string().min(1).max(200),
   sessionId: z.string().min(1).max(200),
   connectionId: z.string().min(1).max(120),
+  provider: z.enum(["gmail", "outlook"]),
+  scopeDigest: z.string().regex(/^[a-f0-9]{64}$/),
   generation: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   credentialVersion: z
     .number()

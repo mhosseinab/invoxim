@@ -13,6 +13,7 @@ import type {
 } from "../ai/configuration";
 import type { StoredAiSettings } from "../ai/settings";
 import { createAiSettingsService } from "../ai/settings";
+import { validateOutlookReadScopes } from "../mailbox/outlook";
 import { readEnvelopeVersion } from "../security/cipher";
 import { selectedOnboardingConfigurationDigest } from "./configuration";
 
@@ -54,9 +55,17 @@ export interface SelectedInference {
 export function scopeReady(connection: OnboardingConnection) {
   try {
     const scopes: unknown = JSON.parse(connection.scopes);
+    if (
+      !Array.isArray(scopes) ||
+      !scopes.every((scope: unknown) => typeof scope === "string")
+    )
+      return false;
+    if (connection.provider === "outlook") {
+      validateOutlookReadScopes(scopes.join(" "), true);
+      return true;
+    }
     return (
       connection.provider === "gmail" &&
-      Array.isArray(scopes) &&
       scopes.includes("https://www.googleapis.com/auth/gmail.readonly") &&
       scopes.every(
         (scope: unknown) =>

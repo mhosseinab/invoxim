@@ -4,13 +4,16 @@ import {
   onboardingStartRequestSchema,
   processingDisclosureQuerySchema,
 } from "@invoxim/contracts";
-import type { DiscoveryProviderFactory } from "../discovery/types";
 import { DiscoveryError } from "../discovery/types";
-import type { OnboardingRepository, OnboardingSession } from "./types";
+import type {
+  OnboardingRepository,
+  OnboardingSession,
+  OnboardingStartPreparationPort,
+} from "./types";
 import { OnboardingError } from "./types";
 export function createOnboardingUsecases(options: {
   repository: OnboardingRepository;
-  providers: DiscoveryProviderFactory | null;
+  preparation: OnboardingStartPreparationPort | null;
 }) {
   return {
     async view(session: OnboardingSession, input: unknown = {}) {
@@ -39,26 +42,32 @@ export function createOnboardingUsecases(options: {
       );
       if (ready.kind === "existing") return ready.result;
       if (ready.prepared.resume)
-        return options.repository.commitStart(session, ready.prepared, "");
-      if (!options.providers) throw new OnboardingError("UNAVAILABLE");
+        return options.repository.commitStart(session, ready.prepared, null);
+      if (!options.preparation) throw new OnboardingError("UNAVAILABLE");
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 10000);
       try {
-        const provider = await options.providers.open(
+        const seed = await options.preparation.prepare(
           session.tenant,
           {
+            provider: ready.prepared.provider,
             connectionId: ready.prepared.connectionId,
             generation: ready.prepared.generation,
           },
           controller.signal,
         );
-        const anchor = await provider.anchor(controller.signal);
-        if (!/^[0-9]{1,100}$/.test(anchor))
+        if (
+          controller.signal.aborted ||
+          seed.provider !== ready.prepared.provider ||
+          (seed.provider === "gmail" &&
+            (typeof seed.historyAnchor !== "string" ||
+              !/^[0-9]{1,100}$/.test(seed.historyAnchor)))
+        )
           throw new OnboardingError("UNAVAILABLE");
         return await options.repository.commitStart(
           session,
           ready.prepared,
-          anchor,
+          seed,
         );
       } catch (cause) {
         if (cause instanceof OnboardingError) throw cause;

@@ -14,13 +14,15 @@ export async function readOnboardingView(
   ready: boolean,
   mailboxLimit: number,
   connectionId?: string,
-  mailboxProviders: readonly ("gmail" | "outlook")[] = [],
+  mailboxProviders: readonly ("gmail" | "outlook")[] = ["gmail"],
 ) {
   const profile = await reads.profile(session),
     connections = await reads.connections(session);
   const connection = connectionId
     ? connections.find((c) => c.id === connectionId)
     : connections[0];
+  const processingReady =
+    ready && (!connection || mailboxProviders.includes(connection.provider));
   if (connectionId && !connection) throw new OnboardingError("UNAUTHORIZED");
   const totals = await db
     .prepare(
@@ -136,7 +138,7 @@ export async function readOnboardingView(
     state = "records_ready";
     headlineKey = "import.progress.ready";
     primaryAction = "view_purchases";
-  } else if (!ready) {
+  } else if (!processingReady) {
     state = "processing_unavailable";
     headlineKey = "import.paused.service";
     primaryAction = "view_example";
@@ -164,7 +166,7 @@ export async function readOnboardingView(
   }
   let canStartImport = false,
     selected: SelectedInference | null = null;
-  if (connection?.state === "connected" && ready) {
+  if (connection?.state === "connected" && processingReady) {
     try {
       selected = await reads.selected(session);
     } catch (cause) {
