@@ -204,3 +204,23 @@ it("T24 copies and freezes the allowed payload before handing it to the sink", a
   await observer.observe(input);
   expect(captured).toEqual(schedule);
 });
+
+it("T24 failed operations preserve unknown counts instead of inventing zero progress", async () => {
+  const captured: unknown[] = [];
+  const observer = createOperationalObserver({
+    enabled: true,
+    sink: async (event) => {
+      captured.push(event);
+    },
+  });
+  const failure = {
+    ...schedule,
+    outcome: "failed",
+    scheduledCount: null,
+    sentCount: null,
+  };
+  await observer.observe(failure);
+  expect(captured).toEqual([failure]);
+  await observer.observe({ ...failure, outcome: "completed" });
+  expect(captured).toEqual([failure]);
+});

@@ -38,6 +38,7 @@ export type {
   OutlookMetadata,
 } from "./discovery/outlook";
 export { createOutlookGraphDiscovery } from "./discovery/outlook";
+export * from "./discovery/outlook-coordinator";
 export * from "./discovery/provider-factory";
 export * from "./discovery/service";
 export * from "./documents/gmail";
@@ -54,6 +55,7 @@ export * from "./drive/types";
 export * from "./fx/configuration";
 export { createPublicReferenceRateReader } from "./fx/reference";
 export { createFxValuationRepository } from "./fx/repository";
+export * from "./fx/service";
 export { createJobStore } from "./jobs/store";
 export { createLifecycleCleanup } from "./lifecycle/cleanup";
 export * from "./lifecycle/configuration";
@@ -71,6 +73,7 @@ export * from "./onboarding/processing-readiness";
 export { createOnboardingRepository } from "./onboarding/repository";
 export * from "./pipeline/gmail-content";
 export { createGmailContentFactory } from "./pipeline/gmail-factory";
+export * from "./pipeline/outlook-content";
 export * from "./pipeline/repository";
 export { createPipelineService } from "./pipeline/service";
 export * from "./pipeline/types";

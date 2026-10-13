@@ -6,20 +6,42 @@ const measurements = {
   wallDurationMs: z.number().int().min(0).max(3600000),
 };
 const eventSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("schedule"),
-    outcome: z.enum(["completed", "unavailable", "failed"]),
-    scheduledCount: z.number().int().min(0).max(50),
-    sentCount: z.number().int().min(0).max(50),
-    ...measurements,
-  }),
-  z.strictObject({
-    kind: z.literal("queue"),
-    outcome: z.enum(["ack", "retry", "disabled", "failed"]),
-    acknowledgedCount: z.number().int().min(0).max(100),
-    retriedCount: z.number().int().min(0).max(100),
-    ...measurements,
-  }),
+  z
+    .strictObject({
+      kind: z.literal("schedule"),
+      outcome: z.enum(["completed", "unavailable", "failed"]),
+      scheduledCount: z.number().int().min(0).max(50).nullable(),
+      sentCount: z.number().int().min(0).max(50).nullable(),
+      ...measurements,
+    })
+    .superRefine((event, context) => {
+      if (
+        event.outcome !== "failed" &&
+        (event.scheduledCount === null || event.sentCount === null)
+      )
+        context.addIssue({
+          code: "custom",
+          message: "Completed counts must be measured",
+        });
+    }),
+  z
+    .strictObject({
+      kind: z.literal("queue"),
+      outcome: z.enum(["ack", "retry", "disabled", "failed"]),
+      acknowledgedCount: z.number().int().min(0).max(100).nullable(),
+      retriedCount: z.number().int().min(0).max(100).nullable(),
+      ...measurements,
+    })
+    .superRefine((event, context) => {
+      if (
+        event.outcome !== "failed" &&
+        (event.acknowledgedCount === null || event.retriedCount === null)
+      )
+        context.addIssue({
+          code: "custom",
+          message: "Completed counts must be measured",
+        });
+    }),
   z.strictObject({
     kind: z.literal("cleanup"),
     outcome: z.enum(["idle", "pending", "completed", "awaiting_journal"]),

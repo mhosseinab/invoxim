@@ -1,0 +1,89 @@
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+ ❯ test/outlook-job.test.ts (4 tests | 1 failed) 113ms
+   × OUTLOOK-05 expired folder delta resets only its cursor and schedules recovery without a failure attempt 14ms
+ ❯ test/drive-resumable.test.ts (4 tests | 1 failed) 47ms
+   × probes the same session after an empty 503 chunk response and uses only its acknowledged bytes 13ms
+ ❯ test/operational-entry.test.ts (3 tests | 1 failed) 10ms
+   × T24 prior acknowledgements remain unknown when a later queue operation fails 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/drive-resumable.test.ts > probes the same session after an empty 503 chunk response and uses only its acknowledged bytes
+AssertionError: promise rejected "Error: invalid_response { code: 'inv…' }" instead of resolving
+ ❯ test/drive-resumable.test.ts:156:4
+    154|       0,
+    155|     ),
+    156|   ).resolves.toEqual({ status: "incomplete", uploadedBytes: 2 * 1024 *…
+       |    ^
+    157|   expect(http).toHaveBeenCalledTimes(2);
+    158| });
+
+Caused by: Error: invalid_response
+ ❯ readDriveJson ../../packages/adapters/src/drive/transport.ts:108:11
+ ❯ request ../../packages/adapters/src/drive/resumable.ts:183:26
+ ❯ Object.uploadChunk ../../packages/adapters/src/drive/resumable.ts:314:24
+ ❯ test/drive-resumable.test.ts:148:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'invalid_response' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  test/operational-entry.test.ts > T24 prior acknowledgements remain unknown when a later queue operation fails
+AssertionError: expected [ { kind: 'queue', …(5) } ] to deeply equal [ ObjectContaining{…} ]
+
+- Expected
++ Received
+
+  [
+    {
+-     "acknowledgedCount": null,
++     "acknowledgedCount": 0,
++     "consumedQueryCount": 0,
+      "kind": "queue",
+      "outcome": "failed",
+-     "retriedCount": null,
++     "retriedCount": 2,
++     "wallDurationMs": 0,
+    },
+  ]
+
+ ❯ test/operational-entry.test.ts:99:22
+     97|   expect(acknowledged).toHaveBeenCalledOnce();
+     98|   expect(retryAll).toHaveBeenCalledOnce();
+     99|   expect(f.captured).toEqual([
+       |                      ^
+    100|     expect.objectContaining({
+    101|       kind: "queue",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  test/outlook-job.test.ts > OUTLOOK-05 expired folder delta resets only its cursor and schedules recovery without a failure attempt
+Error: HISTORY_EXPIRED
+ ❯ Object.deltaFolder test/outlook-job.test.ts:248:13
+    246|     deltaFolder: async (input) => {
+    247|       expect(input.continuationLink).toBe(prior);
+    248|       throw new DiscoveryError("HISTORY_EXPIRED");
+       |             ^
+    249|     },
+    250|   };
+ ❯ Object.run ../../packages/adapters/src/discovery/outlook-delta.ts:123:28
+ ❯ test/outlook-job.test.ts:257:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  3 failed (3)
+      Tests  3 failed | 8 passed (11)
+   Start at  13:03:21
+   Duration  8.30s (transform 75%, import 22%, tests 2%)
+
+  Transform  transforming modules took 5.13s · 75% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /home/geek/workspace/invoxim/apps/worker
+

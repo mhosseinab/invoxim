@@ -1,17 +1,21 @@
 import type {
   AiBindings,
   DriveBindings,
+  FxReferenceBindings,
   GmailBindings,
   LifecycleBindings,
   OutlookBindings,
 } from "@invoxim/adapters";
 import {
   aiConfiguration,
+  createFxReportingService,
   createGmailDiscoveryProviderFactory,
   createJobStore,
   createLifecycleCleanup,
   createProcessingDiscoveryReadiness,
   createProcessingReviewResolver,
+  createPublicReferenceRateReader,
+  fxReferenceConfiguration,
   gmailConfiguration,
   lifecycleDependencies,
   loginConfiguration,
@@ -23,6 +27,7 @@ import { createAiRoutes } from "./ai-routes";
 import { createAuthRoutes } from "./auth-routes";
 import { createCorrectionRoutes } from "./correction-routes";
 import { createDiscoveryRuntime } from "./discovery-runtime";
+import { createFxRoutes } from "./fx-routes";
 import { createInvocationDatabase } from "./invocation-database";
 import type { JobBindings } from "./job-configuration";
 import { jobConfiguration } from "./job-configuration";
@@ -31,6 +36,10 @@ import { createJobRuntime } from "./job-runtime";
 import { createLifecycleRoutes } from "./lifecycle-routes";
 import { createMailboxRoutes } from "./mailbox-routes";
 import { createOnboardingRoutes } from "./onboarding-routes";
+import {
+  configuredOperationalObserver,
+  type OperationalBindings,
+} from "./operational-configuration";
 import { createPipelineRuntime } from "./pipeline-runtime";
 import { createPurchaseRoutes } from "./purchase-routes";
 import { createStorageRoutes } from "./storage-routes";
@@ -72,6 +81,22 @@ app.get("/api/public-config", (context) =>
     }),
   ),
 );
+app.route(
+  "/",
+  createFxRoutes({
+    service(db, bindings) {
+      const configuration = fxReferenceConfiguration(bindings);
+      if (!configuration) return null;
+      return createFxReportingService(db, {
+        policy: {
+          source: configuration.source,
+          maxPriorAgeDays: configuration.maxPriorAgeDays,
+        },
+        reader: createPublicReferenceRateReader(configuration),
+      });
+    },
+  }),
+);
 app.route("/", createJobRoutes());
 app.route("/", createLifecycleRoutes());
 app.route("/", createStorageRoutes());
@@ -90,7 +115,9 @@ type WorkerBindings = DriveBindings &
   AiBindings & {
     GMAIL_DISCOVERY_ENABLED?: string;
     EXTRACTION_ENABLED?: string;
-  } & LifecycleBindings;
+  } & LifecycleBindings &
+  OperationalBindings &
+  FxReferenceBindings;
 
 function configuredJobs(
   bindings: WorkerBindings,
@@ -175,26 +202,58 @@ const worker = Object.assign(app, {
     _controller: ScheduledController,
     bindings: WorkerBindings,
   ): Promise<void> {
+    const started = Date.now();
+    const observer = configuredOperationalObserver(bindings);
+    const database = bindings.DB
+      ? createInvocationDatabase(bindings.DB, 40)
+      : undefined;
+    const measurements = () => ({
+      consumedQueryCount: database?.executedStatements() ?? 0,
+      wallDurationMs: Math.max(0, Date.now() - started),
+    });
     try {
-      if (bindings.LIFECYCLE_ENABLED === "true" && bindings.DB) {
-        const database = createInvocationDatabase(bindings.DB, 40);
+      if (bindings.LIFECYCLE_ENABLED === "true" && database) {
         const { journal } = lifecycleDependencies(database.db, bindings);
         const cleanup = createLifecycleCleanup(database.db, journal);
+        let unitCount = 0;
+        let outcome: "idle" | "pending" | "completed" | "awaiting_journal" =
+          "idle";
         for (
           let unit = 0;
           unit < 3 && database.remainingStatements() >= 5;
           unit++
         ) {
           const result = await cleanup.runOne();
+          unitCount++;
+          outcome = result.status;
           if (result.status === "idle" || result.status === "awaiting_journal")
             break;
         }
-        // Cleanup cannot starve active tenants; dispatch shares the remaining meter.
-        await configuredJobs(bindings, database)?.scheduled();
-        return;
+        await observer.observe({
+          kind: "cleanup",
+          outcome,
+          unitCount,
+          ...measurements(),
+        });
       }
-      await configuredJobs(bindings)?.scheduled();
+      // Cleanup and dispatch share the same physical execution budget.
+      const runtime = configuredJobs(bindings, database);
+      const result = await runtime?.scheduled();
+      await observer.observe({
+        kind: "schedule",
+        outcome: runtime ? "completed" : "unavailable",
+        scheduledCount: result?.scheduled ?? 0,
+        sentCount: result?.sent ?? 0,
+        ...measurements(),
+      });
     } catch {
+      await observer.observe({
+        kind: "schedule",
+        outcome: "failed",
+        scheduledCount: null,
+        sentCount: null,
+        ...measurements(),
+      });
       throw new Error("JOB_RUNTIME_UNAVAILABLE");
     }
   },
@@ -202,15 +261,44 @@ const worker = Object.assign(app, {
     batch: MessageBatch<unknown>,
     bindings: WorkerBindings,
   ): Promise<void> {
+    const started = Date.now();
+    const observer = configuredOperationalObserver(bindings);
+    const database = bindings.DB
+      ? createInvocationDatabase(bindings.DB, 40)
+      : undefined;
+    const measurements = () => ({
+      consumedQueryCount: database?.executedStatements() ?? 0,
+      wallDurationMs: Math.max(0, Date.now() - started),
+    });
     try {
-      const runtime = configuredJobs(bindings);
+      const runtime = configuredJobs(bindings, database);
       if (!runtime) {
         batch.ackAll();
+        await observer.observe({
+          kind: "queue",
+          outcome: "disabled",
+          acknowledgedCount: batch.messages.length,
+          retriedCount: 0,
+          ...measurements(),
+        });
         return;
       }
-      await runtime.queue(batch);
+      const result = await runtime.queue(batch);
+      await observer.observe({
+        kind: "queue",
+        outcome: result.retriedCount ? "retry" : "ack",
+        ...result,
+        ...measurements(),
+      });
     } catch {
       batch.retryAll({ delaySeconds: 60 });
+      await observer.observe({
+        kind: "queue",
+        outcome: "failed",
+        acknowledgedCount: null,
+        retriedCount: null,
+        ...measurements(),
+      });
     }
   },
 });
