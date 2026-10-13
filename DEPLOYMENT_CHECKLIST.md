@@ -116,3 +116,7 @@ Verified runtime release on 2026-10-13: Worker `583847d3-f076-4dff-93fc-5331f572
 AI configuration now loads directly from the server JSON preset. Keep `AI_HOSTED_KEY` and `CREDENTIAL_KEYRING` in Wrangler secrets; no generator or copied provider/budget variables are required. Before deploying removal of legacy copies, compare remote plain-variable names and retain unrelated OAuth/runtime settings.
 
 Final file-based AI deployment: Worker `f16337fc-4321-4f39-b0cd-6a36907a5080` serves 100% after full verification (1,214 native integration tests and 82 browser tests). The copied AI variables are removed and required secret names retained. Authenticated endpoint/provider smoke and background-import activation remain open; see `evidence/implementation/ai-runtime-activation-20261013.md`.
+
+## Pending M1 migration and activation
+
+`0007_archive_document_order.sql` is local and additive; the deployed database was previously verified through `0006`. Native clean/populated migration tests pass, but rolling Drive backfill and Outlook runtime integration are still under implementation. Before a corresponding release, review the final diff, run the full verification gate, retain an approved database backup, and apply only pending additive migrations. Do not replay the consolidated baseline. Keep Outlook, Drive and background-processing flags disabled until their runtime and live smoke gates are satisfied. This checkpoint does not authorize a deployment or a remote migration.

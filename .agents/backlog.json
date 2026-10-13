@@ -575,7 +575,8 @@
       "blockedBy": [],
       "localProgressEvidence": [
         "evidence/implementation/login-recovery-local-verification-20261013.md",
-        "evidence/implementation/login-recovery-review-20261013.md"
+        "evidence/implementation/login-recovery-review-20261013.md",
+        "evidence/implementation/onboarding-service-blocker-20261013.md"
       ]
     },
     {
@@ -757,7 +758,8 @@
         "evidence/implementation/t17-outlook-service-checkpoint.md",
         "evidence/implementation/outlook-durable-job-checkpoint-20261013.md",
         "evidence/implementation/t17-outlook-floor-review-20261013.md",
-        "evidence/implementation/t17-outlook-factories-checkpoint-20261013.md"
+        "evidence/implementation/t17-outlook-factories-checkpoint-20261013.md",
+        "evidence/implementation/t17-provider-start-20261013.md"
       ]
     },
     {
@@ -792,7 +794,8 @@
       "localProgressEvidence": [
         "evidence/implementation/t18-workflow-wip-checkpoint.md",
         "evidence/implementation/t18-workflow-repair-checkpoint.md",
-        "evidence/implementation/t18-dispatch-backfill-checkpoint-20261013.md"
+        "evidence/implementation/t18-dispatch-backfill-checkpoint-20261013.md",
+        "evidence/implementation/t18-document-order-migration-20261013.md"
       ]
     },
     {
