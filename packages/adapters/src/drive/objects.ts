@@ -10,6 +10,8 @@ import {
 } from "@invoxim/core";
 import { z } from "zod";
 import type { ArchiveCredentialFences } from "../../../core/src/archive/objects";
+import { archiveSafe as safe } from "./boundary";
+import { archiveUploadPlanSchema } from "./plans";
 
 const identifier = z
   .string()
@@ -28,19 +30,7 @@ const leaseSchema = z.strictObject({
   fence: integer.min(1),
   expiresAt: integer.min(1),
 });
-const planSchema = z.strictObject({
-  fileId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  parentId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  workspaceMarker: z.string().regex(/^[A-Za-z0-9_-]{16,96}$/),
-  mimeType: z.enum([
-    "application/pdf",
-    "image/jpeg",
-    "image/png",
-    "message/rfc822",
-  ]),
-  size: integer.min(1),
-  sha256: z.string().regex(/^[0-9a-f]{64}$/),
-});
+const planSchema = archiveUploadPlanSchema;
 // This correlated predicate is repeated on every lease/plan/commit mutation.
 // Reconnecting to the same displayed address cannot revive an older authorization.
 const admission = `EXISTS(
@@ -156,14 +146,6 @@ function work(row: WorkRow): ArchiveObjectWork {
     settingsVersion: row.settings_version,
     plan: parsedPlan,
   };
-}
-async function safe<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof ArchiveServiceError) throw error;
-    throw new ArchiveServiceError("UNAVAILABLE");
-  }
 }
 /** Private adapter seam; callers supply a context derived from a session/internal job. */
 export function createArchiveObjectStore(

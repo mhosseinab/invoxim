@@ -10,9 +10,9 @@ import type {
 } from "@invoxim/core";
 import { ArchiveAuthorizationError, ArchiveServiceError } from "@invoxim/core";
 import { z } from "zod";
+import { safe as keepDomainError } from "../security/helpers";
 import type { CredentialCipher } from "../security/types";
 import { createCredentialVault } from "../security/vault";
-import { DRIVE_AUTHORIZATION_SCOPES } from "./configuration";
 import {
   activeProfile,
   type ConnectionRow,
@@ -20,6 +20,7 @@ import {
   MAX,
   project,
 } from "./connections";
+import { scopesMatchConfiguration } from "./scopes";
 
 const leaseDurationMs = 60000;
 const minimumRemainingMs = 45000;
@@ -41,31 +42,6 @@ interface RefreshRow extends ConnectionRow {
   scopes: string;
   archiving_enabled: number;
 }
-function scopesAllowed(scopes: string) {
-  let input: unknown;
-  try {
-    input = JSON.parse(scopes);
-  } catch {
-    return false;
-  }
-  const parsed = z
-    .array(z.string().min(1).max(256))
-    .min(1)
-    .max(4)
-    .safeParse(input);
-  if (!parsed.success) return false;
-  const aliases: Record<string, string> = {
-    "https://www.googleapis.com/auth/userinfo.email": "email",
-    "https://www.googleapis.com/auth/userinfo.profile": "profile",
-  };
-  const normalized = parsed.data.map((scope) => aliases[scope] ?? scope);
-  const actual = new Set(normalized);
-  return (
-    actual.size === normalized.length &&
-    DRIVE_AUTHORIZATION_SCOPES.every((scope) => actual.has(scope)) &&
-    [...actual].every((scope) => DRIVE_AUTHORIZATION_SCOPES.includes(scope))
-  );
-}
 function credentials(
   value: unknown,
   fallbackRefresh?: string,
@@ -80,15 +56,15 @@ function credentials(
     expiresAt: parsed.data.expiresAt,
   };
 }
-async function safe<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof ArchiveServiceError) throw error;
-    if (error instanceof ArchiveAuthorizationError)
-      throw new ArchiveServiceError(error.code);
-    throw new ArchiveServiceError("UNAVAILABLE");
-  }
+function safe<T>(operation: () => Promise<T>): Promise<T> {
+  return keepDomainError(
+    operation,
+    (cause) =>
+      cause instanceof ArchiveAuthorizationError
+        ? new ArchiveServiceError(cause.code)
+        : new ArchiveServiceError("UNAVAILABLE"),
+    (cause) => cause instanceof ArchiveServiceError,
+  );
 }
 
 /** Provider refresh must verify its account/scopes and enforce per-request authorization at composition. */
@@ -125,7 +101,7 @@ export function createDriveCredentialRefresher(
       existing.credential_version >= MAX
     )
       throw new ArchiveServiceError("CONFLICT");
-    if (!scopesAllowed(existing.scopes))
+    if (!scopesMatchConfiguration(existing.scopes))
       throw new ArchiveServiceError("MISSING_PERMISSION");
     const snapshot = await vault.read(
       context,

@@ -7,7 +7,9 @@ import {
 import { verifyProviderIdToken } from "better-auth/oauth2";
 import { google } from "better-auth/social-providers";
 import { z } from "zod";
+import { abortable } from "../security/helpers";
 import { DRIVE_AUTHORIZATION_SCOPES, driveClientSchema } from "./configuration";
+import { scopesMatchConfiguration } from "./scopes";
 import type { DriveHttpTransport } from "./types";
 
 const tokenEndpoint = "https://oauth2.googleapis.com/token";
@@ -91,37 +93,11 @@ function grantedScopes(value: string | undefined, required: boolean) {
     if (required) throw new ArchiveAuthorizationError("MISSING_PERMISSION");
     return;
   }
-  const aliases: Record<string, string> = {
-    "https://www.googleapis.com/auth/userinfo.email": "email",
-    "https://www.googleapis.com/auth/userinfo.profile": "profile",
-  };
-  const granted = new Set(
-    value
-      .trim()
-      .split(/\s+/)
-      .map((item) => aliases[item] ?? item),
-  );
-  if (
-    DRIVE_AUTHORIZATION_SCOPES.some((item) => !granted.has(item)) ||
-    [...granted].some((item) => !DRIVE_AUTHORIZATION_SCOPES.includes(item))
-  )
+  if (!scopesMatchConfiguration(value))
     throw new ArchiveAuthorizationError("MISSING_PERMISSION");
 }
-async function abortable<T>(
-  promise: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  let stop = () => {};
-  const stopped = new Promise<never>((_, reject) => {
-    stop = () => reject(new ArchiveAuthorizationError("UNAVAILABLE"));
-    signal.addEventListener("abort", stop, { once: true });
-    if (signal.aborted) stop();
-  });
-  try {
-    return await Promise.race([promise, stopped]);
-  } finally {
-    signal.removeEventListener("abort", stop);
-  }
+function unavailable() {
+  return new ArchiveAuthorizationError("UNAVAILABLE");
 }
 async function bodyJson(
   response: Response,
@@ -152,7 +128,7 @@ async function bodyJson(
     while (true) {
       if (signal.aborted || Date.now() >= deadline)
         throw new ArchiveAuthorizationError("UNAVAILABLE");
-      const item = await abortable(reader.read(), signal);
+      const item = await abortable(reader.read(), signal, unavailable);
       if (signal.aborted || Date.now() >= deadline)
         throw new ArchiveAuthorizationError("UNAVAILABLE");
       if (item.done) break;
@@ -229,6 +205,7 @@ export function createDriveAuthorization(
           return settled;
         }),
         controller.signal,
+        unavailable,
       );
       if (
         response.redirected ||

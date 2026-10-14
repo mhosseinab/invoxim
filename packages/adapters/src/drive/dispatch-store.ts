@@ -8,6 +8,7 @@ import type {
   ArchiveDispatchStore,
   ArchiveDispatchWork,
 } from "../../../core/src/archive/queue-types";
+import { archiveSafe as safe } from "./boundary";
 import { archiveObjectEligibilitySql } from "./objects";
 
 const identifier = z
@@ -56,14 +57,6 @@ function work(row: Row): ArchiveDispatchWork {
     objectFence: row.object_fence,
     failureCount: row.failure_count,
   };
-}
-async function safe<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof ArchiveServiceError) throw error;
-    throw new ArchiveServiceError("UNAVAILABLE");
-  }
 }
 /** Delivery metadata only; archive_objects owns the sole execution lease. */
 export function createArchiveDispatchStore(

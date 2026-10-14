@@ -10,6 +10,7 @@ import {
   type ArchiveSession,
   type TenantContext,
 } from "@invoxim/core";
+import { archiveSafe as safe } from "./boundary";
 export type ArchiveConsentView = ArchiveSettingsView;
 export type ArchiveEnableInput = ArchiveEnableRequest;
 const archiveMaximumVersion = 2147483646;
@@ -31,14 +32,6 @@ function disabled(version = 0): ArchiveSettingsView {
     disclosureVersion: null,
     acceptedAt: null,
   };
-}
-async function safe<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof ArchiveServiceError) throw error;
-    throw new ArchiveServiceError("UNAVAILABLE");
-  }
 }
 const sessionGuard =
   "EXISTS(SELECT 1 FROM session se JOIN profiles p ON p.user_id=se.userId WHERE se.id=? AND se.userId=? AND se.expiresAt>? AND typeof(se.createdAt)='integer' AND se.createdAt<=? AND se.createdAt>=? AND p.status='active')";
