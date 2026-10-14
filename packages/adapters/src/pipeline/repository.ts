@@ -27,8 +27,10 @@ import { z } from "zod";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 import {
   cachedGuard as baseCachedGuard,
+  currentDocumentGuard,
   liveGuard as baseLiveGuard,
   liveWhere as baseLiveWhere,
+  nextDocumentGuard,
   executeBatch,
   LIVE_FROM,
   PipelinePersistenceError,
@@ -1204,10 +1206,10 @@ export function createPipelineRepository(
       lease,
       outcome.classificationFingerprint,
     );
-    guard.sql += ` AND EXISTS(SELECT 1 FROM discovery_source_jobs current JOIN documents d ON d.user_id=current.user_id AND d.source_message_id=current.source_message_id WHERE current.user_id=? AND current.job_id=? AND current.pipeline_stage='infer' AND d.id=? AND d.pipeline_index=current.document_index AND d.parse_state IN('ready','extracted'))`;
+    guard.sql += ` AND ${currentDocumentGuard()}`;
     guard.values.push(lease.context.userId, lease.jobId, outcome.documentId);
     if (outcome.nextDocumentIndex !== null) {
-      guard.sql += ` AND EXISTS(SELECT 1 FROM discovery_source_jobs current JOIN documents d ON d.user_id=current.user_id AND d.source_message_id=current.source_message_id WHERE current.user_id=? AND current.job_id=? AND d.pipeline_index=? AND d.pipeline_index=current.document_index+1)`;
+      guard.sql += ` AND ${nextDocumentGuard()}`;
       guard.values.push(
         lease.context.userId,
         lease.jobId,
@@ -1304,10 +1306,13 @@ export function createPipelineRepository(
       throw new PipelinePersistenceError("INVALID_PIPELINE");
     if (!(await ensureAccepted(lease))) return "stale";
     const guard = liveGuard(lease, clock());
-    guard.sql += ` AND EXISTS(SELECT 1 FROM documents d JOIN discovery_source_jobs dj ON dj.user_id=d.user_id AND dj.source_message_id=d.source_message_id WHERE d.user_id=? AND d.id=? AND dj.job_id=? AND d.pipeline_index=dj.document_index)`;
-    guard.values.push(lease.context.userId, outcome.documentId, lease.jobId);
+    // P1.5c: the stage check is shared with skipDocument. The parse_state
+    // check is omitted here because this batch writes parse_state and would
+    // self-invalidate a guard that re-checks it.
+    guard.sql += ` AND ${currentDocumentGuard({ checkParseState: false })}`;
+    guard.values.push(lease.context.userId, lease.jobId, outcome.documentId);
     if (outcome.nextDocumentIndex !== null) {
-      guard.sql += ` AND EXISTS(SELECT 1 FROM documents d JOIN discovery_source_jobs dj ON dj.user_id=d.user_id AND dj.source_message_id=d.source_message_id WHERE d.user_id=? AND dj.job_id=? AND d.pipeline_index=? AND d.pipeline_index=dj.document_index+1)`;
+      guard.sql += ` AND ${nextDocumentGuard()}`;
       guard.values.push(
         lease.context.userId,
         lease.jobId,

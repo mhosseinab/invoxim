@@ -85,6 +85,7 @@ export * from "./pipeline/types";
 export * from "./purchase-views";
 export {
   createReviewSourceReader,
+  lookupReviewProvider,
   ReviewSourceError,
 } from "./purchase-views/review-source";
 export type { PurchaseRow } from "./purchases";
