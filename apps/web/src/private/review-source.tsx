@@ -1,5 +1,6 @@
 import { type PurchaseReview, reviewSourceSchema } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatLocalDateTime } from "../format";
 import { identityFailure, readPrivateForIdentity } from "./api";
 
 type Source = ReturnType<typeof reviewSourceSchema.parse>;
@@ -78,12 +79,7 @@ export function ReviewSource({
         Inbox: <strong>{context.mailboxAddress}</strong>
         <br />
         Received:{" "}
-        <time dateTime={date.toISOString()}>
-          {date.toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}
-        </time>
+        <time dateTime={date.toISOString()}>{formatLocalDateTime(date)}</time>
       </p>
       {source ? (
         <>

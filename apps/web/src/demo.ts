@@ -1,5 +1,6 @@
-import { formatMinor, ledgerTotals } from "@invoxim/core";
+import { ledgerTotals } from "@invoxim/core";
 import { demoFixture } from "./demo-fixture";
+import { amount } from "./format";
 
 export const demo = demoFixture;
 export type DemoPurchase = (typeof demo.purchases)[number];
@@ -22,5 +23,5 @@ export function totals(purchase?: DemoPurchase) {
   );
 }
 export function money(minor: string) {
-  return `${demo.currency} ${formatMinor(minor, demo.currency)}`;
+  return amount(minor, demo.currency);
 }

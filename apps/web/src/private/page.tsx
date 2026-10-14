@@ -1,5 +1,4 @@
 import {
-  extractionSchema,
   type ProfileView,
   type PurchaseCoverage,
   type PurchaseDetail,
@@ -10,7 +9,6 @@ import {
   purchaseCoverageSchema,
   purchaseDetailSchema,
   purchaseFiltersSchema,
-  purchaseListRequestSchema,
   purchaseListResponseSchema,
   purchaseReviewsSchema,
   purchaseSummarySchema,
@@ -23,15 +21,11 @@ import {
   readLoginEnabled,
   readPrivate,
 } from "./api";
-import { amount, Coverage, isPaused, PurchaseCard, Totals } from "./components";
-import {
-  categoryLabel,
-  paymentStateLabel,
-  sourceReasonLabel,
-  privateCopy as text,
-} from "./copy";
-import { Corrections } from "./corrections";
+import { Coverage, isPaused, PurchaseCard, Totals } from "./components";
+import { privateCopy as text } from "./copy";
+import { Detail } from "./detail";
 import { Reviews } from "./reviews";
+import { filtersFromUrl, Search } from "./search";
 import { useFocusRefresh } from "./use-focus-refresh";
 import "./purchases.css";
 import "./workspace.css";
@@ -58,302 +52,82 @@ const filterNames = [
   "paymentState",
   "reviewState",
 ] as const;
-function filtersFromUrl() {
-  const entries = Object.fromEntries(
-    Array.from(new URLSearchParams(window.location.search)).filter(
-      ([, value]) => value !== "",
-    ),
-  );
-  return purchaseListRequestSchema.safeParse(entries);
-}
-function Search({ coverage }: { coverage: PurchaseCoverage }) {
-  const current = new URLSearchParams(window.location.search);
-  return (
-    <form
-      className="private-search"
-      action={window.location.pathname === "/home" ? "/home" : "/purchases"}
-      method="get"
-    >
-      <label htmlFor="private-search">{text["home.search"]}</label>
-      <div className="private-search-line">
-        <div className="search-field">
-          <Icon name="search" />
-          <input
-            id="private-search"
-            name="q"
-            type="search"
-            defaultValue={current.get("q") ?? ""}
-            placeholder="Merchant or reference"
-            maxLength={120}
-          />
-        </div>
-        <button className="primary" type="submit">
-          {text.search}
-        </button>
-      </div>
-      <details className="private-filter-details">
-        <summary>Filter by date, status or inbox</summary>
-        <div className="private-filter-grid">
-          <label>
-            From
-            <input
-              name="from"
-              type="date"
-              defaultValue={current.get("from") ?? ""}
-            />
-          </label>
-          <label>
-            To (inclusive)
-            <input
-              name="to"
-              type="date"
-              defaultValue={current.get("to") ?? ""}
-            />
-          </label>
-          <label>
-            Payment status
-            <select
-              name="paymentState"
-              defaultValue={current.get("paymentState") ?? ""}
-            >
-              <option value="">All statuses</option>
-              <option value="paid">Paid</option>
-              <option value="partially_paid">Partially paid</option>
-              <option value="unpaid">Unpaid</option>
-              <option value="unknown">Unconfirmed</option>
-            </select>
-          </label>
-          <label htmlFor="private-category">
-            Category
-            <select
-              id="private-category"
-              aria-label="Category"
-              name="category"
-              defaultValue={current.get("category") ?? ""}
-            >
-              <option value="">All categories</option>
-              {extractionSchema.shape.records.element.shape.category.options.map(
-                (category) => (
-                  <option key={category} value={category}>
-                    {categoryLabel(category)}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
-          <label>
-            Inbox
-            <select name="mailbox" defaultValue={current.get("mailbox") ?? ""}>
-              <option value="">All inboxes</option>
-              {coverage.connections.map((connection) => (
-                <option value={connection.id} key={connection.id}>
-                  {connection.address}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Currency
-            <input
-              name="currency"
-              pattern="[A-Z]{3}"
-              maxLength={3}
-              defaultValue={current.get("currency") ?? ""}
-              placeholder="EUR"
-            />
-          </label>
-          <label>
-            Review
-            <select
-              name="reviewState"
-              defaultValue={current.get("reviewState") ?? ""}
-            >
-              <option value="">All records</option>
-              <option value="open">Needs attention</option>
-              <option value="clear">Clear</option>
-            </select>
-          </label>
-        </div>
-      </details>
-      {current.size > 0 && <a href={window.location.pathname}>Reset filters</a>}
-    </form>
-  );
-}
-function Detail({
-  detail,
-  onReload,
-  expectedUserId,
-  reloadKey,
+
+function PurchaseRecords({
+  path,
+  list,
+  summary,
 }: {
-  detail: PurchaseDetail;
-  onReload: () => void;
-  expectedUserId: string;
-  reloadKey: number;
+  path: string;
+  list: PurchaseListResponse | undefined;
+  summary: PurchaseSummary | undefined;
 }) {
-  const purchase = detail.purchase;
   return (
-    <div className="workspace-detail">
-      <a href="/purchases">← Back to purchases</a>
-      <section className="private-heading workspace-detail-heading">
-        <div>
-          <p className="eyebrow">
-            {purchase.date} · {purchase.evidenceCount}{" "}
-            {purchase.evidenceCount === 1
-              ? text.supportingDocument
-              : text.supportingDocuments}
-          </p>
-          <h1>{purchase.merchant}</h1>
-          <p>
-            {categoryLabel(purchase.category)}
-            {purchase.invoiceReference &&
-              ` · Invoice ${purchase.invoiceReference}`}
-            {purchase.orderReference && ` · Order ${purchase.orderReference}`}
-          </p>
-          <span className="status">
-            {paymentStateLabel(purchase.paymentState)}
-          </span>
+    <>
+      <section aria-label="Purchase records" className="private-records">
+        <div className="section-heading">
+          <h2>{path === "/home" ? "Recent purchases" : "Purchase records"}</h2>
+          <span>{list?.rows.length ?? 0} records on this page</span>
         </div>
-        {purchase.documentTotalMinor !== null && purchase.currency && (
-          <div className="workspace-detail-document">
-            <span>{text["purchase.documentTotal"]}</span>
-            <strong>
-              {amount(purchase.documentTotalMinor, purchase.currency)}
-            </strong>
-          </div>
+        {list?.rows.map((purchase) => (
+          <PurchaseCard key={purchase.id} purchase={purchase} />
+        ))}
+        {list?.rows.length === 0 && (
+          <p>{window.location.search ? text.noMatch : text.noRecords}</p>
+        )}
+        {list?.nextCursor && (
+          <form method="get" action={path}>
+            {Array.from(new URLSearchParams(window.location.search))
+              .filter(([key]) => key !== "cursor")
+              .map(([key, value]) => (
+                <input type="hidden" key={key} name={key} value={value} />
+              ))}
+            <input type="hidden" name="cursor" value={list.nextCursor} />
+            <button type="submit">Next page</button>
+          </form>
         )}
       </section>
-      {purchase.origin === "user-supplied" && (
-        <p className="notice">{text["manualSource.userSuppliedRecord"]}</p>
-      )}
-      <div className="workspace-detail-finances">
-        <Totals values={purchase.lifecycle} label={text.lifecycle} />
-      </div>
-      {purchase.paymentState === "unpaid" && (
-        <p className="workspace-caption">{text["purchase.unpaid"]}</p>
-      )}
-      {purchase.paymentState === "unknown" && (
-        <p className="workspace-caption">
-          Payment is unconfirmed. The document total is not counted as a
-          payment.
-        </p>
-      )}
-      {detail.ledgerEntries.some(
-        (entry) => entry.origin === "user-confirmed",
-      ) && (
+      {summary && (
         <section
-          className="private-panel"
-          aria-label="User-confirmed cash events"
+          aria-label="Recorded spending"
+          className="private-panel private-summary"
         >
-          <h2>Manual confirmations</h2>
-          <p>
-            These cash events were confirmed by you. No source document was
-            created for the confirmation.
+          <h2>{text["home.spendingLabel"]}</h2>
+          <details className="compact-spending-details">
+            <summary>{text.spendingDetails}</summary>
+            <p>{text["home.spendingCaption"]}</p>
+            <p>
+              {text.period}{" "}
+              {new URLSearchParams(window.location.search).get("from") ??
+                "All available dates"}{" "}
+              —{" "}
+              {new URLSearchParams(window.location.search).get("to") ??
+                "present"}
+            </p>
+            <p className="muted">{text.notConverted}</p>
+          </details>
+          {summary.totals.length > 0 ? (
+            <Totals values={summary.totals} label="In the selected range" />
+          ) : (
+            <p>{text.noEvents}</p>
+          )}
+          <p className="compact-spending-counts">
+            {summary.unpaidCount} unpaid · {summary.unknownCount} unconfirmed ·{" "}
+            {summary.reviewCount} need attention · {summary.excludedEntryCount}{" "}
+            excluded events
           </p>
-          <ul>
-            {detail.ledgerEntries
-              .filter((entry) => entry.origin === "user-confirmed")
-              .map((entry) => (
-                <li key={entry.id}>
-                  {entry.kind === "payment" ? "Payment" : "Refund"} ·{" "}
-                  {amount(entry.minor, entry.currency)} · {entry.date} · User
-                  confirmed
-                  {entry.dateBasis === "user-corrected-date" &&
-                    " · Date corrected by you"}
-                  {!entry.eligible && " · Excluded from spending"}
-                </li>
-              ))}
-          </ul>
+          {summary.missingCurrencyCount > 0 && (
+            <p className="notice">
+              {summary.missingCurrencyCount} records have no confirmed currency
+              and are excluded from totals.
+            </p>
+          )}
         </section>
       )}
-      {detail.manualEvidence.length > 0 && (
-        <section
-          className="private-panel"
-          aria-label={text["manualSource.title"]}
-        >
-          <h2>{text["manualSource.title"]}</h2>
-          <p>{text["manualSource.associationNotice"]}</p>
-          <ul>
-            {detail.manualEvidence.map((evidence) => (
-              <li key={evidence.documentId}>
-                <h3>{text["manualSource.document"]}</h3>
-                <p>
-                  {text["manualSource.sourceLabel"]}: {evidence.source.provider}
-                </p>
-                <p>
-                  <strong>{text["purchase.originalUnavailable"]}</strong>
-                </p>
-                <p className="muted">
-                  {sourceReasonLabel(evidence.source.reason)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <div className="workspace-detail-content">
-        <section className="private-panel workspace-evidence">
-          <h2>Purchase timeline</h2>
-          <p className="muted">
-            Supporting source records and documented events. Pending refunds do
-            not reduce the net.
-          </p>
-          <ol className="private-timeline">
-            {detail.timeline.map((item) => (
-              <li key={item.observationId}>
-                <p className="eyebrow">{item.date ?? "Date not available"}</p>
-                <h3>{item.documentType.replaceAll("-", " ")}</h3>
-                {item.refundEvidence === "pending" && (
-                  <p className="notice">{text.pendingRefund}</p>
-                )}
-                {item.events.map((event) => (
-                  <p key={event.id}>
-                    {event.kind === "payment"
-                      ? "Payment documented"
-                      : "Refund documented"}{" "}
-                    · {amount(event.minor, event.currency)} · {event.date}
-                    {!event.eligible && " · Excluded from spending"}
-                  </p>
-                ))}
-                <p>
-                  <strong>{text["purchase.originalUnavailable"]}</strong>
-                </p>
-                <details>
-                  <summary>{text["purchase.why"]}</summary>
-                  <p className="muted">
-                    {sourceReasonLabel(item.source.reason)}
-                  </p>
-
-                  <p>
-                    Source: {item.source.provider}. Relationship:{" "}
-                    {item.relationship.replaceAll("_", " ")}. Evidence:{" "}
-                    {item.evidenceCode.replaceAll("_", " ")}. Review:{" "}
-                    {item.reviewState.replaceAll("_", " ")}. Event dates follow
-                    the supporting evidence.
-                  </p>
-                </details>
-              </li>
-            ))}
-          </ol>
-        </section>
-        <details className="workspace-about">
-          <summary>About these amounts</summary>
-          <p>{text["home.spendingCaption"]}</p>
-          <p>
-            The document total describes the purchase. Paid and refunded amounts
-            describe documented financial events.
-          </p>
-          <p>Opening originals is not available on this screen yet.</p>
-        </details>
-      </div>
-      <Corrections
-        detail={detail}
-        onReload={onReload}
-        expectedUserId={expectedUserId}
-        reloadKey={reloadKey}
-      />
-    </div>
+    </>
   );
 }
+
 export function PrivatePage({ displayName }: { displayName: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [revision, setRevision] = useState(0);
@@ -591,92 +365,11 @@ export function PrivatePage({ displayName }: { displayName: string }) {
                 </section>
                 <Search coverage={state.data.coverage} />
                 <Coverage coverage={state.data.coverage} />
-                <section
-                  aria-label="Purchase records"
-                  className="private-records"
-                >
-                  <div className="section-heading">
-                    <h2>
-                      {path === "/home"
-                        ? "Recent purchases"
-                        : "Purchase records"}
-                    </h2>
-                    <span>
-                      {state.data.list?.rows.length ?? 0} records on this page
-                    </span>
-                  </div>
-                  {state.data.list?.rows.map((purchase) => (
-                    <PurchaseCard key={purchase.id} purchase={purchase} />
-                  ))}
-                  {state.data.list?.rows.length === 0 && (
-                    <p>
-                      {window.location.search ? text.noMatch : text.noRecords}
-                    </p>
-                  )}
-                  {state.data.list?.nextCursor && (
-                    <form method="get" action={path}>
-                      {Array.from(new URLSearchParams(window.location.search))
-                        .filter(([key]) => key !== "cursor")
-                        .map(([key, value]) => (
-                          <input
-                            type="hidden"
-                            key={key}
-                            name={key}
-                            value={value}
-                          />
-                        ))}
-                      <input
-                        type="hidden"
-                        name="cursor"
-                        value={state.data.list.nextCursor}
-                      />
-                      <button type="submit">Next page</button>
-                    </form>
-                  )}
-                </section>
-                {state.data.summary && (
-                  <section
-                    aria-label="Recorded spending"
-                    className="private-panel private-summary"
-                  >
-                    <h2>{text["home.spendingLabel"]}</h2>
-                    <details className="compact-spending-details">
-                      <summary>{text.spendingDetails}</summary>
-                      <p>{text["home.spendingCaption"]}</p>
-                      <p>
-                        {text.period}{" "}
-                        {new URLSearchParams(window.location.search).get(
-                          "from",
-                        ) ?? "All available dates"}{" "}
-                        —{" "}
-                        {new URLSearchParams(window.location.search).get(
-                          "to",
-                        ) ?? "present"}
-                      </p>
-                      <p className="muted">{text.notConverted}</p>
-                    </details>
-                    {state.data.summary.totals.length > 0 ? (
-                      <Totals
-                        values={state.data.summary.totals}
-                        label="In the selected range"
-                      />
-                    ) : (
-                      <p>{text.noEvents}</p>
-                    )}
-                    <p className="compact-spending-counts">
-                      {state.data.summary.unpaidCount} unpaid ·{" "}
-                      {state.data.summary.unknownCount} unconfirmed ·{" "}
-                      {state.data.summary.reviewCount} need attention ·{" "}
-                      {state.data.summary.excludedEntryCount} excluded events
-                    </p>
-                    {state.data.summary.missingCurrencyCount > 0 && (
-                      <p className="notice">
-                        {state.data.summary.missingCurrencyCount} records have
-                        no confirmed currency and are excluded from totals.
-                      </p>
-                    )}
-                  </section>
-                )}
+                <PurchaseRecords
+                  path={path}
+                  list={state.data.list}
+                  summary={state.data.summary}
+                />
               </>
             ))}
         </main>

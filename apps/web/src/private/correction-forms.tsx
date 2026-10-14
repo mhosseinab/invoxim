@@ -7,8 +7,9 @@ import {
   type PurchaseDetail,
   purchaseCorrectionRequestSchema,
 } from "@invoxim/contracts";
-import { formatMinor, parseMoney } from "@invoxim/core";
+import { parseMoney } from "@invoxim/core";
 import { useId, useState } from "react";
+import { amountInput } from "../format";
 import { cashEvents } from "./cash";
 import { categoryLabel } from "./copy";
 import type { CorrectionMutation } from "./mutations";
@@ -99,7 +100,7 @@ export function PurchaseEditor({
     original.documentTotalMinor !== null &&
       originalCurrencySupported &&
       original.currency
-      ? formatMinor(original.documentTotalMinor, original.currency)
+      ? amountInput(original.documentTotalMinor, original.currency)
       : "",
   );
   const [totalTouched, setTotalTouched] = useState(false);
@@ -238,7 +239,7 @@ export function CashEditor({
   );
   const [amount, setAmount] = useState(
     event && Object.hasOwn(currencyMinorDigits, event.currency)
-      ? formatMinor(event.minor, event.currency)
+      ? amountInput(event.minor, event.currency)
       : "",
   );
   const [date, setDate] = useState(event?.date ?? "");
