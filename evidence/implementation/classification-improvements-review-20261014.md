@@ -17,3 +17,5 @@ Evidence inspected (implementer executions, overlapping counts): final native8fi
 Privacy/financial/cost checks: transient-only private text; content-free bounded diagnostic codes; no tools/new destination; selected-provider/BYOK and reservations retained; invoices do not imply payment; actual truncated text cannot be auto-accepted. Receipt cutoffs remain .1/.9, and current unlabeled observations do not establish calibrated accuracy.
 
 Parent owns full pnpm verify, consolidated docs/backlog and final source commit. Baseline style-only repairs are separately committed. Actual live model accuracy, rollout, production activation and OCR/unsupported codec support remain unproved/excluded.
+
+Final read-only documentation pass: reviewer rechecked checkpoint934d651 plus the parent README/docs05 corrections. Earlier contradictory uncertainty routing, prompt version, PDF support, text budgets and parser identities are reconciled. No remaining documentation/configuration blocker found. Reviewer examined the unchanged Drive focused rerun evidence (4 passed), explicitly retaining the initial full-run UNAVAILABLE failure pending complete rerun; reviewer executed no tests.
