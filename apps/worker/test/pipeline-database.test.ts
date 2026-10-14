@@ -527,6 +527,22 @@ it("T12 failed first document persists an operational review and continues the n
       .first("processing_status"),
   ).toBe("discovered");
 });
+it("P9 failDocument requires the infer stage like skipDocument", async () => {
+  // pipeline_stage 'reconcile' is not 'infer' — failDocument must refuse.
+  await db
+    .prepare(
+      "UPDATE discovery_source_jobs SET pipeline_stage='reconcile',extraction_fingerprint=NULL WHERE user_id='pipeline-a'",
+    )
+    .run();
+  const repo = createPipelineRepository(db, repoOptions());
+  expect(
+    await repo.failDocument(lease(), {
+      documentId: "d",
+      code: "refusal",
+      nextDocumentIndex: null,
+    }),
+  ).toBe("stale");
+});
 it("T12 typed unsupported ZIP metadata remains alongside supported receipt metadata", async () => {
   await db
     .prepare(

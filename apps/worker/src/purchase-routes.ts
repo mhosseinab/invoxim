@@ -3,6 +3,7 @@ import {
   createPurchaseViewReader,
   createReviewSourceReader,
   gmailConfiguration,
+  lookupReviewProvider,
   outlookConfiguration,
   PurchaseViewError,
   ReviewSourceError,
@@ -65,12 +66,11 @@ export function createPurchaseRoutes() {
       const current = await authorized(c);
       if ("response" in current) return current.response;
       if (new URL(c.req.url).search) return apiError(400, "invalid_request");
-      const provider = await current.db
-        .prepare(
-          "SELECT c.provider FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id WHERE r.user_id=? AND r.id=? AND r.status='open' AND c.kind='mailbox'",
-        )
-        .bind(current.tenant.userId, c.req.param("id"))
-        .first<string>("provider");
+      const provider = await lookupReviewProvider(
+        current.db,
+        current.tenant.userId,
+        c.req.param("id"),
+      );
       if (!provider) return apiError(404, "not_found");
       const configuration =
         provider === "gmail"

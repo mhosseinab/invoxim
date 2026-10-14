@@ -96,6 +96,66 @@ export function leaseLive(
   ].join(" AND ");
 }
 /**
+ * P1.5c / P9: the current-document guard. Pins the job's current document by
+ * id and requires the infer-stage / ready-or-extracted checks. Extracted
+ * because the hand-copied forms had drifted (failDocument lacked the
+ * stage/parse_state checks).
+ *
+ * `checkParseState: false` omits the parse_state predicate for batches that
+ * write parse_state themselves (failDocument), where the full guard would
+ * self-invalidate after the first statement.
+ *
+ * Bind order: userId, jobId, documentId.
+ */
+export function currentDocumentGuard(
+  options: {
+    alias?: { jobs?: string; documents?: string };
+    checkParseState?: boolean;
+  } = {},
+): string {
+  const j = options.alias?.jobs ?? "current";
+  const d = options.alias?.documents ?? "d";
+  const parseCheck =
+    options.checkParseState === false
+      ? ""
+      : ` AND ${d}.parse_state IN('ready','extracted')`;
+  return `EXISTS(SELECT 1 FROM discovery_source_jobs ${j} JOIN documents ${d} ON ${d}.user_id=${j}.user_id AND ${d}.source_message_id=${j}.source_message_id WHERE ${j}.user_id=? AND ${j}.job_id=? AND ${j}.pipeline_stage='infer' AND ${d}.id=? AND ${d}.pipeline_index=${j}.document_index${parseCheck})`;
+}
+/**
+ * P1.5c / P9: the next-document guard. Verifies a successor document exists
+ * at the given pipeline index.
+ * Bind order: userId, jobId, nextDocumentIndex.
+ */
+export function nextDocumentGuard(
+  aliases: { jobs?: string; documents?: string } = {},
+): string {
+  const j = aliases.jobs ?? "current";
+  const d = aliases.documents ?? "d";
+  return `EXISTS(SELECT 1 FROM discovery_source_jobs ${j} JOIN documents ${d} ON ${d}.user_id=${j}.user_id AND ${d}.source_message_id=${j}.source_message_id WHERE ${j}.user_id=? AND ${j}.job_id=? AND ${d}.pipeline_index=? AND ${d}.pipeline_index=${j}.document_index+1)`;
+}
+/**
+ * P10: the active-profile EXISTS predicate. Purchase-views queries require an
+ * active profile on the outer row's user.
+ * Bind order: none (correlated on the outer alias).
+ */
+export function activeProfile(alias: string): string {
+  return `EXISTS(SELECT 1 FROM profiles active WHERE active.user_id=${alias}.user_id AND active.status='active')`;
+}
+/**
+ * D5: the drive.file scope fragment. INT-4 migrates the drive call sites.
+ * Bind order: none (correlated on the connection alias).
+ */
+export function driveFileScopeSql(alias = "c"): string {
+  return `json_type(CASE WHEN json_valid(${alias}.scopes) THEN ${alias}.scopes ELSE '[]' END)='array' AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(${alias}.scopes) THEN ${alias}.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file')`;
+}
+/**
+ * D5: the mailbox scope fragment. INT-4 migrates the drive call sites.
+ * Bind order: none (correlated on the mailbox alias).
+ */
+export function mailboxScopeSql(alias = "m"): string {
+  return `length(${alias}.scopes)<=4096 AND json_type(CASE WHEN json_valid(${alias}.scopes) THEN ${alias}.scopes ELSE '[]' END)='array' AND json_array_length(CASE WHEN json_valid(${alias}.scopes) THEN ${alias}.scopes ELSE '[]' END)<=16 AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(${alias}.scopes) THEN ${alias}.scopes ELSE '[]' END) permission WHERE permission.type='text' AND ((${alias}.provider='gmail' AND permission.value='https://www.googleapis.com/auth/gmail.readonly') OR (${alias}.provider='outlook' AND permission.value='https://graph.microsoft.com/Mail.Read')))`;
+}
+/**
  * P1: the one consent-review selection shape (SQL `json_object` projection).
  * Optional columns are nullable because the projection emits SQL NULL.
  */
