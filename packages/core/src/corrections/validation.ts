@@ -1,5 +1,49 @@
 import type { EventChanges, ReviewResolutionRequest } from "@invoxim/contracts";
+import {
+  LEDGER_REVIEW_REASONS,
+  type LedgerReviewReason,
+} from "../ledger/types";
 import { CorrectionError } from "./types";
+
+/** Review reasons visible in the correction workspace, including `document-review` (operational scope). */
+export const CORRECTION_REVIEW_REASONS = [
+  ...LEDGER_REVIEW_REASONS,
+  "document-review",
+] as const satisfies readonly string[];
+export type CorrectionReviewReason = (typeof CORRECTION_REVIEW_REASONS)[number];
+
+export const REVIEW_ACTIONS = [
+  "not-a-purchase",
+  "dismiss-operational",
+  "correct-missing-fields",
+  "complete-record",
+  "different-purchase",
+  "confirm-payment",
+  "confirm-refund",
+] as const satisfies readonly string[];
+export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
+
+export const REVIEW_BLOCKING_SCOPES = [
+  "financial",
+  "operational",
+] as const satisfies readonly string[];
+export type ReviewBlockingScope = (typeof REVIEW_BLOCKING_SCOPES)[number];
+
+export const REVIEW_STATUSES = [
+  "open",
+  "resolved",
+  "dismissed",
+] as const satisfies readonly string[];
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
+
+/**
+ * Map a `correct-missing-fields` change key to the `missingFields` vocabulary.
+ * `totalMinor` is the request-side name for the AI missing-field `total`.
+ */
+export function missingFieldForChangeKey(key: string): string {
+  return key === "totalMinor" ? "total" : key;
+}
+
 export interface CorrectionEventFact {
   id: string;
   observationId: string | null;
@@ -19,9 +63,9 @@ export interface CorrectionReviewFact {
   id: string;
   observationId: string | null;
   documentId?: string | null;
-  reason: string;
-  blockingScope: "financial" | "operational";
-  status: "open" | "resolved" | "dismissed";
+  reason: CorrectionReviewReason;
+  blockingScope: ReviewBlockingScope;
+  status: ReviewStatus;
   missingFields: readonly string[];
   purchaseId: string | null;
 }
@@ -94,17 +138,7 @@ export function validateEntryChange(
     currency: changes.currency ?? entry.currency,
   });
 }
-export function reviewActions(
-  review: CorrectionReviewFact,
-): (
-  | "not-a-purchase"
-  | "dismiss-operational"
-  | "correct-missing-fields"
-  | "complete-record"
-  | "different-purchase"
-  | "confirm-payment"
-  | "confirm-refund"
-)[] {
+export function reviewActions(review: CorrectionReviewFact): ReviewAction[] {
   if (review.status !== "open" || review.available === false) return [];
   const discard =
     review.canDiscardSource && !review.purchaseId
@@ -144,7 +178,7 @@ export function assertReviewAction(
     throw new CorrectionError("CONFLICT");
   if (request.action === "correct-missing-fields")
     for (const field of Object.keys(request.changes)) {
-      const missing = field === "totalMinor" ? "total" : field;
+      const missing = missingFieldForChangeKey(field);
       if (!review.missingFields.includes(missing))
         throw new CorrectionError("INVALID_REQUEST");
     }
@@ -162,6 +196,25 @@ export function assertCashReview(
   )
     throw new CorrectionError("CONFLICT");
 }
+
+/** Reasons that block only refund entries during restoration. */
+const REFUND_ALLOCATION_REASONS = [
+  "refund-exceeds-payment",
+  "refund-currency-mismatch",
+] as const satisfies readonly LedgerReviewReason[];
+
+/** Reasons that block any cash-proof entry during restoration. */
+const RESTORATION_BLOCKING_REASONS = [
+  "event-conflict",
+  "ambiguous-event",
+  "unknown-payment",
+  "invoice-conflict",
+  "purchase-conflict",
+  "incomplete-financial-facts",
+  "extraction-review",
+  "possible-duplicate",
+] as const satisfies readonly LedgerReviewReason[];
+
 export function restorationEligibility(
   entry: CorrectionEventFact,
   reviews: readonly CorrectionReviewFact[],
@@ -179,9 +232,7 @@ export function restorationEligibility(
       continue;
     }
     if (
-      ["refund-exceeds-payment", "refund-currency-mismatch"].includes(
-        review.reason,
-      )
+      (REFUND_ALLOCATION_REASONS as readonly string[]).includes(review.reason)
     ) {
       if (entry.kind === "refund") return false;
       continue;
@@ -192,16 +243,9 @@ export function restorationEligibility(
       continue;
     }
     if (
-      [
-        "event-conflict",
-        "ambiguous-event",
-        "unknown-payment",
-        "invoice-conflict",
-        "purchase-conflict",
-        "incomplete-financial-facts",
-        "extraction-review",
-        "possible-duplicate",
-      ].includes(review.reason)
+      (RESTORATION_BLOCKING_REASONS as readonly string[]).includes(
+        review.reason,
+      )
     )
       return false;
   }

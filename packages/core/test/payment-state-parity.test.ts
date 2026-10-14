@@ -9,6 +9,7 @@ import {
 import {
   type CorrectionEventFact,
   type CorrectionReviewFact,
+  type CorrectionReviewReason,
   hasCashProof,
   restorationEligibility,
 } from "../src/corrections/validation";
@@ -56,7 +57,7 @@ interface ReviewFact {
   id: string;
   observationId: string | null;
   documentId: string | null;
-  reason: string;
+  reason: CorrectionReviewReason;
   blockingScope: "financial" | "operational";
   status: "open" | "resolved" | "dismissed";
   purchaseId: string | null;
