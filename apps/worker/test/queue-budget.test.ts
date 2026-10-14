@@ -26,5 +26,6 @@ it("a queue invocation consumes at most one job so repositories share one bounde
   });
   expect(claim.mock.calls).toEqual([["one"]]);
   expect(messages[0]?.ack).toHaveBeenCalledOnce();
-  expect(messages[1]?.retry).toHaveBeenCalledWith({ delaySeconds: 30 });
+  // Untouched surplus work receives a fresh invocation without provider backoff.
+  expect(messages[1]?.retry).toHaveBeenCalledWith({ delaySeconds: 0 });
 });
