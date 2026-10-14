@@ -2,6 +2,9 @@ export class GmailBatchError extends Error {
   constructor(
     readonly reason:
       | "headers"
+      | "header-size"
+      | "header-syntax"
+      | "header-duplicate"
       | "encoding"
       | "content-type"
       | "opening-boundary"
@@ -42,14 +45,29 @@ export function attachmentBatchRequest(
   };
 }
 function headers(text: string): Map<string, string> {
-  if (text.length > 8192) throw new GmailBatchError("headers");
+  if (text.length > 8192) throw new GmailBatchError("header-size");
   const result = new Map<string, string>();
   for (const line of text.split("\r\n")) {
     const match = /^([A-Za-z0-9-]+):[ \t]*([^\r\n]*)$/.exec(line);
     if (!match?.[1] || match[2] === undefined)
-      throw new GmailBatchError("headers");
+      throw new GmailBatchError("header-syntax");
     const name = match[1].toLowerCase();
-    if (result.has(name)) throw new GmailBatchError("headers");
+    // HTTP permits repeated list-valued metadata such as Vary. Only fields
+    // interpreted by this parser need unique values; never merge identities,
+    // content framing, encodings or retry policy from ambiguous headers.
+    if (
+      ![
+        "content-type",
+        "content-id",
+        "content-length",
+        "content-encoding",
+        "transfer-encoding",
+        "content-transfer-encoding",
+        "retry-after",
+      ].includes(name)
+    )
+      continue;
+    if (result.has(name)) throw new GmailBatchError("header-duplicate");
     result.set(name, match[2].trim());
   }
   return result;

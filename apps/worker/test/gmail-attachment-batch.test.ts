@@ -403,3 +403,18 @@ it.each([`${"x".repeat(8193)}\r\n`, "inline-prefix"])(
     });
   },
 );
+
+it("accepts repeated non-semantic HTTP headers without relaxing identity or encoding checks", async () => {
+  const current = fixture();
+  current.fetcher.mockImplementation(async (url) => {
+    if (String(url) !== "https://gmail.googleapis.com/batch")
+      return Response.json({ id: "message", payload });
+    const response = batchResponse();
+    const text = (await response.text()).replaceAll(
+      "HTTP/1.1 200 Synthetic\r\n",
+      "HTTP/1.1 200 Synthetic\r\nVary: Origin\r\nVary: X-Origin\r\n",
+    );
+    return new Response(text, response);
+  });
+  expect((await current.load()).status).toBe("ready");
+});
