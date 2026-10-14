@@ -2,31 +2,31 @@ import { supportedExtractionPrompt } from "@invoxim/contracts";
 import {
   type AiCheckpoint,
   type ApprovedAiConfig,
-  EMAIL_CLASSIFICATION_VERSION,
   aiRunIdentityKey,
+  EMAIL_CLASSIFICATION_VERSION,
 } from "@invoxim/core";
 import {
-  type AiPriceSnapshot,
-  type Binding,
-  type BudgetOwner,
-  type MeterOptions,
-  type RunInput,
-  type Settlement,
-  type Sql,
-} from "./budget-types";
-import {
-  MAX,
   attemptId,
   bindingNumber,
   computeRunFingerprint,
   digest,
   integer,
+  MAX,
   measured,
   micros,
   upperCost,
   validatePolicy,
   validPrice,
 } from "./budget-helpers";
+import type {
+  AiPriceSnapshot,
+  Binding,
+  BudgetOwner,
+  MeterOptions,
+  RunInput,
+  Settlement,
+  Sql,
+} from "./budget-types";
 import { CLEF_DESTINATION_ID, CLEF_MODEL_ID } from "./clef-protocol";
 
 export type Meter = {

@@ -11,6 +11,8 @@ import {
   validateEmailClassification,
   validatePersistableAiResult,
 } from "@invoxim/core";
+import { attemptId, budgetOperation } from "./budget-helpers";
+import { createMeter } from "./budget-meter";
 import type {
   AiBudgetOptions,
   AiProbeBudgetOptions,
@@ -22,8 +24,6 @@ import type {
   RunInput,
   Settlement,
 } from "./budget-types";
-import { attemptId, budgetOperation } from "./budget-helpers";
-import { createMeter } from "./budget-meter";
 
 /** Probe results are shape-checked, not rebuilt (AI-7). */
 function validateProbe(value: unknown): AiProbeResult | null {

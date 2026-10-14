@@ -1,6 +1,6 @@
 import type { AiUsage, ApprovedAiConfig } from "@invoxim/core";
-import { buildFingerprintTuple } from "./configuration";
 import type { AiBudgetPolicy, AiPriceSnapshot } from "./budget-types";
+import { buildFingerprintTuple } from "./configuration";
 
 export const MAX = 9000000000000n;
 const MILLION = 1000000n;

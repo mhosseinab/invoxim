@@ -1,6 +1,6 @@
 import type { TenantContext } from "@invoxim/core";
-import type { AiBudgetPolicy } from "./budget-types";
 import { budgetOperation, micros, validatePolicy } from "./budget-helpers";
+import type { AiBudgetPolicy } from "./budget-types";
 
 export interface AiAllowance {
   readonly dailyDocumentsRemaining: number;
