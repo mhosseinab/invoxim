@@ -74,14 +74,9 @@ export const onboardingCopy = {
   signedInPrefix: "Signed in as ",
   loginMailboxSeparation:
     ". Your login account and receipt inbox can be different.",
-  pageGmailAuthorizationGrantsBroadReadAccess:
-    "Gmail authorization grants broad read access to the selected mailbox. Invoxim searches for receipts within the range you review; the permission itself is not limited to receipts. Connecting alone does not start processing.",
   pageReceiptInbox: "Receipt inbox",
   pageReviewSelectedInbox: "Review selected inbox",
   pageConnectGmailInbox: "Connect Gmail inbox",
-  connectOutlookInbox: "Connect Outlook inbox",
-  mailboxReadPermission:
-    "We ask for read-only access to the selected mailbox. This permission is broader than receipts alone. You review the import range before processing starts; connecting does not start an import.",
   pageYourMailboxLimitHasBeenReached:
     "Your mailbox limit has been reached. Choose an existing inbox or manage connections.",
   pageViewConnectionStatus: "View connection status",

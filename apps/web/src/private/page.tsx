@@ -476,6 +476,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
           {[
             ["/home", "Home", "home"],
             ["/purchases", "Purchases", "document"],
+            ["/recurring", "Recurring", "document"],
             ["/connections", "Connections", "link"],
             ["/needs-attention", "Needs attention", "review"],
           ].map(([href, label]) => (
@@ -488,7 +489,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
                 name={
                   href === "/home"
                     ? "home"
-                    : href === "/purchases"
+                    : href === "/purchases" || href === "/recurring"
                       ? "document"
                       : href === "/needs-attention"
                         ? "review"
