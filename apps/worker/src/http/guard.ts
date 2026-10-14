@@ -110,7 +110,7 @@ export function requireOrigin(
 ): RequireOriginResult {
   const login = loginConfiguration(bindings);
   if (!login || !bindings.DB)
-    return { response: apiError(401, "unauthenticated") };
+    return { response: apiError(401, "unauthorized") };
   const safe = SAFE_METHODS.has(request.method.toUpperCase());
   const urlOrigin = new URL(request.url).origin;
   const headerOrigin = request.headers.get("origin");
@@ -177,7 +177,7 @@ export async function requireTenantContext<B extends AuthBindings>(
     createLoginAuth(database.db, login),
     login,
   ).current(request.headers);
-  if (!current) return { response: apiError(401, "unauthenticated") };
+  if (!current) return { response: apiError(401, "unauthorized") };
   const createdAtMs = current.session.createdAt.getTime();
   if (
     recent &&

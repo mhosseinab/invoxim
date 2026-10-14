@@ -745,7 +745,7 @@ it("AUTH-01 expired, deleting and removed-allowlist owners lose session authorit
     expect(response.headers.get("cache-control")).toBe("no-store");
     const body = await response.json();
     expect(body).toMatchObject({
-      error: { code: "unauthenticated", retryable: false },
+      error: { code: "unauthorized", retryable: false },
     });
     expect(JSON.stringify(body).includes(session(name).token)).toBe(false);
   }

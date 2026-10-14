@@ -51,7 +51,7 @@ export function createAuthRoutes() {
         context.req.method === "GET"
       ) {
         const current = await enabled.profiles.current(context.req.raw.headers);
-        if (!current) return apiError(401, "unauthenticated");
+        if (!current) return apiError(401, "unauthorized");
         return context.json({ user: current.user, session: current.session });
       }
       const response = await handleLoginRequest(enabled.auth, context.req.raw);
@@ -76,7 +76,7 @@ export function createAuthRoutes() {
       );
       if (!input.success) return apiError(400, "invalid_request");
       const enabled = await service(context.env ?? {});
-      if (!enabled) return apiError(401, "unauthenticated");
+      if (!enabled) return apiError(401, "unauthorized");
       const profile = await enabled.profiles.update(ready.tenant, input.data);
       if (!profile) return apiError(409, "version_conflict");
       return context.json(projectProfile({ ...ready.current, profile }));
