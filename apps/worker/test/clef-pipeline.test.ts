@@ -67,6 +67,7 @@ beforeAll(async () => {
     await db.prepare(sql).run();
 });
 beforeEach(async () => {
+  expectedDigest = "f".repeat(64);
   await db.prepare('DELETE FROM "user" WHERE id=?').bind(tenant.userId).run();
   const now = Date.now();
   await db
@@ -173,6 +174,8 @@ beforeEach(async () => {
     acceptedConfigurationDigest: "f".repeat(64),
   };
 });
+/** P7: tests pass processingDigest explicitly; consent-renewal cases rotate it. */
+let expectedDigest = "f".repeat(64);
 function service(
   probability: number,
   budget = policy,
@@ -210,7 +213,9 @@ function service(
     ) {
       const meter = createInvocationDatabase(db, 40);
       const handler = createPipelineService(meter.db, {
-        repository: createPipelineRepository(meter.db),
+        repository: createPipelineRepository(meter.db, {
+          processingDigest: async () => expectedDigest,
+        }),
         documents,
         content: {
           open: async () => ({
@@ -866,7 +871,9 @@ it("CLEF-01 Clef category reaches a persisted purchase and reprocessing preserve
 it("CLEF-01 classifier authorization cannot substitute consent, revision, mode or provider model", async () => {
   const { createClassificationUsageStore } =
     await import("../../../packages/adapters/src/ai/budget");
-  const repository = createPipelineRepository(db);
+  const repository = createPipelineRepository(db, {
+    processingDigest: async () => "f".repeat(64),
+  });
   const work = await repository.load(lease);
   if (!work) throw new Error("fixture work missing");
   const selected = {
@@ -948,6 +955,7 @@ for (const pauseAfter of [
       classificationNotice: RECEIPT_CLASSIFIER_NOTICE,
     });
     price = { ...price, acceptedConfigurationDigest: digest };
+    expectedDigest = digest;
     await db
       .prepare(
         "UPDATE processing_consents SET accepted_configuration_digest=? WHERE user_id=?",
@@ -973,6 +981,7 @@ for (const pauseAfter of [
         classification: currentClassification,
         classificationNotice: RECEIPT_CLASSIFIER_NOTICE,
       });
+      expectedDigest = currentDigest;
     }
     if (pauseAfter === "classifier-uncertain") {
       await db
@@ -1573,7 +1582,9 @@ it("AI-CLEF-PRECISION-01 policy identity invalidates custom configuration cache 
     await import("../../../packages/adapters/src/onboarding/configuration");
   const { CLEF_RECEIPT_POLICY_VERSION } =
     await import("../../../packages/adapters/src/ai/clef");
-  const repository = createPipelineRepository(db);
+  const repository = createPipelineRepository(db, {
+    processingDigest: async () => "f".repeat(64),
+  });
   const work = await repository.load(lease);
   if (!work) throw new Error("fixture work missing");
   const selected = {

@@ -160,9 +160,9 @@ async function seed(name: string) {
     .run();
   await db
     .prepare(
-      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,?,1,'qa-inference','local',1,0,1)",
+      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized,accepted_configuration_digest) VALUES(?,?,?,1,'qa-inference','local',1,0,1,?)",
     )
-    .bind(`pc-${name}`, name, `c-${name}`)
+    .bind(`pc-${name}`, name, `c-${name}`, "f".repeat(64))
     .run();
   await db
     .prepare(
@@ -448,7 +448,9 @@ async function invocation(jobId: string, beforeCommit?: () => Promise<void>) {
   if (!lease) throw new Error("Positive-control claim failed");
   const config = configuration(),
     provider = createAiProviderFactory(meter.db, config.inference);
-  const nativeRepository = createPipelineRepository(meter.db);
+  const nativeRepository = createPipelineRepository(meter.db, {
+    processingDigest: async () => "f".repeat(64),
+  });
   const errors: string[] = [];
   const repository = {
     ...nativeRepository,
@@ -597,7 +599,9 @@ async function prepared(name: string) {
     store = createJobStore(meter.db, { policy });
   const lease = await store.claim(commitJob);
   if (!lease) throw new Error("Missing reconcile lease");
-  const repository = createPipelineRepository(meter.db),
+  const repository = createPipelineRepository(meter.db, {
+    processingDigest: async () => "f".repeat(64),
+  }),
     work = await repository.load(lease);
   const document = work?.documents[0];
   if (!document || !work?.extractionFingerprint)
@@ -1095,9 +1099,9 @@ it("GMAIL-06/LEDGER-08/LIFECYCLE-06 two approved Gmail mailboxes share one owned
     secondaryJob = `j-${first}-secondary`;
   await db
     .prepare(
-      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,?,1,'qa-inference','local',1,0,1)",
+      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized,accepted_configuration_digest) VALUES(?,?,?,1,'qa-inference','local',1,0,1,?)",
     )
-    .bind(secondaryConsent, first, secondaryConnection)
+    .bind(secondaryConsent, first, secondaryConnection, "f".repeat(64))
     .run();
   await db
     .prepare(
