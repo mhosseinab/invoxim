@@ -564,10 +564,21 @@ export function createJobStore(
         ].includes(code)
       )
         throw new Error("INVALID_JOB_OUTCOME");
-      const delay = Math.min(
-        300000,
-        1000 * 2 ** Math.max(0, lease.attempt - 1),
+      const retryAfter =
+        outcome.kind === "retry" ? outcome.retryAfterMs : undefined;
+      if (
+        retryAfter !== undefined &&
+        (!Number.isSafeInteger(retryAfter) ||
+          retryAfter < 0 ||
+          retryAfter > 86400000)
+      )
+        throw new Error("INVALID_JOB_OUTCOME");
+      const delay = Math.max(
+        retryAfter ?? 0,
+        Math.min(300000, 1000 * 2 ** Math.max(0, lease.attempt - 1)),
       );
+      if (!Number.isSafeInteger(at + delay))
+        throw new Error("INVALID_JOB_OUTCOME");
       return (
         (
           await prepare(

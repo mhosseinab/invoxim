@@ -54,7 +54,9 @@ export function createJobRuntime(options: {
         }
       }
       for (const deferred of batch.messages.slice(1)) {
-        deferred.retry({ delaySeconds: 30 });
+        // Legacy oversized batches have not acquired these jobs. Deliver them
+        // promptly into fresh invocations, each with its own actual D1 cap.
+        deferred.retry({ delaySeconds: 0 });
         retriedCount++;
       }
       return { acknowledgedCount, retriedCount };

@@ -41,7 +41,8 @@ export function createGmailContentFactory(
         );
         credentials = await vault.read(lease.context, target);
       }
-      if (control.signal.aborted || !(await control.checkpoint()))
+      // The reader checkpoints immediately before each actual Gmail request.
+      if (control.signal.aborted)
         throw new ContentError("CONTENT_AUTH_CHANGED");
       if (
         !credentials ||

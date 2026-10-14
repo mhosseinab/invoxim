@@ -34,6 +34,10 @@ declare namespace Cloudflare {
   }
 }
 
+declare module "*.jsonc?raw" {
+  const json: string;
+  export default json;
+}
 declare module "*.json?raw" {
   const json: string;
   export default json;

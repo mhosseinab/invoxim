@@ -210,7 +210,7 @@ export function createPipelineService(
           return failCurrentDocument
             ? await failCurrentDocument(content.code)
             : await finishFailure("review", content.code);
-        if (!(await authorized())) return stale;
+        // MIME decoding has no external effects; writes/model transport retain their fences.
         const directModelInput =
           (work.stage === "parse" && options.directModelInputs === true) ||
           work.documents.some(
@@ -508,6 +508,12 @@ export function createPipelineService(
       } catch (cause) {
         if (
           cause instanceof ContentError &&
+          cause.retryAfterMs !== undefined &&
+          cause.retryAfterMs > 86400000
+        )
+          return { kind: "paused", code: "handler-unavailable" };
+        if (
+          cause instanceof ContentError &&
           cause.code === "CONTENT_BYTE_LIMIT"
         ) {
           if (failCurrentDocument)
@@ -542,6 +548,9 @@ export function createPipelineService(
         return {
           kind: "retry",
           code: control.signal.aborted ? "timeout" : "transient",
+          ...(cause instanceof ContentError && cause.retryAfterMs !== undefined
+            ? { retryAfterMs: cause.retryAfterMs }
+            : {}),
         };
       }
     },

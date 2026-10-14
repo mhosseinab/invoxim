@@ -42,7 +42,7 @@ export interface DispatchCandidate {
 }
 export type JobOutcome =
   | { kind: "completed" }
-  | { kind: "retry"; code: "transient" | "timeout" }
+  | { kind: "retry"; code: "transient" | "timeout"; retryAfterMs?: number }
   | { kind: "terminal"; code: "malformed" | "unsupported" }
   | { kind: "paused"; code: "budget" | "auth" | "handler-unavailable" };
 export interface JobStore {

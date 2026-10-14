@@ -4,6 +4,12 @@ import type {
   GmailDocumentInputResult,
 } from "../documents/gmail";
 import { normalizeGmailDocumentInput } from "../documents/gmail";
+import {
+  attachmentBatchRequest,
+  GMAIL_BATCH_URL,
+  parseAttachmentBatch,
+  retryAfterMs,
+} from "./gmail-batch";
 
 export class ContentError extends Error {
   constructor(
@@ -13,6 +19,7 @@ export class ContentError extends Error {
       | "CONTENT_AUTH_REQUIRED"
       | "CONTENT_SOURCE_UNAVAILABLE"
       | "CONTENT_BYTE_LIMIT",
+    readonly retryAfterMs?: number,
   ) {
     super(code);
   }
@@ -43,7 +50,10 @@ export function createGmailContentReader(
         throw new ContentError("CONTENT_UNAVAILABLE");
       let requests = 0;
       let responseBytes = 0;
-      async function request(path: string): Promise<unknown> {
+      async function request(
+        path: string,
+        batch?: ReturnType<typeof attachmentBatchRequest>,
+      ): Promise<unknown> {
         if (input.signal.aborted || !(await input.checkpoint()))
           throw new ContentError("CONTENT_AUTH_CHANGED");
         if (++requests > 9) throw new ContentError("CONTENT_UNAVAILABLE");
@@ -62,9 +72,15 @@ export function createGmailContentReader(
           if (input.signal.aborted)
             throw new ContentError("CONTENT_AUTH_CHANGED");
           const response = await fetcher(
-            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${path}`,
+            batch
+              ? GMAIL_BATCH_URL
+              : `https://gmail.googleapis.com/gmail/v1/users/me/messages/${path}`,
             {
-              headers: { Authorization: `Bearer ${accessToken}` },
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                ...(batch ? { "Content-Type": batch.contentType } : {}),
+              },
+              ...(batch ? { method: "POST", body: batch.body } : {}),
               redirect: "manual",
               signal: controller.signal,
             },
@@ -73,7 +89,12 @@ export function createGmailContentReader(
             throw new ContentError("CONTENT_AUTH_REQUIRED");
           if (response.status === 404)
             throw new ContentError("CONTENT_SOURCE_UNAVAILABLE");
-          if (!response.ok) throw new ContentError("CONTENT_UNAVAILABLE");
+          if (!response.ok)
+            throw new ContentError(
+              "CONTENT_UNAVAILABLE",
+              retryAfterMs(response.headers.get("Retry-After")) ??
+                (response.status === 429 ? 30000 : undefined),
+            );
           const reader = response.body?.getReader();
           if (!reader) throw new ContentError("CONTENT_UNAVAILABLE");
           const cancel = () => {
@@ -116,11 +137,17 @@ export function createGmailContentReader(
             reader.releaseLock();
           }
           ensureActive();
-          return JSON.parse(
-            new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
-              bytes.subarray(0, length),
-            ),
-          );
+          const text = new TextDecoder("utf-8", {
+            fatal: true,
+            ignoreBOM: false,
+          }).decode(bytes.subarray(0, length));
+          return batch
+            ? {
+                text,
+                contentType: response.headers.get("Content-Type") ?? "",
+                retryAfterMs: retryAfterMs(response.headers.get("Retry-After")),
+              }
+            : JSON.parse(text);
         } catch (cause) {
           if (cause instanceof ContentError) throw cause;
           throw new ContentError(
@@ -216,11 +243,58 @@ export function createGmailContentReader(
           : refs.filter((ref) => ref.partKey === input.partKey);
       if (new Set(selectedRefs.map((ref) => ref.id)).size > 8)
         return { status: "incomplete", code: "part_limit" };
-      for (const ref of selectedRefs) {
-        if (attachments.has(ref.id)) continue;
-        const value = await request(
-          `${encodeURIComponent(input.providerMessageId)}/attachments/${encodeURIComponent(ref.id)}`,
+      const uniqueRefs = [
+        ...new Map(selectedRefs.map((ref) => [ref.id, ref])).values(),
+      ];
+      let values: unknown[];
+      if (uniqueRefs.length >= 2) {
+        const batch = attachmentBatchRequest(
+          input.providerMessageId,
+          uniqueRefs,
         );
+        const response = (await request("", batch)) as {
+          text: string;
+          contentType: string;
+          retryAfterMs?: number;
+        };
+        let results: ReturnType<typeof parseAttachmentBatch>;
+        try {
+          results = parseAttachmentBatch(
+            response.text,
+            response.contentType,
+            uniqueRefs.length,
+          );
+        } catch {
+          throw new ContentError("CONTENT_UNAVAILABLE");
+        }
+        const failures = results.filter((result) => result.status !== 200);
+        if (failures.length) {
+          const retry = Math.max(
+            response.retryAfterMs ?? 0,
+            ...failures.map((result) => result.retryAfterMs ?? 0),
+          );
+          const code = failures.some((result) => result.status === 401)
+            ? "CONTENT_AUTH_REQUIRED"
+            : failures.some((result) => result.status === 404)
+              ? "CONTENT_SOURCE_UNAVAILABLE"
+              : "CONTENT_UNAVAILABLE";
+          throw new ContentError(
+            code,
+            code === "CONTENT_UNAVAILABLE" ? retry || undefined : undefined,
+          );
+        }
+        values = results.map((result) => result.value);
+      } else {
+        values = [];
+        for (const ref of uniqueRefs)
+          values.push(
+            await request(
+              `${encodeURIComponent(input.providerMessageId)}/attachments/${encodeURIComponent(ref.id)}`,
+            ),
+          );
+      }
+      for (const [index, ref] of uniqueRefs.entries()) {
+        const value = values[index];
         if (!value || typeof value !== "object")
           throw new ContentError("CONTENT_UNAVAILABLE");
         const body = value as { size?: unknown; data?: unknown };
