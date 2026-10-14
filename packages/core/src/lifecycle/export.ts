@@ -12,7 +12,7 @@ export class LifecycleError extends Error {
   }
 }
 /** Formula-leading text remains text after RFC4180 parsing, including hidden prefixes. */
-export function spreadsheetText(value: string): string {
+function spreadsheetText(value: string): string {
   const trimmed = value.trimStart();
   let unsafe = /^[=+@-]/.test(trimmed);
   for (let index = 0; index < value.length; index++) {

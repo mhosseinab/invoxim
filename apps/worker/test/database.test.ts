@@ -1,9 +1,9 @@
 // Explicit populated historical-upgrade fixture; old SQL is never an active deployment migration.
 
 import { env } from "cloudflare:workers";
-import { createPurchaseRepository } from "@invoxim/adapters";
 import type { TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
+import { createPurchaseViewReader } from "../../../packages/adapters/src/purchase-views";
 import { useCurrentSchema } from "./support/db";
 
 const db = env.DB;
@@ -19,7 +19,7 @@ beforeAll(async () => {
       .run();
     await db
       .prepare(
-        "INSERT INTO profiles(user_id,created_at,updated_at) VALUES(?,0,0)",
+        "INSERT INTO profiles(user_id,status,created_at,updated_at) VALUES(?,'active',0,0)",
       )
       .bind(id)
       .run();
@@ -62,9 +62,9 @@ it("DB-01: rejects cross-tenant purchase observation association at database bou
 
 it("DB-03: populated forward upgrade preserves values, source defaults and indexed reads", async () => {
   const context = { userId: "a", authority: "session" } as TenantContext;
-  const repo = createPurchaseRepository(db);
-  expect((await repo.detail(context, "p-a"))?.purchase.total_minor).toBeNull();
-  expect((await repo.list(context)).map((row) => row.id)).toEqual(["p-a"]);
+  const reader = createPurchaseViewReader(db);
+  expect((await reader.detail(context, "p-a"))?.purchase.documentTotalMinor).toBeNull();
+  expect((await reader.list(context, { limit: 50 })).rows.map((row) => row.id)).toEqual(["p-a"]);
   expect(
     await db
       .prepare(
@@ -122,6 +122,11 @@ it("DB-02: unique source-part identity rejects a second document without discard
   ).toBe(1);
 });
 it("DB-04: exact aggregate crosses JavaScript safe integers and negative refund net safely", async () => {
+  await db
+    .prepare(
+      "INSERT INTO purchases(id,user_id,merchant_raw,merchant_normalized,document_date,currency,payment_state) VALUES('p-b','b','Synthetic B','synthetic b','2026-01-01','EUR','paid')",
+    )
+    .run();
   for (let start = 0; start < 1002; start += 100) {
     const batch = Array.from(
       { length: Math.min(100, 1002 - start) },
@@ -129,7 +134,7 @@ it("DB-04: exact aggregate crosses JavaScript safe integers and negative refund 
         const id = `large-${String(start + index).padStart(4, "0")}`;
         return db
           .prepare(
-            "INSERT INTO ledger_entries(id,user_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES(?,'b','observation-owned-by-b',?,'payment',9000000000000,'EUR','2026-01-01','document',1)",
+            "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES(?,'b','p-b','observation-owned-by-b',?,'payment',9000000000000,'EUR','2026-01-01','document',1)",
           )
           .bind(id, id);
       },
@@ -137,31 +142,30 @@ it("DB-04: exact aggregate crosses JavaScript safe integers and negative refund 
     await db.batch(batch);
   }
   const context = { userId: "b", authority: "session" } as TenantContext;
-  expect(await createPurchaseRepository(db).totals(context, "EUR")).toEqual({
-    paidMinor: "9018000000000000",
-    refundedMinor: "0",
-    netMinor: "9018000000000000",
-  });
-  expect(
-    await createPurchaseRepository(db).totals(
+  const reader = createPurchaseViewReader(db);
+  const eurTotals = (await reader.summary(context, { currency: "EUR" })).totals;
+  expect(eurTotals).toEqual([
+    { currency: "EUR", paidMinor: "9018000000000000", refundedMinor: "0", netMinor: "9018000000000000" },
+  ]);
+  const aTotals = (
+    await reader.summary(
       { userId: "a", authority: "session" } as TenantContext,
-      "EUR",
-    ),
-  ).toEqual({ paidMinor: "0", refundedMinor: "0", netMinor: "0" });
+      { currency: "EUR" },
+    )
+  ).totals;
+  expect(aTotals).toEqual([]);
   await db
     .prepare(
-      "INSERT INTO ledger_entries(id,user_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES('refund','b','observation-owned-by-b','refund','refund',1200,'USD','2026-01-01','document',1)",
+      "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES('refund','b','p-b','observation-owned-by-b','refund','refund',1200,'USD','2026-01-01','document',1)",
     )
     .run();
-  expect(await createPurchaseRepository(db).totals(context, "USD")).toEqual({
-    paidMinor: "0",
-    refundedMinor: "1200",
-    netMinor: "-1200",
-  });
+  const allTotals = (await reader.summary(context)).totals;
+  const usd = allTotals.find((t) => t.currency === "USD");
+  expect(usd).toEqual({ currency: "USD", paidMinor: "0", refundedMinor: "1200", netMinor: "-1200" });
   await expect(
     db
       .prepare(
-        "INSERT INTO ledger_entries(id,user_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES('over-bound','b','observation-owned-by-b','over-bound','payment',9000000000001,'EUR','2026-01-01','document',1)",
+        "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES('over-bound','b','p-b','observation-owned-by-b','over-bound','payment',9000000000001,'EUR','2026-01-01','document',1)",
       )
       .run(),
   ).rejects.toThrow();
@@ -188,13 +192,13 @@ it("DB-04: unknown purchase preserves null total and currency without substituti
       "INSERT INTO purchases(id,user_id,merchant_raw,merchant_normalized,document_date,total_minor,currency,payment_state) VALUES('unknown-a','a','Synthetic unknown','synthetic unknown','2026-02-01',NULL,NULL,'unknown')",
     )
     .run();
-  const detail = await createPurchaseRepository(db).detail(
+  const detail = await createPurchaseViewReader(db).detail(
     { userId: "a", authority: "session" } as TenantContext,
     "unknown-a",
   );
   expect(detail?.purchase).toMatchObject({
-    total_minor: null,
+    documentTotalMinor: null,
     currency: null,
-    payment_state: "unknown",
+    paymentState: "unknown",
   });
 });

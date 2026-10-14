@@ -63,7 +63,6 @@ export * from "./ledger/types";
 export {
   encodeLifecycleExport,
   LifecycleError,
-  spreadsheetText,
 } from "./lifecycle/export";
 export { createLifecycleService } from "./lifecycle/service";
 export * from "./lifecycle/types";
