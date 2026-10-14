@@ -373,3 +373,33 @@ it.each(["binary", "identity"])(
     expect((await current.load()).status).toBe("ready");
   },
 );
+
+it.each(["\r\n", "Synthetic MIME preamble\r\n"])(
+  "accepts a bounded MIME preamble %j before the first boundary",
+  async (preamble) => {
+    const current = fixture(() => batchResponse());
+    current.fetcher.mockImplementation(async (url) => {
+      if (String(url) !== "https://gmail.googleapis.com/batch")
+        return Response.json({ id: "message", payload });
+      const response = batchResponse();
+      return new Response(preamble + (await response.text()), response);
+    });
+    expect((await current.load()).status).toBe("ready");
+  },
+);
+
+it.each([`${"x".repeat(8193)}\r\n`, "inline-prefix"])(
+  "rejects oversized or non-line MIME preambles",
+  async (preamble) => {
+    const current = fixture();
+    current.fetcher.mockImplementation(async (url) => {
+      if (String(url) !== "https://gmail.googleapis.com/batch")
+        return Response.json({ id: "message", payload });
+      const response = batchResponse();
+      return new Response(preamble + (await response.text()), response);
+    });
+    await expect(current.load()).rejects.toMatchObject({
+      code: "CONTENT_UNAVAILABLE",
+    });
+  },
+);

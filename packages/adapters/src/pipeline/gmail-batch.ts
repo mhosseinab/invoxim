@@ -102,8 +102,14 @@ export function parseAttachmentBatch(
   if (!boundary || expectedCount < 2 || expectedCount > 8)
     throw new GmailBatchError("content-type");
   const marker = `--${boundary}`;
-  if (!text.startsWith(`${marker}\r\n`))
-    throw new GmailBatchError("opening-boundary");
+  // RFC 2046 permits a preamble (including an initial CRLF). Match only a
+  // complete delimiter line and bound discarded framing independently of bytes.
+  if (!text.startsWith(`${marker}\r\n`)) {
+    const boundaryLine = text.indexOf(`\r\n${marker}\r\n`);
+    if (boundaryLine < 0 || boundaryLine > 8192)
+      throw new GmailBatchError("opening-boundary");
+    text = text.slice(boundaryLine + 2);
+  }
   // At most the expected parts, closing delimiter and one overflow sentinel.
   const sections = text.split(`\r\n${marker}`, expectedCount + 2);
   const closing = sections.pop();
