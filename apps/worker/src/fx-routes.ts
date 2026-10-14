@@ -1,13 +1,7 @@
 import {
   type AuthBindings,
-  AuthRequestError,
-  createLoginAuth,
-  createProfileService,
   type FxReferenceBindings,
-  issueWorkspaceMutationToken,
-  loginConfiguration,
   readAuthJson,
-  verifyWorkspaceMutationToken,
 } from "@invoxim/adapters";
 import {
   fxPeriodRequestSchema,
@@ -33,7 +27,12 @@ import {
   fxRevaluationRequestSchema,
   fxRevaluationResponseSchema,
 } from "../../../packages/contracts/src/fx-reporting";
-import { createInvocationDatabase } from "./invocation-database";
+import {
+  apiError,
+  issueMutationToken,
+  mapFailure,
+  requireTenantContext,
+} from "./http/guard";
 
 export interface FxRouteBindings extends AuthBindings, FxReferenceBindings {}
 export interface FxRouteService {
@@ -57,35 +56,15 @@ export interface FxRouteOptions {
     remainingStatements: () => number,
   ): FxRouteService | null;
 }
-function error(status: number, code: string) {
-  return Response.json(
-    {
-      error: {
-        code,
-        message: "Request unavailable",
-        requestId: crypto.randomUUID(),
-        retryable: status === 503,
-      },
-    },
-    {
-      status,
-      headers: {
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
-    },
-  );
-}
 function failure(cause: unknown) {
-  if (cause instanceof AuthRequestError) return error(cause.status, cause.code);
   if (cause instanceof Error && cause.message === "INVALID_FX_INPUT")
-    return error(400, "invalid_request");
-  return error(503, "fx_unavailable");
+    return apiError(400, "invalid_request");
+  return mapFailure(cause, "fx_unavailable");
 }
 function json(value: unknown) {
   const body = JSON.stringify(value);
   if (new TextEncoder().encode(body).byteLength > 128 * 1024)
-    return error(413, "response_too_large");
+    return apiError(413, "response_too_large");
   return new Response(body, {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -98,7 +77,7 @@ function query(request: Request) {
   const values: Record<string, string> = {};
   for (const [key, value] of new URL(request.url).searchParams) {
     if (Object.hasOwn(values, key))
-      throw new AuthRequestError(400, "invalid_request");
+      throw new Error("INVALID_FX_INPUT");
     values[key] = value;
   }
   return values;
@@ -122,61 +101,22 @@ export function createFxRoutes(options: FxRouteOptions) {
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   });
   async function authorized(
-    request: Request,
-    bindings: FxRouteBindings,
+    c: Context<{ Bindings: FxRouteBindings }>,
     mutation: boolean,
   ) {
-    const config = loginConfiguration(bindings);
-    if (!config || !bindings.DB)
-      return { response: error(401, "unauthorized") } as const;
-    if (
-      new URL(request.url).origin !== config.origin ||
-      (request.method !== "GET"
-        ? request.headers.get("origin") !== config.origin
-        : request.headers.has("origin") &&
-          request.headers.get("origin") !== config.origin)
-    )
-      return { response: error(403, "origin_required") } as const;
-    const database = createInvocationDatabase(bindings.DB, 40);
-    const current = await createProfileService(
-      database.db,
-      createLoginAuth(database.db, config),
-      config,
-    ).current(request.headers);
-    if (!current) return { response: error(401, "unauthorized") } as const;
-    const identity = {
-      userId: current.tenant.userId,
-      sessionId: current.session.id,
-    };
-    if (mutation) {
-      const time = Date.now(),
-        createdAt = current.session.createdAt.getTime();
-      if (
-        !Number.isSafeInteger(createdAt) ||
-        createdAt > time ||
-        time - createdAt > 3600000
-      )
-        return { response: error(403, "recent_auth_required") } as const;
-      if (
-        !(await verifyWorkspaceMutationToken(
-          request.headers.get("X-Workspace-Token") ?? "",
-          identity,
-          config.secret,
-          Date.now,
-          "fx-reporting",
-        ))
-      )
-        return {
-          response: error(403, "workspace_changed_or_expired"),
-        } as const;
-    }
+    const ready = await requireTenantContext(c, {
+      mutation,
+      recent: mutation,
+      purpose: "fx-reporting",
+    });
+    if ("response" in ready) return ready;
     const service = options.service(
-      database.db,
-      bindings,
-      database.remainingStatements,
+      ready.db,
+      c.env ?? {},
+      ready.remainingStatements,
     );
-    if (!service) return { response: error(503, "fx_not_configured") } as const;
-    return { service, tenant: current.tenant, identity, secret: config.secret };
+    if (!service) return { response: apiError(503, "fx_not_configured") } as const;
+    return { ...ready, service };
   }
   async function reporting(
     c: Context<{ Bindings: FxRouteBindings }>,
@@ -184,19 +124,19 @@ export function createFxRoutes(options: FxRouteOptions) {
     body: boolean,
   ) {
     try {
-      const ready = await authorized(c.req.raw, c.env ?? {}, false);
+      const ready = await authorized(c, false);
       if ("response" in ready) return ready.response;
       if (body && new URL(c.req.url).search)
-        return error(400, "invalid_request");
+        return apiError(400, "invalid_request");
       const parsed = body
         ? fxReportingRequestSchema.safeParse(
             await readAuthJson(c.req.raw, 40960),
           )
         : fxReportingQuerySchema.safeParse(query(c.req.raw));
-      if (!parsed.success) return error(400, "invalid_request");
+      if (!parsed.success) return apiError(400, "invalid_request");
       const input = normalize(parsed.data);
       const page = await ready.service.readPage(ready.tenant, input);
-      if (page.status === "stale") return error(409, "valuation_stale");
+      if (page.status === "stale") return apiError(409, "valuation_stale");
       const { entries, ...summary } = page;
       const common = {
         ...summary,
@@ -216,12 +156,7 @@ export function createFxRoutes(options: FxRouteOptions) {
             fxReportingResponseSchema.parse({
               ...common,
               entries,
-              mutationToken: await issueWorkspaceMutationToken(
-                ready.identity,
-                ready.secret,
-                Date.now,
-                "fx-reporting",
-              ),
+              mutationToken: await issueMutationToken(ready, "fx-reporting"),
             }),
           );
     } catch (cause) {
@@ -230,14 +165,14 @@ export function createFxRoutes(options: FxRouteOptions) {
   }
   app.post("/api/fx/reporting/period", async (c) => {
     try {
-      const ready = await authorized(c.req.raw, c.env ?? {}, false);
+      const ready = await authorized(c, false);
       if ("response" in ready) return ready.response;
-      if (new URL(c.req.url).search) return error(400, "invalid_request");
+      if (new URL(c.req.url).search) return apiError(400, "invalid_request");
       const parsed = fxPeriodRequestSchema.safeParse(
         await readAuthJson(c.req.raw, 40960),
       );
-      if (!parsed.success) return error(400, "invalid_request");
-      if (!ready.service.readPeriod) return error(503, "fx_not_configured");
+      if (!parsed.success) return apiError(400, "invalid_request");
+      if (!ready.service.readPeriod) return apiError(503, "fx_not_configured");
       const result = await ready.service.readPeriod(ready.tenant, {
         filters: parsed.data.filters,
         ...(parsed.data.stamp === undefined
@@ -249,7 +184,7 @@ export function createFxRoutes(options: FxRouteOptions) {
         actorKey: ready.identity.sessionId,
       });
       return result.status === "stale"
-        ? error(409, "valuation_stale")
+        ? apiError(409, "valuation_stale")
         : json(fxPeriodResponseSchema.parse(result));
     } catch (cause) {
       return failure(cause);
@@ -262,19 +197,19 @@ export function createFxRoutes(options: FxRouteOptions) {
   app.post("/api/fx/reporting/export", (c) => reporting(c, true, true));
   app.post("/api/fx/revalue", async (c) => {
     try {
-      const ready = await authorized(c.req.raw, c.env ?? {}, true);
+      const ready = await authorized(c, true);
       if ("response" in ready) return ready.response;
-      if (new URL(c.req.url).search) return error(400, "invalid_request");
+      if (new URL(c.req.url).search) return apiError(400, "invalid_request");
       const parsed = fxRevaluationRequestSchema.safeParse(
         await readAuthJson(c.req.raw, 40960),
       );
-      if (!parsed.success) return error(400, "invalid_request");
+      if (!parsed.success) return apiError(400, "invalid_request");
       const page = await ready.service.revaluePage(
         ready.tenant,
         normalize(parsed.data),
       );
       return page.status === "stale"
-        ? error(409, "valuation_stale")
+        ? apiError(409, "valuation_stale")
         : json(fxRevaluationResponseSchema.parse(page));
     } catch (cause) {
       return failure(cause);
