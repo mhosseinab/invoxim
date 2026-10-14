@@ -35,6 +35,9 @@
   margin-bottom: 0.75rem;
   font-size: 0.85rem;
 }
+.purchase-list-page .private-summary h2 {
+  margin: 0 0 0.5rem;
+}
 .purchase-list-page .private-records > .section-heading h2 {
   font-size: 1rem;
 }
@@ -56,6 +59,10 @@
   font-size: 1rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+.compact-purchase-footer > a {
+  grid-column: 3;
+  grid-row: 1;
 }
 .compact-purchase h3 a {
   color: var(--navy);
@@ -109,9 +116,6 @@
 .purchase-list-page .private-summary {
   padding: 1.25rem;
 }
-.purchase-list-page .private-summary h2 {
-  margin: 0 0 0.5rem;
-}
 .compact-spending-details,
 .compact-spending-counts {
   font-size: 0.85rem;
@@ -146,15 +150,11 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.purchase-list-page .private-filter-details summary {
-  padding: 0;
-}
 .compact-purchase-details summary {
   padding: 0;
 }
-.compact-purchase-footer > a {
-  grid-column: 3;
-  grid-row: 1;
+.purchase-list-page .private-filter-details summary {
+  padding: 0;
 }
 .compact-purchase-footer > .compact-purchase-details {
   grid-column: 2;
