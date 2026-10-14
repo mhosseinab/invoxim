@@ -83,11 +83,7 @@ const environmentAssignment =
   /^(?:AUTH_SECRET|AI_HOSTED_KEY|[A-Z_]*(?:API_KEY|CLIENT_SECRET))=([^\s"']{16,})$/gm;
 function fixture(file) {
   return (
-    [
-      "spikes/runtime/src/auth.ts",
-      "tools/test_blueprint_helpers.py",
-      "apps/worker/test/onboarding-qa-fixture.ts",
-    ].includes(file) ||
+    ["apps/worker/test/onboarding-qa-fixture.ts"].includes(file) ||
     /(?:\.(?:test|spec)\.[cm]?[jt]sx?$|\.example$|(?:^|\/)testkit\/|^evidence\/implementation\/)/.test(
       file,
     )

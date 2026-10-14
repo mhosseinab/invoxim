@@ -68,8 +68,6 @@ async function scan(folder, entry) {
           resolved.startsWith(candidate.folder + path.sep),
         );
         if (owner && owner.name !== entry.name) entry.imports.push(owner.name);
-        if (resolved.includes(`${path.sep}spikes${path.sep}`))
-          entry.imports.push("@invoxim/spikes-forbidden");
       } else
         entry.imports.push(
           value.startsWith("@invoxim/")

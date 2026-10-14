@@ -16,7 +16,7 @@ Use test-driven development for behavioral code. Keep domain logic independent o
 
 Do not deploy publicly, add paid services, change OAuth scopes, change retention behavior, enable an unapproved AI destination, or perform destructive remote actions without the owner's explicit approval. Credentials and accounts are operator inputs, not values to invent. A blocked live integration does not prevent safe local work with synthetic fixtures. Keep public sample data separate from authenticated user state and never present it as a working live integration.
 
-Deliver working increments, not scaffolding advertised as a finished product. Keep the backlog and evidence current. Stop when the requested milestone passes its gates, and give an honest delivery report. The package helper tests validate specifications and fixtures; they are not application tests or evidence that users prefer this product.
+Deliver working increments, not scaffolding advertised as a finished product. Keep the backlog and evidence current. Stop when the requested milestone passes its gates, and give an honest delivery report.
 
 ## First expected response
 

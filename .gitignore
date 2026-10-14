@@ -51,6 +51,10 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
+# Agent tooling and cloud credentials
+.mimocode/
+.aws/
+
 # Temporary files
 tmp/
 temp/
