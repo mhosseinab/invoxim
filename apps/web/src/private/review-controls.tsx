@@ -5,7 +5,7 @@ import {
   purchaseDetailSchema,
   reviewResolutionRequestSchema,
 } from "@invoxim/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { assertPrivateIdentity, PrivateLoadError, readPrivate } from "./api";
 import { missingQuestions, reviewQuestions } from "./copy";
 import { CategoryField, CurrencyField, moneyMinor } from "./correction-forms";
@@ -83,19 +83,17 @@ function ReviewFields({
     >
       <fieldset disabled={mutation.locked} aria-describedby={mutation.errorId}>
         <legend>
-          {complete
-            ? "Supply a complete purchase record"
-            : "Correct the requested details"}
+          {complete ? "Purchase details" : "Correct the requested details"}
         </legend>
         <p>
           {complete
-            ? "These values are supplied by you. No unvalidated source values have been filled in."
+            ? "These details are supplied by you. Use the receipt or invoice; saving does not confirm a payment."
             : "Only the requested fields are changed. Other review questions remain open."}
         </p>
         <div className="private-filter-grid">
           {fields.includes("merchant") && (
             <label>
-              {missingQuestions.merchant}
+              Merchant
               <input
                 aria-label="Merchant"
                 value={merchant}
@@ -110,7 +108,7 @@ function ReviewFields({
           )}
           {fields.includes("total") && (
             <label>
-              {missingQuestions.total}
+              Document total
               <input
                 aria-label="Document total"
                 inputMode="decimal"
@@ -122,7 +120,7 @@ function ReviewFields({
           )}
           {fields.includes("documentDate") && (
             <label>
-              {missingQuestions.documentDate}
+              Receipt date
               <input
                 aria-label="Document date"
                 type="date"
@@ -148,7 +146,7 @@ function ReviewFields({
           type="submit"
           disabled={fields.includes("total") && currency === ""}
         >
-          {complete ? "Save user-supplied record" : "Save requested details"}
+          {complete ? "Save purchase details" : "Save requested details"}
         </button>
       </fieldset>
     </form>
@@ -160,7 +158,9 @@ export function ReviewControls({
   mutation,
   onCash,
   showQuestion = true,
+  showNotPurchase = true,
 }: {
+  showNotPurchase?: boolean;
   showQuestion?: boolean;
   reviews: Review[];
   purchase?: PurchaseView;
@@ -197,11 +197,33 @@ export function ReviewControls({
                 )}
               </>
             )}
+            {showNotPurchase && review.actions.includes("not-a-purchase") && (
+              <div className="review-discard-action">
+                <button
+                  type="button"
+                  disabled={mutation.locked}
+                  onClick={() => {
+                    const parsed = reviewResolutionRequestSchema.safeParse({
+                      version: review.version,
+                      action: "not-a-purchase",
+                    });
+                    if (!parsed.success) return mutation.invalid();
+                    mutation.submit(
+                      `/api/review/${encodeURIComponent(review.id)}/resolve`,
+                      "POST",
+                      parsed.data,
+                    );
+                  }}
+                >
+                  Not a purchase
+                </button>
+                <span>Your email stays in your inbox.</span>
+              </div>
+            )}
             {review.actions.includes("complete-record") && (
-              <p>
-                No validated purchase record is available yet. Creating one
-                requires the merchant, currency, total and document date from
-                the original email.
+              <p className="source-review-help">
+                If this is a receipt, you can add its details. Saving does not
+                confirm a payment.
               </p>
             )}
             {review.actions.includes("correct-missing-fields") &&
@@ -221,7 +243,7 @@ export function ReviewControls({
                 disabled={mutation.locked}
                 onClick={() => setEditingId(review.id)}
               >
-                Supply missing record
+                Add purchase details
               </button>
             )}
             {editingId === review.id && (
@@ -234,24 +256,30 @@ export function ReviewControls({
               />
             )}
             {review.actions.includes("dismiss-operational") && (
-              <button
-                type="button"
-                disabled={mutation.locked}
-                onClick={() => {
-                  const parsed = reviewResolutionRequestSchema.safeParse({
-                    version: review.version,
-                    action: "dismiss-operational",
-                  });
-                  if (!parsed.success) return mutation.invalid();
-                  mutation.submit(
-                    `/api/review/${encodeURIComponent(review.id)}/resolve`,
-                    "POST",
-                    parsed.data,
-                  );
-                }}
+              <details
+                className="review-other-actions"
+                open={!review.actions.includes("not-a-purchase")}
               >
-                Dismiss operational warning
-              </button>
+                <summary>Other actions</summary>
+                <button
+                  type="button"
+                  disabled={mutation.locked}
+                  onClick={() => {
+                    const parsed = reviewResolutionRequestSchema.safeParse({
+                      version: review.version,
+                      action: "dismiss-operational",
+                    });
+                    if (!parsed.success) return mutation.invalid();
+                    mutation.submit(
+                      `/api/review/${encodeURIComponent(review.id)}/resolve`,
+                      "POST",
+                      parsed.data,
+                    );
+                  }}
+                >
+                  Dismiss operational warning
+                </button>
+              </details>
             )}
             {review.actions.includes("different-purchase") && purchase && (
               <button
@@ -302,7 +330,11 @@ export function StandaloneReview({
   reviewId,
   onReload,
   expectedUserId,
+  autoLoad = false,
+  hideNotPurchase = false,
 }: {
+  autoLoad?: boolean;
+  hideNotPurchase?: boolean;
   reviewId: string;
   onReload: () => void;
   expectedUserId: string;
@@ -315,13 +347,14 @@ export function StandaloneReview({
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const controller = useRef<AbortController | null>(null);
+  const autoRequested = useRef(false);
   const mutation = useCorrectionMutation(
     onReload,
     expectedUserId,
     loaded?.mutationToken ?? "",
   );
   useEffect(() => () => controller.current?.abort(), []);
-  async function load() {
+  const load = useCallback(async () => {
     const request = new AbortController();
     controller.current?.abort();
     controller.current = request;
@@ -371,7 +404,13 @@ export function StandaloneReview({
     } finally {
       if (!request.signal.aborted) setLoading(false);
     }
-  }
+  }, [expectedUserId, onReload, reviewId]);
+  useEffect(() => {
+    if (autoLoad && !autoRequested.current) {
+      autoRequested.current = true;
+      void load();
+    }
+  }, [autoLoad, load]);
   return (
     <section>
       {!loaded && (
@@ -385,6 +424,7 @@ export function StandaloneReview({
           <ReviewControls
             reviews={[loaded.review]}
             showQuestion={false}
+            showNotPurchase={!hideNotPurchase}
             mutation={mutation}
             {...(loaded.purchase ? { purchase: loaded.purchase } : {})}
           />

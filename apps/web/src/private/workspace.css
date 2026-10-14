@@ -1,3 +1,12 @@
+.source-review-body p {
+  margin: 0.65rem 0;
+}
+.source-review-body p[role="status"]:empty {
+  margin: 0;
+}
+.source-review-attachments li {
+  margin-bottom: 0.5rem;
+}
 .workspace-detail-heading h1 {
   margin: 0.35rem 0;
   font-size: clamp(1.9rem, 3vw, 2.25rem);
@@ -251,4 +260,130 @@
 }
 .workspace-evidence .private-timeline details {
   margin: 0.5rem 0 0;
+}
+.workspace-review-open {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 1rem;
+  text-align: left;
+  background: white;
+  color: var(--navy);
+  border: 0;
+  border-radius: 14px;
+}
+.workspace-review-open > strong {
+  font-size: 1rem;
+}
+.workspace-review-open .workspace-review-source {
+  margin: 0;
+}
+.workspace-review-open-label {
+  color: var(--blue);
+  font-size: 0.85rem;
+}
+.source-review-dialog {
+  width: min(760px, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--navy);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.source-review-dialog::backdrop {
+  background: rgb(8 18 48 / 45%);
+}
+.source-review-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: white;
+  border-bottom: 1px solid var(--border);
+}
+.source-review-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.source-review-header button {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.source-review-body {
+  padding: 1.25rem;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+.source-review-body > section[aria-label="Source email"] {
+  padding: 1rem;
+  border-radius: 12px;
+  background: var(--pale);
+}
+.source-review-subject {
+  font-size: 1.1rem;
+  margin: 1rem 0 0.35rem;
+}
+.source-review-attachments {
+  padding-left: 1.25rem;
+}
+.source-review-attachments span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.source-review-introduction,
+.source-review-help {
+  color: var(--muted);
+}
+.source-review-checks,
+.source-review-other,
+.review-other-actions {
+  font-size: 0.85rem;
+}
+.review-discard-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+.review-discard-action > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.source-review-body fieldset {
+  padding: 1rem 0;
+  margin: 0.75rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.source-review-body legend {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.source-review-body .private-filter-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+@media (max-width: 640px) {
+  .source-review-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 94dvh;
+    margin: auto 0 0;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .source-review-body {
+    padding: 1rem;
+  }
+  .source-review-body .private-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

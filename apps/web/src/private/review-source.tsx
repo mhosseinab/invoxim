@@ -1,5 +1,5 @@
 import { type PurchaseReview, reviewSourceSchema } from "@invoxim/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PrivateLoadError, readPrivateForIdentity } from "./api";
 
 type Source = ReturnType<typeof reviewSourceSchema.parse>;
@@ -7,7 +7,9 @@ export function ReviewSource({
   review,
   expectedUserId,
   onReload,
+  autoLoad = false,
 }: {
+  autoLoad?: boolean;
   review: PurchaseReview;
   expectedUserId: string;
   onReload: () => void;
@@ -16,16 +18,10 @@ export function ReviewSource({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
+  const autoRequested = useRef(false);
   useEffect(() => () => controller.current?.abort(), []);
   const context = review.sourceContext;
-  if (!context)
-    return review.documentId !== null ? (
-      <p className="muted">
-        Source email details are unavailable for this question.
-      </p>
-    ) : null;
-  const date = new Date(context.receivedAt);
-  async function load() {
+  const load = useCallback(async () => {
     const request = new AbortController();
     controller.current?.abort();
     controller.current = request;
@@ -54,7 +50,20 @@ export function ReviewSource({
     } finally {
       if (!request.signal.aborted) setLoading(false);
     }
-  }
+  }, [expectedUserId, onReload, review.id]);
+  useEffect(() => {
+    if (autoLoad && context?.available && !autoRequested.current) {
+      autoRequested.current = true;
+      void load();
+    }
+  }, [autoLoad, context?.available, load]);
+  if (!context)
+    return review.documentId !== null ? (
+      <p className="muted">
+        Source email details are unavailable for this question.
+      </p>
+    ) : null;
+  const date = new Date(context.receivedAt);
   return (
     <section aria-label="Source email">
       <p>
@@ -70,11 +79,34 @@ export function ReviewSource({
       </p>
       {source ? (
         <>
-          <p>
-            <strong>{source.subject ?? "Email subject unavailable"}</strong>
-            <br />
-            From: {source.sender ?? "Sender unavailable"}
-          </p>
+          <h3 className="source-review-subject">
+            {source.subject ?? "Email subject unavailable"}
+          </h3>
+          <p>From: {source.sender ?? "Sender unavailable"}</p>
+          {source.attachments && (
+            <section aria-label="Email attachments">
+              <h4>Attachments</h4>
+              {source.attachments.length === 0 ? (
+                <p>No attachments listed.</p>
+              ) : (
+                <ul className="source-review-attachments">
+                  {source.attachments.map((attachment, index) => (
+                    <li key={JSON.stringify([index, attachment.filename])}>
+                      <strong>
+                        {attachment.filename || "Unnamed attachment"}
+                      </strong>
+                      <span>
+                        {attachment.mimeType} ·{" "}
+                        {attachment.size === null
+                          ? "Size unavailable"
+                          : `${attachment.size.toLocaleString("en-GB")} bytes`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
           {source.originalUrl ? (
             <a
               href={source.originalUrl}

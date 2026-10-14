@@ -600,22 +600,28 @@ test("EDIT-05 unlinked source completion collects explicit user values without g
     }),
   );
   await page.goto("/needs-attention");
-  await page.getByRole("article").first().locator("summary").click();
   await page
-    .getByRole("button", { name: "Show available actions", exact: true })
+    .getByRole("article")
+    .first()
+    .getByRole("button", { name: "Review email", exact: true })
     .click();
+
   await page
-    .getByRole("button", { name: "Supply missing record", exact: true })
+    .getByRole("button", { name: "Add purchase details", exact: true })
     .click();
   await expect(page.getByLabel("Merchant", { exact: true })).toHaveValue("");
   await expect(page.getByLabel("Document total", { exact: true })).toHaveValue(
     "",
   );
   await page.getByLabel("Merchant", { exact: true }).fill("User supplied cafe");
-  await page.getByRole("article").first().locator("summary").click();
+  await page.getByRole("button", { name: "Close review", exact: true }).click();
   await expect(page.getByLabel("Merchant", { exact: true })).not.toBeVisible();
   expect(writes).toEqual([]);
-  await page.getByRole("article").first().locator("summary").click();
+  await page
+    .getByRole("article")
+    .first()
+    .getByRole("button", { name: "Review email", exact: true })
+    .click();
   await expect(page.getByLabel("Merchant", { exact: true })).toHaveValue(
     "User supplied cafe",
   );
@@ -624,7 +630,7 @@ test("EDIT-05 unlinked source completion collects explicit user values without g
   await page.getByLabel("Document date", { exact: true }).fill("2026-10-02");
   await page.getByLabel("Category", { exact: true }).selectOption("dining");
   await page
-    .getByRole("button", { name: "Save user-supplied record", exact: true })
+    .getByRole("button", { name: "Save purchase details", exact: true })
     .click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0]?.path).toBe("/api/review/unlinked-review/resolve");
@@ -958,4 +964,91 @@ test("UX-WORKSPACE-01 purchase detail leads with evidence and keeps corrections 
     path: "/tmp/ux-workspace-detail-mobile.png",
     fullPage: true,
   });
+});
+
+test("UX-REVIEW-DISCARD-01 false positive action is explicit and retry survives closing the review", async ({
+  page,
+}) => {
+  const writes: {
+    body: unknown;
+    key: string | undefined;
+    token: string | undefined;
+  }[] = [];
+  await workspace(page, (request) => {
+    writes.push(request);
+    return writes.length === 1
+      ? { status: 503, body: { error: "UNAVAILABLE" } }
+      : {
+          body: {
+            ...result,
+            reviewId: "false-positive",
+            reviewVersion: 6,
+            reviewStatus: "dismissed",
+          },
+        };
+  });
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews:
+          writes.length > 1
+            ? []
+            : [
+                {
+                  id: "false-positive",
+                  documentId: "unlinked-document",
+                  purchaseId: null,
+                  reason: "document-review",
+                  missingFields: [],
+                },
+              ],
+        hasMore: false,
+      },
+    }),
+  );
+  await page.route("**/api/review/false-positive/corrections", (route) =>
+    route.fulfill({
+      json: {
+        purchaseId: null,
+        purchaseVersion: null,
+        mutationToken: correction.mutationToken,
+        documentId: "unlinked-document",
+        review: {
+          id: "false-positive",
+          version: 5,
+          status: "open",
+          reason: "document-review",
+          blockingScope: "operational",
+          missingFields: [],
+          actions: ["dismiss-operational", "not-a-purchase"],
+        },
+      },
+    }),
+  );
+  await page.goto("/needs-attention");
+  await page
+    .getByRole("article")
+    .first()
+    .getByRole("button", { name: "Review email", exact: true })
+    .click();
+
+  await page
+    .getByRole("button", { name: "Not a purchase", exact: true })
+    .click();
+  await expect.poll(() => writes.length).toBe(1);
+  await page.getByRole("button", { name: "Close review", exact: true }).click();
+  await page.getByRole("button", { name: "Review email", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Retry the same request", exact: true })
+    .click();
+  await expect.poll(() => writes.length).toBe(2);
+  expect(writes[0]?.body).toEqual({ version: 5, action: "not-a-purchase" });
+  expect(writes[0]?.key).toBeTruthy();
+  expect(writes[1]?.key).toBe(writes[0]?.key);
+  expect(writes[1]?.body).toEqual(writes[0]?.body);
+  expect(writes[0]?.token).toBe(correction.mutationToken);
+  expect(writes[1]?.token).toBe(writes[0]?.token);
+  await expect(
+    page.getByText("No open questions were found.", { exact: true }),
+  ).toBeVisible();
 });

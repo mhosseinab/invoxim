@@ -416,7 +416,10 @@ test("HOME-05 only validated missing fields become exact questions including unl
     page.getByText("Which currency does this document use?", { exact: true }),
   ).toHaveCount(1);
   await expect(
-    page.getByText("This document is not linked to a purchase yet."),
+    page.getByText(
+      "Check the original email, then use the available actions below. Add purchase details only if needed.",
+      { exact: true },
+    ),
   ).toHaveCount(2);
   await expect(
     page.getByText("What total does this document show?", { exact: true }),
@@ -427,7 +430,11 @@ test("HOME-05 only validated missing fields become exact questions including unl
   await expect(page.getByRole("article").nth(1)).not.toContainText(
     "Which currency does this document use?",
   );
-  await page.getByRole("article").nth(1).locator("summary").click();
+  await page
+    .getByRole("article")
+    .nth(1)
+    .getByRole("button", { name: "Review email", exact: true })
+    .click();
   await expect(
     page.getByRole("link", { name: "View supported purchase history →" }),
   ).toHaveAttribute("href", "/purchases/purchase-1");
@@ -512,9 +519,12 @@ test("HOME-05 review identifies original email before asking for corrections", a
       .getByText("receipts@example.test", { exact: false }),
   ).toBeVisible();
   expect(sourceRequests).toBe(0);
-  await page.getByRole("article").first().locator("summary").click();
-  expect(sourceRequests).toBe(0);
-  await page.getByRole("button", { name: "Show source email" }).click();
+  await page
+    .getByRole("article")
+    .first()
+    .getByRole("button", { name: "Review email", exact: true })
+    .click();
+  await expect.poll(() => sourceRequests).toBe(1);
   await expect(
     page.getByText("Synthetic receipt from October", { exact: true }),
   ).toBeVisible();
@@ -528,16 +538,16 @@ test("HOME-05 review identifies original email before asking for corrections", a
     "datetime",
     "2026-10-12T10:30:00.000Z",
   );
-  await page.getByRole("button", { name: "Show available actions" }).click();
+
   await expect(
     page.getByText("What date is shown on this document?", { exact: true }),
   ).toHaveCount(1);
   await expect(
     page.getByText(
-      "No validated purchase record is available yet. Creating one requires the merchant, currency, total and document date from the original email.",
+      "If this is a receipt, you can add its details. Saving does not confirm a payment.",
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Supply missing record" }).click();
+  await page.getByRole("button", { name: "Add purchase details" }).click();
   await expect(page.getByLabel("Merchant", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Document date", { exact: true })).toBeVisible();
 });
@@ -569,7 +579,11 @@ test("HOME-05 deleted review source stays identifiable without offering a broken
     }),
   );
   await page.goto("/needs-attention");
-  await page.getByRole("article").first().locator("summary").click();
+  await page
+    .getByRole("article")
+    .first()
+    .getByRole("button", { name: "Review email", exact: true })
+    .click();
   await expect(
     page.getByRole("region", { name: "Source email" }),
   ).toContainText("receipts@example.test");
@@ -736,12 +750,18 @@ test("UX-WORKSPACE-01 review inbox is compact and source content stays explicitl
   ).toHaveCount(0);
   expect(requests).toEqual([]);
   await captureWorkspace(page, "reviews");
-  await page.getByRole("article").first().locator("summary").focus();
+  await page
+    .getByRole("article")
+    .first()
+    .getByRole("button", { name: "Review email", exact: true })
+    .focus();
   await page.keyboard.press("Enter");
   await expect(
     page.getByRole("button", { name: "Show source email" }),
   ).toBeVisible();
-  expect(requests).toEqual([]);
+  await expect
+    .poll(() => requests.filter((url) => url.endsWith("/source")).length)
+    .toBe(1);
 });
 
 test("UX-WORKSPACE-01 paused inbox never claims its pending import is active", async ({
@@ -827,4 +847,240 @@ test("UX-WORKSPACE-01 frozen non-UTC-midnight ranges display their UTC date and 
   await expect(
     page.getByText("Requested interval:", { exact: false }),
   ).not.toBeVisible();
+});
+
+test("UX-REVIEW-DISCARD-01 groups only actual source identity and shows metadata before optional entry", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await fixtures(page);
+  const metadataReads: string[] = [];
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET") writes.push(request.url());
+  });
+  const context = {
+    mailboxAddress: "receipts@example.test",
+    receivedAt: Date.parse("2026-10-12T10:30:00Z"),
+    provider: "gmail",
+    available: true,
+  };
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: [
+          {
+            id: "related-warning",
+            documentId: "source-a-warning",
+            sourceMessageId: "source-a",
+            purchaseId: null,
+            reason: "document-review",
+            missingFields: [],
+            sourceContext: context,
+          },
+          {
+            id: "receipt-details",
+            documentId: "source-a-document",
+            sourceMessageId: "source-a",
+            purchaseId: null,
+            reason: "incomplete-financial-facts",
+            missingFields: ["currency", "total", "documentDate"],
+            sourceContext: context,
+          },
+          {
+            id: "same-time-other-email",
+            documentId: "source-b-document",
+            sourceMessageId: "source-b",
+            purchaseId: null,
+            reason: "document-review",
+            missingFields: [],
+            sourceContext: context,
+          },
+        ],
+        hasMore: false,
+      },
+    }),
+  );
+  await page.route("**/api/review/*/source", (route) => {
+    metadataReads.push(new URL(route.request().url()).pathname);
+    return route.fulfill({
+      json: {
+        mailboxAddress: context.mailboxAddress,
+        receivedAt: context.receivedAt,
+        subject: "Synthetic conference invitation",
+        sender: "Events <events@example.test>",
+        attachments: [
+          {
+            filename: "conference.pdf",
+            mimeType: "application/pdf",
+            size: 12000,
+          },
+          { filename: "agenda.txt", mimeType: "text/plain", size: null },
+        ],
+        originalUrl:
+          "https://mail.google.com/mail/#search/rfc822msgid%3Asynthetic%40example.test",
+      },
+    });
+  });
+  await page.route("**/api/review/receipt-details/corrections", (route) =>
+    route.fulfill({
+      json: {
+        purchaseId: null,
+        purchaseVersion: null,
+        mutationToken: "synthetic-token".repeat(4),
+        documentId: "source-a-document",
+        review: {
+          id: "receipt-details",
+          version: 3,
+          status: "open",
+          reason: "incomplete-financial-facts",
+          blockingScope: "financial",
+          missingFields: ["currency", "total", "documentDate"],
+          actions: ["complete-record", "not-a-purchase"],
+        },
+      },
+    }),
+  );
+  await page.goto("/needs-attention");
+  await expect(page.locator(".private-review")).toHaveCount(2);
+  expect(metadataReads).toEqual([]);
+  await page.screenshot({
+    path: "/tmp/ux-discard-list-desktop.png",
+    fullPage: true,
+  });
+  const trigger = page
+    .getByRole("button", { name: "Review email", exact: true })
+    .first();
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", {
+    name: "Review email",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Close review", exact: true }),
+  ).toBeFocused();
+  await expect(
+    dialog.getByText("Synthetic conference invitation", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("From: Events <events@example.test>", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("region", { name: "Email attachments" }),
+  ).toContainText("conference.pdf");
+  await expect(
+    dialog.getByRole("region", { name: "Email attachments" }),
+  ).toContainText("12,000 bytes");
+  await expect(
+    dialog.getByRole("region", { name: "Email attachments" }),
+  ).toContainText("Size unavailable");
+  await expect(
+    dialog.getByRole("link", { name: "conference.pdf", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Not a purchase", exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByRole("textbox")).toHaveCount(0);
+  expect(metadataReads).toEqual(["/api/review/related-warning/source"]);
+  expect(writes).toEqual([]);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({ path: "/tmp/ux-discard-dialog-desktop.png" });
+  await dialog
+    .getByRole("button", { name: "Add purchase details", exact: true })
+    .click();
+  await dialog.getByLabel("Merchant", { exact: true }).fill("Synthetic seller");
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByLabel("Merchant", { exact: true })).toHaveValue(
+    "Synthetic seller",
+  );
+  expect(metadataReads).toHaveLength(1);
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await dialog.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await page.screenshot({ path: "/tmp/ux-discard-dialog-mobile.png" });
+  expect(writes).toEqual([]);
+});
+
+test("UX-REVIEW-DISCARD-01 linked sibling never promises a withheld false-positive action", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: [
+          {
+            id: "unlinked-primary",
+            documentId: "document-a",
+            sourceMessageId: "shared-source",
+            purchaseId: null,
+            reason: "incomplete-financial-facts",
+            missingFields: ["documentDate"],
+          },
+          {
+            id: "linked-sibling",
+            documentId: "document-b",
+            sourceMessageId: "shared-source",
+            purchaseId: "purchase-1",
+            reason: "document-review",
+            missingFields: [],
+          },
+        ],
+        hasMore: false,
+      },
+    }),
+  );
+  await page.route("**/api/review/unlinked-primary/corrections", (route) =>
+    route.fulfill({
+      json: {
+        purchaseId: null,
+        purchaseVersion: null,
+        documentId: "document-a",
+        mutationToken: "synthetic-token".repeat(4),
+        review: {
+          id: "unlinked-primary",
+          version: 3,
+          status: "open",
+          reason: "incomplete-financial-facts",
+          blockingScope: "financial",
+          missingFields: ["documentDate"],
+          actions: ["complete-record"],
+        },
+      },
+    }),
+  );
+  await page.goto("/needs-attention");
+  await expect(page.locator(".private-review")).toHaveCount(1);
+  await page.getByRole("button", { name: "Review email", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review email",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Add purchase details", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Not a purchase", exact: true }),
+  ).toHaveCount(0);
+  await expect(dialog.getByText(/mark it as Not a purchase/)).toHaveCount(0);
+  await expect(
+    dialog.getByText(
+      "Check the original email, then use the available actions below. Add purchase details only if needed.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(dialog.getByRole("textbox")).toHaveCount(0);
 });

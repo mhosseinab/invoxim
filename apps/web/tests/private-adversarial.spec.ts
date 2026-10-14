@@ -288,6 +288,8 @@ test("HOME-05 unlinked document review asks only its known missing currency and 
 }) => {
   await mockPrivateWorkspace(page);
   await page.goto("/needs-attention");
+  await page.getByRole("button", { name: "Review email", exact: true }).click();
+  await page.getByText("What needs checking?", { exact: true }).click();
   await expect(
     page.getByText("Which currency does this document use?", { exact: true }),
   ).toBeVisible();
@@ -295,6 +297,7 @@ test("HOME-05 unlinked document review asks only its known missing currency and 
     page.getByText("What amount does this document show?", { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole("textbox")).toHaveCount(0);
+  await page.getByRole("button", { name: "Close review", exact: true }).click();
   await page.getByRole("link", { name: "Home", exact: true }).click();
   await expect(
     page.getByRole("article", { name: "QA history purchase" }),

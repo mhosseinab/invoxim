@@ -2,6 +2,19 @@ import { copy } from "../copy";
 export const privateCopy = {
   ...copy,
   home: "Your purchase records",
+  reviewEmail: "Review email",
+  reviewPurchaseQuestion: "Review purchase question",
+  emailNeedsReview: "Email needs review",
+  closeReview: "Close review",
+  checkEmailFirst:
+    "Check the original email, then use the available actions below. Add purchase details only if needed.",
+  whatNeedsChecking: "What needs checking?",
+  otherChecks: "Other checks for this email",
+  reviewEmailIntroduction:
+    "Check the email first. Keep real receipts or dismiss false positives without entering purchase details.",
+  reviewItems: "items to review",
+  moreReviewItems:
+    "More items are available; this view includes up to 25 checks",
   connectedInbox: "connected inbox",
   recordReady: "purchase record ready",
   recordsReady: "purchase records ready",
