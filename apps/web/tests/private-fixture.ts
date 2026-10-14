@@ -3,10 +3,13 @@ import type {
   PurchaseCoverage,
   PurchaseDetail,
   PurchaseListResponse,
+  PurchaseReview,
   PurchaseSummary,
   PurchaseView,
 } from "@invoxim/contracts";
 import type { Page } from "@playwright/test";
+import { mockApi, type MockedRequest } from "./mock-api";
+
 export const history: PurchaseView = {
   id: "qa-history",
   origin: "source",
@@ -187,112 +190,186 @@ const detail: PurchaseDetail = {
     },
   ],
 };
+const defaultProfile: ProfileView = {
+  user: {
+    id: "qa-private-a",
+    name: "QA a",
+    email: "qa-private-a@example.invalid",
+  },
+  settings: { timezone: "UTC", reportingCurrency: "EUR", version: 1 },
+  onboarding: { completedAt: null },
+  capabilities: { mailProviders: [], driveArchive: false },
+  valuation: { status: "not_configured" },
+};
+const defaultSummary: PurchaseSummary = {
+  totals: [
+    {
+      currency: "EUR",
+      paidMinor: "0",
+      refundedMinor: "3000",
+      netMinor: "-3000",
+    },
+  ],
+  dateBasis: "event",
+  recordCount: 2,
+  unpaidCount: 0,
+  unknownCount: 1,
+  reviewCount: 1,
+  excludedEntryCount: 0,
+  missingCurrencyCount: 0,
+  conversion: "not_configured",
+};
+const defaultReviews: PurchaseReview[] = [
+  {
+    id: "qa-currency-review",
+    documentId: "qa-unlinked-document",
+    purchaseId: null,
+    reason: "incomplete-financial-facts",
+    missingFields: ["currency"],
+  },
+];
+
+/** Typed contract fixtures the private-workspace mock serves by default. */
+export interface PrivateWorkspaceFixtures {
+  profile?: ProfileView;
+  coverage?: PurchaseCoverage;
+  purchases?: PurchaseView[];
+  detail?: PurchaseDetail;
+  summary?: PurchaseSummary;
+  reviews?: PurchaseReview[];
+  /**
+   * First-page `nextCursor`. When a `cursor` query is present the list
+   * returns `null`, matching the app's pagination contract.
+   */
+  listCursor?: string | null;
+}
+
 export interface PrivateFixtureState {
   owner: "a" | "b";
   status: number;
   beforeList?: () => Promise<void>;
-  requests: Array<{ path: string; query: string; method: string }>;
+  requests: MockedRequest[];
 }
+
 export async function mockPrivateWorkspace(
   page: Page,
+  fixtures: PrivateWorkspaceFixtures = {},
 ): Promise<PrivateFixtureState> {
   const state: PrivateFixtureState = { owner: "a", status: 200, requests: [] };
-  await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-    state.requests.push({
-      path: url.pathname,
-      query: url.search,
-      method: route.request().method(),
-    });
-    const send = (body: unknown, status = 200) =>
-      route.fulfill({
-        status,
-        contentType: "application/json",
-        headers: { "Cache-Control": "no-store" },
-        body: JSON.stringify(body),
-      });
-    if (url.pathname === "/api/public-config")
-      return send({ error: { code: "unavailable" } }, 503);
-    if (state.status !== 200)
-      return send({ error: { code: "unavailable" } }, state.status);
-    const profile: ProfileView = {
-      user: {
-        id: `qa-private-${state.owner}`,
-        name: `QA ${state.owner}`,
-        email: `qa-private-${state.owner}@example.invalid`,
-      },
-      settings: { timezone: "UTC", reportingCurrency: "EUR", version: 1 },
-      onboarding: { completedAt: null },
-      capabilities: { mailProviders: [], driveArchive: false },
-      valuation: { status: "not_configured" },
-    };
-    if (url.pathname === "/api/me") return send(profile);
-    if (url.pathname === "/api/purchases/coverage") return send(coverage);
-    if (url.pathname === "/api/purchase-reviews")
-      return send({
-        reviews: [
+  const purchaseCoverage = fixtures.coverage ?? coverage;
+  const purchaseDetail = fixtures.detail ?? detail;
+  const summary = fixtures.summary ?? defaultSummary;
+  const reviews = fixtures.reviews ?? defaultReviews;
+  const listCursor = fixtures.listCursor ?? null;
+  const detailPath = `/api/purchases/${purchaseDetail.purchase.id}`;
+  const ownedRows = (): PurchaseView[] => {
+    if (fixtures.purchases) return fixtures.purchases;
+    return state.owner === "a"
+      ? [history, question]
+      : [
           {
-            id: "qa-currency-review",
-            documentId: "qa-unlinked-document",
-            purchaseId: null,
-            reason: "incomplete-financial-facts",
-            missingFields: ["currency"],
+            ...history,
+            id: "qa-other",
+            merchant: "QA other owner",
+            documentTotalMinor: "99900",
+            lifecycle: [
+              {
+                currency: "EUR",
+                paidMinor: "99900",
+                refundedMinor: "0",
+                netMinor: "99900",
+              },
+            ],
           },
-        ],
-        hasMore: false,
-      });
-    const rows =
-      state.owner === "a"
-        ? [history, question]
-        : [
-            {
-              ...history,
-              id: "qa-other",
-              merchant: "QA other owner",
-              documentTotalMinor: "99900",
-              lifecycle: [
-                {
-                  currency: "EUR",
-                  paidMinor: "99900",
-                  refundedMinor: "0",
-                  netMinor: "99900",
-                },
-              ],
+        ];
+  };
+  const api = await mockApi(page, {
+    handlers: {
+      "/api/public-config": () => ({
+        status: 503,
+        json: { error: { code: "unavailable" } },
+      }),
+      "/api/me": () => {
+        if (state.status !== 200)
+          return {
+            status: state.status,
+            json: { error: { code: "unavailable" } },
+          };
+        if (fixtures.profile) return { json: fixtures.profile };
+        return {
+          json: {
+            ...defaultProfile,
+            user: {
+              id: `qa-private-${state.owner}`,
+              name: `QA ${state.owner}`,
+              email: `qa-private-${state.owner}@example.invalid`,
             },
-          ];
-    if (url.pathname === "/api/purchases") {
-      if (state.beforeList) await state.beforeList();
-      const q = url.searchParams.get("q")?.toLowerCase() ?? "";
-      const list: PurchaseListResponse = {
-        rows: rows.filter((row) => row.merchant.toLowerCase().includes(q)),
-        nextCursor: null,
-        dateBasis: "document-or-event",
-      };
-      return send(list);
-    }
-    if (url.pathname === "/api/purchases/summary") {
-      const summary: PurchaseSummary = {
-        totals: [
-          {
-            currency: "EUR",
-            paidMinor: "0",
-            refundedMinor: "3000",
-            netMinor: "-3000",
           },
-        ],
-        dateBasis: "event",
-        recordCount: 2,
-        unpaidCount: 0,
-        unknownCount: 1,
-        reviewCount: 1,
-        excludedEntryCount: 0,
-        missingCurrencyCount: 0,
-        conversion: "not_configured",
-      };
-      return send(summary);
-    }
-    if (url.pathname === "/api/purchases/qa-history") return send(detail);
-    return send({ error: { code: "not_found" } }, 404);
+        };
+      },
+      "/api/purchases/coverage": () => {
+        if (state.status !== 200)
+          return {
+            status: state.status,
+            json: { error: { code: "unavailable" } },
+          };
+        return { json: purchaseCoverage };
+      },
+      "/api/purchase-reviews": () => {
+        if (state.status !== 200)
+          return {
+            status: state.status,
+            json: { error: { code: "unavailable" } },
+          };
+        return { json: { reviews, hasMore: false } };
+      },
+      "/api/purchases": async (request) => {
+        if (state.status !== 200)
+          return {
+            status: state.status,
+            json: { error: { code: "unavailable" } },
+          };
+        if (state.beforeList) await state.beforeList();
+        const q =
+          new URLSearchParams(request.query).get("q")?.toLowerCase() ?? "";
+        const list: PurchaseListResponse = {
+          rows: ownedRows().filter((row) =>
+            row.merchant.toLowerCase().includes(q),
+          ),
+          nextCursor:
+            listCursor === null || request.query.includes("cursor")
+              ? null
+              : listCursor,
+          dateBasis: "document-or-event",
+        };
+        return { json: list };
+      },
+      "/api/purchases/summary": () => {
+        if (state.status !== 200)
+          return {
+            status: state.status,
+            json: { error: { code: "unavailable" } },
+          };
+        return { json: summary };
+      },
+      [detailPath]: () => {
+        if (state.status !== 200)
+          return {
+            status: state.status,
+            json: { error: { code: "unavailable" } },
+          };
+        return { json: purchaseDetail };
+      },
+    },
+    fallback: () => {
+      if (state.status !== 200)
+        return {
+          status: state.status,
+          json: { error: { code: "unavailable" } },
+        };
+      return { status: 404, json: { error: { code: "not_found" } } };
+    },
   });
+  state.requests = api.requests;
   return state;
 }

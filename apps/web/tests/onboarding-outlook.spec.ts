@@ -1,8 +1,10 @@
+import type { OnboardingResponse, ProfileView } from "@invoxim/contracts";
 import { expect, type Page, test } from "@playwright/test";
+import { mockApi, mockExternalHtml } from "./mock-api";
 
 const authorizationUrl =
   "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?state=synthetic-state&code_challenge=synthetic-challenge";
-const profile = {
+const profile: ProfileView = {
   user: {
     id: "synthetic-login",
     name: "Synthetic reader",
@@ -24,29 +26,52 @@ async function setup(
 ) {
   const posts: { path: string; body: unknown }[] = [];
   let actorChanged = false;
-  await page.route("https://login.microsoftonline.com/**", (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: "<h1>Synthetic Microsoft authorization</h1>",
-    }),
+  await mockExternalHtml(
+    page,
+    "https://login.microsoftonline.com/**",
+    "<h1>Synthetic Microsoft authorization</h1>",
   );
-  await page.route("**/api/**", async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    if (request.method() === "POST") {
-      posts.push({ path, body: request.postDataJSON() });
-      await route.fulfill(
-        options.denied
-          ? {
-              status: 403,
-              json: { error: { code: "missing_permission" } },
-            }
-          : { json: { authorizationUrl: options.url ?? authorizationUrl } },
-      );
-      return;
-    }
-    if (path === "/api/me") {
-      await route.fulfill({
+  const onboarding = (): OnboardingResponse => ({
+    view: {
+      schemaVersion: 1,
+      state: options.reconnect ? "needs_reconnect" : "connect_mailbox",
+      headlineKey: "mailbox.title",
+      primaryAction: options.reconnect ? "reconnect" : "connect_mailbox",
+      canStartImport: false,
+      readyRecordCount: 0,
+      historyComplete: false,
+      hasProcessingConsent: false,
+      exampleData: false,
+      activeImportId: null,
+      connectionId: options.reconnect ? "synthetic-outlook-inbox" : null,
+      reviewItemCount: 0,
+    },
+    login: {
+      email: actorChanged ? "other-login@example.test" : profile.user.email,
+    },
+    settings: profile.settings,
+    connections: options.reconnect
+      ? [
+          {
+            id: "synthetic-outlook-inbox",
+            provider: "outlook",
+            address: "receipts@example.test",
+            generation: 1,
+            state: "needs_reconnect",
+            schedulingState: "paused_auth",
+            scopeReady: false,
+          },
+        ]
+      : [],
+    capabilities: {
+      mailboxProviders: options.providers ?? ["outlook"],
+    },
+    mailboxLimit: 3,
+    progress: null,
+  });
+  await mockApi(page, {
+    handlers: {
+      "/api/me": () => ({
         json: actorChanged
           ? {
               ...profile,
@@ -57,58 +82,23 @@ async function setup(
               },
             }
           : profile,
-      });
-      return;
-    }
-    if (path === "/api/onboarding") {
-      await route.fulfill({
-        json: {
-          view: {
-            schemaVersion: 1,
-            state: options.reconnect ? "needs_reconnect" : "connect_mailbox",
-            headlineKey: "mailbox.title",
-            primaryAction: options.reconnect ? "reconnect" : "connect_mailbox",
-            canStartImport: false,
-            readyRecordCount: 0,
-            historyComplete: false,
-            hasProcessingConsent: false,
-            exampleData: false,
-            activeImportId: null,
-            connectionId: options.reconnect ? "synthetic-outlook-inbox" : null,
-            reviewItemCount: 0,
-          },
-          login: {
-            email: actorChanged
-              ? "other-login@example.test"
-              : profile.user.email,
-          },
-          settings: profile.settings,
-          connections: options.reconnect
-            ? [
-                {
-                  id: "synthetic-outlook-inbox",
-                  provider: "outlook",
-                  address: "receipts@example.test",
-                  generation: 1,
-                  state: "needs_reconnect",
-                  schedulingState: "paused_auth",
-                  scopeReady: false,
-                },
-              ]
-            : [],
-          capabilities: {
-            mailboxProviders: options.providers ?? ["outlook"],
-          },
-          mailboxLimit: 3,
-          progress: null,
-        },
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 503,
-      json: { error: { code: "unavailable" } },
-    });
+      }),
+      "/api/onboarding": () => ({ json: onboarding() }),
+      "/api/connections/mailbox/outlook/start": (request) => {
+        posts.push({ path: request.path, body: request.body });
+        return options.denied
+          ? { status: 403, json: { error: { code: "missing_permission" } } }
+          : { json: { authorizationUrl: options.url ?? authorizationUrl } };
+      },
+    },
+    fallback: (request) => {
+      if (request.method !== "GET")
+        posts.push({ path: request.path, body: request.body });
+      return {
+        status: 503,
+        json: { error: { code: "unavailable" } },
+      };
+    },
   });
   return { posts, changeActor: () => (actorChanged = true) };
 }

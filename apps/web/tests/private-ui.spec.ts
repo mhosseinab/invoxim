@@ -1,8 +1,15 @@
 import AxeBuilder from "@axe-core/playwright";
-import type { PurchaseCoverage } from "@invoxim/contracts";
+import type {
+  ProfileView,
+  PurchaseCoverage,
+  PurchaseDetail,
+  PurchaseSummary,
+  PurchaseView,
+} from "@invoxim/contracts";
 import { expect, type Page, test } from "@playwright/test";
+import { mockPrivateWorkspace } from "./private-fixture";
 
-const profile = {
+const profile: ProfileView = {
   user: {
     id: "synthetic-user",
     name: "Synthetic Reader",
@@ -19,7 +26,7 @@ const totals = {
   refundedMinor: "3000",
   netMinor: "9000",
 };
-const purchase = {
+const purchase: PurchaseView = {
   id: "purchase-1",
   merchant: "Synthetic Audio",
   date: "2026-09-10",
@@ -30,6 +37,8 @@ const purchase = {
   documentTotalMinor: "12000",
   paymentState: "paid",
   version: 1,
+  origin: "source",
+  recordStatus: "active",
   evidenceCount: 2,
   reviewReasons: [],
   lifecycle: [totals],
@@ -63,55 +72,50 @@ const coverage: PurchaseCoverage = {
     },
   ],
 };
+const summary: PurchaseSummary = {
+  totals: [purchase.period[0] ?? totals],
+  dateBasis: "event",
+  recordCount: 1,
+  unpaidCount: 0,
+  unknownCount: 0,
+  reviewCount: 0,
+  excludedEntryCount: 0,
+  missingCurrencyCount: 0,
+  conversion: "not_configured",
+};
+const detail: PurchaseDetail = {
+  purchase,
+  manualEvidence: [],
+  ledgerEntries: [],
+  timeline: [
+    {
+      observationId: "observation-1",
+      documentId: "document-1",
+      documentType: "refund",
+      relationship: "supporting",
+      evidenceCode: "source_exact",
+      reviewState: "accepted",
+      date: "2026-10-01",
+      paymentEvidence: null,
+      refundEvidence: "pending",
+      source: {
+        mailboxId: "mailbox-1",
+        provider: "gmail",
+        originalAvailable: false,
+        reason: "source_deleted",
+      },
+      events: [],
+    },
+  ],
+};
 async function fixtures(page: Page) {
-  await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-    let body: unknown;
-    if (url.pathname === "/api/me") body = profile;
-    else if (url.pathname === "/api/purchases/coverage") body = coverage;
-    else if (url.pathname === "/api/purchases/summary")
-      body = {
-        totals: [purchase.period[0]],
-        dateBasis: "event",
-        recordCount: 1,
-        unpaidCount: 0,
-        unknownCount: 0,
-        reviewCount: 0,
-        excludedEntryCount: 0,
-        missingCurrencyCount: 0,
-        conversion: "not_configured",
-      };
-    else if (url.pathname === "/api/purchases/purchase-1")
-      body = {
-        purchase,
-        timeline: [
-          {
-            observationId: "observation-1",
-            documentId: "document-1",
-            documentType: "refund",
-            relationship: "supporting",
-            evidenceCode: "source_exact",
-            reviewState: "accepted",
-            date: "2026-10-01",
-            paymentEvidence: null,
-            refundEvidence: "pending",
-            source: {
-              mailboxId: "mailbox-1",
-              provider: "gmail",
-              originalAvailable: false,
-              reason: "source_deleted",
-            },
-            events: [],
-          },
-        ],
-      };
-    else
-      body = {
-        rows: [purchase],
-        nextCursor: url.searchParams.has("cursor") ? null : "opaque-next",
-        dateBasis: "document-or-event",
-      };
-    await route.fulfill({ json: body });
+  await mockPrivateWorkspace(page, {
+    profile,
+    coverage,
+    purchases: [purchase],
+    detail,
+    summary,
+    listCursor: "opaque-next",
   });
 }
 
@@ -465,7 +469,9 @@ test("UI labels render hyphenated category, payment state and source reason from
   await expect(card).toContainText("business services");
   await expect(card).toContainText("Partially paid");
   await expect(card.getByText("business-services")).toHaveCount(0);
-  await card.getByRole("link", { name: "Synthetic Audio", exact: true }).click();
+  await card
+    .getByRole("link", { name: "Synthetic Audio", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Synthetic Audio", exact: true }),
   ).toBeVisible();
