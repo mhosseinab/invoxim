@@ -310,6 +310,22 @@ it.each([401, 403, 429, 503, 302])(
     expect(canceled).toBe(true);
   },
 );
+it.each([
+  ["120", 120000],
+  ["not-a-date", 30000],
+  ["2026-10-14T00:00:00Z", 30000],
+  ["999999999999999999999999", 86400001],
+] as const)(
+  "rate-limited original read with Retry-After %s uses the shared G5 parser (%s ms)",
+  async (header, expected) => {
+    replies(
+      new Response(null, { status: 429, headers: { "Retry-After": header } }),
+    );
+    await expect(
+      reader("outlook").read(inputFor("outlook")),
+    ).rejects.toMatchObject({ code: "RATE_LIMITED", retryAfterMs: expected });
+  },
+);
 it("Gmail advertised and chunked JSON overhead is bounded independently of decoded byte limit", async () => {
   const calls = replies(
     new Response("{}", {

@@ -1,3 +1,4 @@
+import { parseRetryAfter } from "../http";
 export class GmailBatchError extends Error {
   constructor(
     readonly reason:
@@ -87,25 +88,8 @@ function requireUnencoded(headers: ReadonlyMap<string, string>, mime = false) {
       throw new GmailBatchError("encoding");
   }
 }
-export function retryAfterMs(
-  value: string | null | undefined,
-): number | undefined {
-  if (!value) return;
-  if (value.length > 128) return 86400001;
-  const numeric = /^\d+$/.test(value);
-  if (
-    !numeric &&
-    !/^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(value)
-  )
-    return;
-  const milliseconds = numeric
-    ? Number(value) * 1000
-    : Date.parse(value) - Date.now();
-  if (!numeric && !Number.isFinite(milliseconds)) return;
-  return Number.isSafeInteger(milliseconds) && milliseconds <= 86400000
-    ? Math.max(1000, milliseconds)
-    : 86400001;
-}
+/** Gmail batch callers share SEC-4's Retry-After parser (G5). */
+export const retryAfterMs = parseRetryAfter;
 /** Input is already bounded by the shared source stream byte/chunk/deadline limit. */
 export function parseAttachmentBatch(
   text: string,
