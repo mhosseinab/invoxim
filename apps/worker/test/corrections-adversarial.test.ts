@@ -1552,9 +1552,7 @@ it("C10 unmerge rejects moved_json that is valid JSON but not a MoveMap", async 
   if (!merged.mergeId || !merged.version)
     throw new Error("Missing successful merge identity");
   await db
-    .prepare(
-      "UPDATE purchase_merges SET moved_json=? WHERE user_id=? AND id=?",
-    )
+    .prepare("UPDATE purchase_merges SET moved_json=? WHERE user_id=? AND id=?")
     .bind(
       JSON.stringify({ target: { evidence: null }, source: "broken" }),
       session.tenant.userId,

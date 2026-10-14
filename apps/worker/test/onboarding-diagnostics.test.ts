@@ -7,7 +7,7 @@ import {
 import { OnboardingError } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { createOnboardingRoutes } from "../src/onboarding-routes";
-import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 import { faultingDatabase } from "./support/faults";
 
 installOnboardingQaHooks();

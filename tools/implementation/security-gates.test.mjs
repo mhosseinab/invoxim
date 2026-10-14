@@ -133,18 +133,27 @@ test("actual workspace pinned lock and integrated CI/security gates remain execu
     pkg.scripts["test:security"],
     "node tools/implementation/security-gates.mjs security-tests",
   );
+  // ESLint is dropped (OD-5); `lint` delegates to the Biome gate.
+  assert.equal(pkg.scripts.lint, "pnpm lint:biome");
+  assert.equal(pkg.scripts["lint:biome"], "biome check . --error-on-warnings");
+  // Prettier targets are derived from the tree minus .prettierignore, not a
+  // hand-maintained path list in the script.
+  assert.equal(
+    pkg.scripts["format:check"],
+    "prettier --check . --ignore-unknown --no-error-on-unmatched-pattern",
+  );
   for (const gate of [
     "check:secrets",
     "check:dependency-policy",
     "lint:biome",
-    "lint",
     "typecheck",
     "test:unit",
     "test:integration",
     "build",
     "test:e2e",
   ])
-    assert.ok(pkg.scripts.verify.includes(`pnpm ${gate}`));
+    assert.ok(pkg.scripts.verify.split(" && ").includes(`pnpm ${gate}`));
+  assert.equal(pkg.scripts.verify.split(" && ").includes("pnpm lint"), false);
   const workflow = await readFile(".github/workflows/verify.yml", "utf8");
   // CI runs each gate once: verify covers dependency-policy and the security
   // suite (via test:integration); only the registry audit is added after it.

@@ -73,7 +73,8 @@ function parseMoveMap(json: string): MoveMap {
   } catch {
     throw new CorrectionError("CONFLICT");
   }
-  if (!value || typeof value !== "object") throw new CorrectionError("CONFLICT");
+  if (!value || typeof value !== "object")
+    throw new CorrectionError("CONFLICT");
   const record = value as Record<string, unknown>;
   if (
     !isMembership(record.target) ||
@@ -84,10 +85,7 @@ function parseMoveMap(json: string): MoveMap {
     !record.decisions.every(isDecision)
   )
     throw new CorrectionError("CONFLICT");
-  for (const key of [
-    "targetPaymentState",
-    "sourcePaymentState",
-  ] as const)
+  for (const key of ["targetPaymentState", "sourcePaymentState"] as const)
     if (record[key] !== undefined && typeof record[key] !== "string")
       throw new CorrectionError("CONFLICT");
   for (const key of [
@@ -208,7 +206,8 @@ export async function executeMerge(
   );
   const allocations = planAllocations(target, settlement, combinedReviews);
   if (
-    combinedReviews.length + allocations.filter((plan) => !plan.existing).length >
+    combinedReviews.length +
+      allocations.filter((plan) => !plan.existing).length >
     200
   )
     throw new CorrectionError("TOO_LARGE");

@@ -10,7 +10,7 @@ import {
 import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 import { faultingDatabase } from "./support/faults";
 
 installOnboardingQaHooks();

@@ -13,7 +13,7 @@ import {
 } from "../../../packages/contracts/src/fx-reporting";
 import { createFxRoutes } from "../src/fx-routes";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 

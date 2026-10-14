@@ -1,6 +1,4 @@
 {
-  "eslint.useFlatConfig": true,
-  "eslint.workingDirectories": ["."],
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "typescript.tsdk": "node_modules/typescript/lib",
   "biome.requireConfiguration": true

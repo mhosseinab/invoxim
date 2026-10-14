@@ -16,7 +16,7 @@ import { createRecurringService } from "../../../packages/adapters/src/recurring
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createRecurringRoutes } from "../src/recurring-routes";
-import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 
@@ -538,4 +538,3 @@ it("T20-API-MOUNT-02: actual Worker composition leaves recurrence disabled when 
   expect(response.headers.get("Cache-Control")).toBe("no-store");
   expect(meter.executedStatements()).toBeLessThanOrEqual(40);
 });
-

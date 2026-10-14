@@ -7,7 +7,7 @@ Updated 13 October 2026. **Not ready to deploy or launch.** This is an evolving 
 - [ ] Confirm current `.agents/backlog.json` statuses and implementation evidence; close the target milestone's required tests and independent review.
 - [ ] Complete applicable owner inputs in `MANUAL_TASKS.md`, including real domains/accounts, provider/model terms, OAuth registrations, keyring, disclosures and budget limits.
 - [ ] Select an immutable commit/build identity and record exact Node/pnpm/dependency versions, migration list and deployment environment.
-- [ ] Run frozen install and `pnpm verify`; require Biome/ESLint/Prettier/typechecks, actual unit/workerd/browser evidence and no hidden skipped cases.
+- [ ] Run frozen install and `pnpm verify`; require Biome/Prettier/typechecks, actual unit/workerd/browser evidence and no hidden skipped cases.
 - [ ] Run migration clean/upgrade/integrity checks, applicable extraction evaluations, dependency/secret/security/release checks and inspect failures. Placeholder `NOT IMPLEMENTED` scripts do not pass a release gate.
 - [ ] Record unsupported parser/document/provider cases and measured CPU/memory/query/usage/cost limits. Local query bounds and dry-run bundles do not establish a deployed plan's viability.
 

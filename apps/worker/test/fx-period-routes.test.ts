@@ -4,7 +4,7 @@ import { beforeAll, expect, it } from "vitest";
 import revision from "../../../packages/adapters/migrations/0005_reporting_revision.sql?raw";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 
@@ -157,4 +157,3 @@ it("FX-05 real signed stamp cannot be reused by another session or edited and de
     error: { code: "valuation_stale" },
   });
 });
-

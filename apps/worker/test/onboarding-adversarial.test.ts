@@ -12,11 +12,13 @@ import { createInvocationDatabase } from "../src/invocation-database";
 import { syntheticClassificationBindings } from "./classification-fixture";
 import {
   configuredAi,
+  installOnboardingQaHooks,
   now,
   owner,
   query,
   runtime,
-  startBody, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+  startBody,
+} from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 

@@ -2,3 +2,14 @@
 **/dist/**
 **/.wrangler/**
 **/.turbo/**
+pnpm-lock.yaml
+
+# Prose, agent instructions, and design fixtures stay outside the Prettier surface.
+.agents/
+docs/
+test-design/
+AGENTS.md
+BLUEPRINT.md
+CHANGELOG.md
+config/
+contracts/

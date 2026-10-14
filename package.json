@@ -9,14 +9,14 @@
   },
   "scripts": {
     "dev": "turbo run dev",
-    "format:check": "prettier --check package.json MANUAL_TASKS.md DEPLOYMENT_CHECKLIST.md pnpm-workspace.yaml turbo.json tsconfig.base.json eslint.config.mjs biome.json .vscode apps tools/implementation .github/workflows packages --no-error-on-unmatched-pattern",
-    "lint": "eslint apps tools/implementation eslint.config.mjs packages --no-error-on-unmatched-pattern",
+    "format:check": "prettier --check . --ignore-unknown --no-error-on-unmatched-pattern",
+    "lint": "pnpm lint:biome",
     "typecheck": "turbo run typecheck",
     "test:unit": "node --test tools/implementation/*.test.mjs && turbo run test:unit",
     "test:integration": "turbo run test:integration",
     "check:boundaries": "node tools/implementation/check-boundaries.mjs",
     "build": "turbo run build && pnpm check:production",
-    "verify": "pnpm check:boundaries && pnpm check:secrets && pnpm check:dependency-policy && pnpm format:check && pnpm lint:biome && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm build && pnpm test:e2e",
+    "verify": "pnpm check:boundaries && pnpm check:secrets && pnpm check:dependency-policy && pnpm format:check && pnpm lint:biome && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm build && pnpm test:e2e",
     "test:contracts": "pnpm --filter @invoxim/contracts test:unit",
     "test:security": "node tools/implementation/security-gates.mjs security-tests",
     "test:e2e": "pnpm --filter @invoxim/web exec playwright test --config playwright.config.ts",
@@ -32,13 +32,11 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@biomejs/biome": "2.5.15",
     "@playwright/test": "1.64.0",
     "@types/node": "24.19.2",
-    "eslint": "10.12.0",
     "prettier": "3.8.3",
     "turbo": "2.11.7",
-    "typescript": "6.0.3",
-    "typescript-eslint": "8.71.1",
-    "@biomejs/biome": "2.5.15"
+    "typescript": "6.0.3"
   }
 }

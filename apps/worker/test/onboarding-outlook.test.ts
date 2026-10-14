@@ -4,11 +4,13 @@ import { createOnboardingImportPreparation } from "../../../packages/adapters/sr
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
 import {
   configuredAi,
+  installOnboardingQaHooks,
   now,
   owner,
   query,
   runtime,
-  startBody, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+  startBody,
+} from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 
