@@ -44,6 +44,7 @@ const ignored = new Set([
   "node_modules",
   ".turbo",
   ".wrangler",
+  ".worktrees",
   "dist",
   "coverage",
   "playwright-report",
