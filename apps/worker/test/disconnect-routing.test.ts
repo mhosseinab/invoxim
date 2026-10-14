@@ -3,7 +3,9 @@ import { createLoginAuth, loginConfiguration } from "@invoxim/adapters";
 import { expect, it } from "vitest";
 import worker from "../src/index";
 import { requireFixture } from "./fixture-value";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 /**
  * WRK-1 / OD-1: plain disconnect is owned by the mailbox sub-app (24488b8)
@@ -85,3 +87,4 @@ it("WRK-1 composed worker GET /api/connections is the combined storage view", as
   );
   expect(response.status).toBe(200);
 });
+

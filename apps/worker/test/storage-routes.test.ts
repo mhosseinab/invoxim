@@ -12,7 +12,9 @@ import {
 } from "../../../packages/adapters/src/drive/configuration";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 const db = env.DB;
 

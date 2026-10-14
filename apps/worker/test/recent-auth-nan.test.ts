@@ -3,7 +3,9 @@ import { createLoginAuth, loginConfiguration } from "@invoxim/adapters";
 import { expect, it } from "vitest";
 import worker from "../src/index";
 import { requireFixture } from "./fixture-value";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 /**
  * WRK-4 / W4: a session createdAt that decodes to NaN must fail the
@@ -92,3 +94,4 @@ it("WRK-4 lifecycle mutation rejects a NaN session createdAt", async () => {
     ((await response.json()) as { error: { code: string } }).error.code,
   ).toBe("recent_auth_required");
 });
+

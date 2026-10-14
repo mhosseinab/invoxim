@@ -4,7 +4,9 @@ import type { OnboardingSession } from "@invoxim/core";
 import { expect, it, vi } from "vitest";
 import { issueWorkspaceMutationToken } from "../../../packages/adapters/src/corrections/workspace-token";
 import worker from "../src/index";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 const db = env.DB;
 

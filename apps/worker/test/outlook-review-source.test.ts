@@ -9,8 +9,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createReviewSourceReader } from "../../../packages/adapters/src/purchase-views/review-source";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
 import { signedSession } from "./support/tenant";
+
+installOnboardingQaHooks();
 
 const db = env.DB;
 const keyring = {
