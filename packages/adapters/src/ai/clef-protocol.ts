@@ -22,7 +22,7 @@ const category = z.enum(
   Object.keys(criteria) as [ReceiptCategory, ...ReceiptCategory[]],
 );
 const probability = z.number().finite().min(0).max(1);
-export const clefResponseSchema = z.object({
+const clefResponseSchema = z.object({
   model: z.enum(["clef", "@cf/cloudflare/clef"]),
   answers: z.object({
     receipt: z.strictObject({ type: z.literal("noul"), noul: probability }),

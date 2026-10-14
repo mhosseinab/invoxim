@@ -94,10 +94,7 @@ export function createAiProviderFactory(
         throw new AiSettingsError("UNAVAILABLE");
       key = credential.secret.key;
     }
-    async function current(checkSettings = true) {
-      // Initial selection already read settings. Actual transport always reloads
-      // settings and consent after every intervening await.
-      const latest = checkSettings ? await settings.current(tenant) : row;
+    async function verifyConsentAgainstRow(latest: typeof row) {
       if (
         !latest ||
         latest.revision !== row?.revision ||
@@ -133,7 +130,15 @@ export function createAiProviderFactory(
           .first(),
       );
     }
-    if (!(await current(false))) throw new AiSettingsError("CONFLICT");
+    /** Consent-only check against the initially read row (no intervening await yet). */
+    async function verifyInitialSelection() {
+      return verifyConsentAgainstRow(row);
+    }
+    /** Full recheck: reload settings and consent after every intervening await. */
+    async function recheckSettingsAndConsent() {
+      return verifyConsentAgainstRow(await settings.current(tenant));
+    }
+    if (!(await verifyInitialSelection())) throw new AiSettingsError("CONFLICT");
     const configurationDigest = await selectedAiConfigurationDigest(
       destination,
       model,
@@ -177,7 +182,7 @@ export function createAiProviderFactory(
           if (
             JSON.stringify(approved) !== JSON.stringify(config) ||
             signal?.aborted ||
-            !(await current())
+            !(await recheckSettingsAndConsent())
           )
             return {
               status: "failed",
