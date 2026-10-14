@@ -28,5 +28,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm verify
-      - run: pnpm check:deps
-      - run: pnpm test:security
+      # verify already runs check:dependency-policy and the security suite
+      # (test:integration is a superset of test:security). Only the registry
+      # audit is not covered by verify, so CI adds that alone.
+      - run: pnpm audit --json

@@ -146,8 +146,12 @@ test("actual workspace pinned lock and integrated CI/security gates remain execu
   ])
     assert.ok(pkg.scripts.verify.includes(`pnpm ${gate}`));
   const workflow = await readFile(".github/workflows/verify.yml", "utf8");
-  for (const gate of ["verify", "check:deps", "test:security"])
-    assert.ok(workflow.includes(`- run: pnpm ${gate}\n`));
+  // CI runs each gate once: verify covers dependency-policy and the security
+  // suite (via test:integration); only the registry audit is added after it.
+  assert.ok(workflow.includes("- run: pnpm verify\n"));
+  assert.ok(workflow.includes("- run: pnpm audit --json\n"));
+  assert.equal(workflow.includes("- run: pnpm check:deps\n"), false);
+  assert.equal(workflow.includes("- run: pnpm test:security\n"), false);
   assert.equal(workflow.includes("continue-on-error"), false);
   for (const file of securityTests)
     assert.ok((await readFile(`apps/worker/${file}`, "utf8")).includes("test"));

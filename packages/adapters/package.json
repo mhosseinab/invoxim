@@ -4,8 +4,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@invoxim/contracts": "workspace:*",
