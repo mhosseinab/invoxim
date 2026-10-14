@@ -418,3 +418,33 @@ it("accepts repeated non-semantic HTTP headers without relaxing identity or enco
   });
   expect((await current.load()).status).toBe("ready");
 });
+
+it.each([
+  [
+    "Content-ID: <response-attachment-0>\r\n",
+    "Content-ID: <response-attachment-0>\r\n",
+  ],
+  ["Content-Type: application/http\r\n", "Content-Type: application/http\r\n"],
+  [
+    "HTTP/1.1 200 Synthetic\r\n",
+    "Content-Encoding: identity\r\nContent-Encoding: identity\r\n",
+  ],
+  ["HTTP/1.1 200 Synthetic\r\n", "Retry-After: 1\r\nRetry-After: 2\r\n"],
+])(
+  "rejects ambiguous repeated interpreted headers %s",
+  async (location, addition) => {
+    const current = fixture();
+    current.fetcher.mockImplementation(async (url) => {
+      if (String(url) !== "https://gmail.googleapis.com/batch")
+        return Response.json({ id: "message", payload });
+      const response = batchResponse();
+      return new Response(
+        (await response.text()).replace(location, `${location}${addition}`),
+        response,
+      );
+    });
+    await expect(current.load()).rejects.toMatchObject({
+      code: "CONTENT_UNAVAILABLE",
+    });
+  },
+);
