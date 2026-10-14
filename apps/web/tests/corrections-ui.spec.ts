@@ -600,6 +600,7 @@ test("EDIT-05 unlinked source completion collects explicit user values without g
     }),
   );
   await page.goto("/needs-attention");
+  await page.getByRole("article").first().locator("summary").click();
   await page
     .getByRole("button", { name: "Show available actions", exact: true })
     .click();
@@ -611,6 +612,13 @@ test("EDIT-05 unlinked source completion collects explicit user values without g
     "",
   );
   await page.getByLabel("Merchant", { exact: true }).fill("User supplied cafe");
+  await page.getByRole("article").first().locator("summary").click();
+  await expect(page.getByLabel("Merchant", { exact: true })).not.toBeVisible();
+  expect(writes).toEqual([]);
+  await page.getByRole("article").first().locator("summary").click();
+  await expect(page.getByLabel("Merchant", { exact: true })).toHaveValue(
+    "User supplied cafe",
+  );
   await page.getByLabel("Currency", { exact: true }).selectOption("JPY");
   await page.getByLabel("Document total", { exact: true }).fill("1000");
   await page.getByLabel("Document date", { exact: true }).fill("2026-10-02");
@@ -902,4 +910,52 @@ test("EDIT-03 manually associated source stays separate from extracted observati
   await expect(
     page.getByText("Payment documented", { exact: false }),
   ).toHaveCount(0);
+});
+
+test("UX-WORKSPACE-01 purchase detail leads with evidence and keeps corrections explicit", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const writes: unknown[] = [];
+  await workspace(page, (request) => {
+    writes.push(request);
+    return { body: result };
+  });
+  await page.goto("/purchases/purchase-a");
+  await expect(
+    page.getByRole("heading", { name: "Purchase timeline", exact: true }),
+  ).toBeInViewport({ ratio: 1 });
+  await expect(
+    page.getByText("The document total describes the purchase.", {
+      exact: false,
+    }),
+  ).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Confirm a payment", exact: true }),
+  ).toBeVisible();
+  expect(writes).toEqual([]);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: "/tmp/ux-workspace-detail-desktop.png",
+    fullPage: true,
+  });
+  await page.getByText("About these amounts", { exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByText("The document total describes the purchase.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Enter");
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: "/tmp/ux-workspace-detail-mobile.png",
+    fullPage: true,
+  });
 });

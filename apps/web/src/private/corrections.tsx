@@ -6,6 +6,7 @@ import {
 import { useEffect, useState } from "react";
 import { PrivateLoadError, readPrivateForIdentity } from "./api";
 import { cashEvents } from "./cash";
+import { reviewQuestions } from "./copy";
 import { InclusionControl, MergeControl } from "./correction-actions";
 import { CashEditor, PurchaseEditor } from "./correction-forms";
 import { useCorrectionMutation } from "./mutations";
@@ -65,7 +66,26 @@ export function Corrections({
       });
     return () => controller.abort();
   }, [purchaseId, onReload, expectedUserId]);
-  if (!state) return <p className="muted">{availability}</p>;
+  if (!state)
+    return (
+      <section className="workspace-correction-unavailable">
+        <p className="muted">{availability}</p>
+        {detail.purchase.reviewReasons.length > 0 && (
+          <>
+            <h2>Open questions</h2>
+            <ul>
+              {detail.purchase.reviewReasons.map((reason) => (
+                <li key={reason}>
+                  {reviewQuestions[reason] ??
+                    "Some source details need review. Uncertain events are excluded from spending."}
+                </li>
+              ))}
+            </ul>
+            <a href="/needs-attention">Review questions →</a>
+          </>
+        )}
+      </section>
+    );
   if (state.version !== detail.purchase.version)
     return (
       <section className="private-panel">
@@ -79,20 +99,32 @@ export function Corrections({
       </section>
     );
   return (
-    <section className="private-panel" aria-label="Purchase corrections">
+    <section
+      className="private-panel workspace-corrections"
+      aria-label="Purchase corrections"
+    >
       <h2>Corrections and confirmations</h2>
-      <p>
-        Record origin:{" "}
-        {state.origin === "user-supplied" ? "User supplied" : "Source evidence"}
-        . Status: {state.recordStatus}. Corrections are retained as explicit
-        overrides.
+      <p className="workspace-caption">
+        {state.origin === "user-supplied" ? "User supplied" : "Source evidence"}{" "}
+        · {state.recordStatus}
       </p>
+      <details className="workspace-provenance">
+        <summary>Record provenance</summary>
+        <p>
+          Record origin:{" "}
+          {state.origin === "user-supplied"
+            ? "User supplied"
+            : "Source evidence"}
+          . Status: {state.recordStatus}. Corrections are retained as explicit
+          overrides.
+        </p>
+      </details>
       {state.overriddenFields.length > 0 && (
         <p>User-corrected fields: {state.overriddenFields.join(", ")}.</p>
       )}
       {state.recordStatus !== "merged" && (
         <>
-          <div>
+          <div className="workspace-correction-actions">
             <button
               type="button"
               disabled={mutation.locked}

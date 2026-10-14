@@ -161,6 +161,7 @@ test("HOME-02/06 pending refund and unavailable original preserve structured det
   await expect(
     page.getByText("Original unavailable", { exact: true }),
   ).toBeVisible();
+  await page.getByText("Why this amount?", { exact: true }).click();
   await expect(page.getByText("The source message was deleted.")).toBeVisible();
   await expect(page.getByRole("link", { name: /download/i })).toHaveCount(0);
   await expect(
@@ -426,6 +427,7 @@ test("HOME-05 only validated missing fields become exact questions including unl
   await expect(page.getByRole("article").nth(1)).not.toContainText(
     "Which currency does this document use?",
   );
+  await page.getByRole("article").nth(1).locator("summary").click();
   await expect(
     page.getByRole("link", { name: "View supported purchase history →" }),
   ).toHaveAttribute("href", "/purchases/purchase-1");
@@ -505,8 +507,12 @@ test("HOME-05 review identifies original email before asking for corrections", a
   });
   await page.goto("/needs-attention");
   await expect(
-    page.getByText("receipts@example.test", { exact: false }),
+    page
+      .locator(".workspace-review-source")
+      .getByText("receipts@example.test", { exact: false }),
   ).toBeVisible();
+  expect(sourceRequests).toBe(0);
+  await page.getByRole("article").first().locator("summary").click();
   expect(sourceRequests).toBe(0);
   await page.getByRole("button", { name: "Show source email" }).click();
   await expect(
@@ -563,6 +569,7 @@ test("HOME-05 deleted review source stays identifiable without offering a broken
     }),
   );
   await page.goto("/needs-attention");
+  await page.getByRole("article").first().locator("summary").click();
   await expect(
     page.getByRole("region", { name: "Source email" }),
   ).toContainText("receipts@example.test");
@@ -671,4 +678,153 @@ test("UX-PURCHASES-01 three unconfirmed records fit desktop without exposing que
     path: "/tmp/ux-purchases-mobile.png",
     fullPage: true,
   });
+});
+
+async function captureWorkspace(page: Page, name: string) {
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: `/tmp/ux-workspace-${name}-desktop.png`,
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: `/tmp/ux-workspace-${name}-mobile.png`,
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+test("UX-WORKSPACE-01 review inbox is compact and source content stays explicitly requested", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await fixtures(page);
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (/\/api\/review\//.test(request.url())) requests.push(request.url());
+  });
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: Array.from({ length: 25 }, (_, index) => ({
+          id: `compact-review-${index}`,
+          documentId: `doc-${index}`,
+          purchaseId: null,
+          reason: "incomplete-financial-facts",
+          missingFields: ["documentDate"],
+          sourceContext: {
+            mailboxAddress: "receipts@example.test",
+            receivedAt: Date.parse("2026-10-12T10:30:00Z") - index * 86400000,
+            provider: "gmail",
+            available: true,
+          },
+        })),
+        hasMore: true,
+      },
+    }),
+  );
+  await page.goto("/needs-attention");
+  await expect(page.getByRole("article").nth(3)).toBeInViewport({ ratio: 1 });
+  await expect(
+    page.getByRole("button", { name: "Show source email" }),
+  ).toHaveCount(0);
+  expect(requests).toEqual([]);
+  await captureWorkspace(page, "reviews");
+  await page.getByRole("article").first().locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Show source email" }),
+  ).toBeVisible();
+  expect(requests).toEqual([]);
+});
+
+test("UX-WORKSPACE-01 paused inbox never claims its pending import is active", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await fixtures(page);
+  const paused = structuredClone(coverage);
+  if (!paused.connections[0]) throw new Error("Missing fixture connection");
+  paused.connections[0].pausedJobs = 6;
+  paused.connections[0].failedJobs = 8;
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({ json: paused }),
+  );
+  await page.goto("/connections");
+  await expect(
+    page.getByText("Import paused", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Import in progress", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("8 failed jobs", { exact: true })).toBeVisible();
+  await captureWorkspace(page, "connections");
+  await page.getByText("Import details", { exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByText("Schedule setting: active", { exact: true }),
+  ).toBeVisible();
+});
+
+test("UX-WORKSPACE-01 Home opens directly onto searchable recent records", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await fixtures(page);
+  await page.goto("/home?from=2026-10-01&to=2026-10-31");
+  await expect(
+    page.getByRole("article", { name: "Synthetic Audio purchase" }),
+  ).toBeInViewport({ ratio: 1 });
+  await expect(page.getByLabel("Find a receipt or purchase")).toBeVisible();
+  await captureWorkspace(page, "home");
+});
+
+test("UX-WORKSPACE-01 paused scheduling takes precedence after a finished historical import", async ({
+  page,
+}) => {
+  await fixtures(page);
+  const paused = structuredClone(coverage);
+  const inbox = paused.connections[0];
+  if (!inbox?.imports[0]) throw new Error("Missing fixture inbox");
+  inbox.schedulingState = "paused";
+  inbox.pendingJobs = 0;
+  inbox.pausedJobs = 0;
+  inbox.imports[0].completedAt = 1;
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({ json: paused }),
+  );
+  await page.goto("/connections");
+  await expect(
+    page.getByRole("region", { name: "Inbox coverage" }).locator(".status"),
+  ).toHaveText("Import paused");
+  await expect(page.getByText("Scan finished", { exact: true })).toBeVisible();
+});
+
+test("UX-WORKSPACE-01 frozen non-UTC-midnight ranges display their UTC date and time explicitly", async ({
+  page,
+}) => {
+  await fixtures(page);
+  const ranges = structuredClone(coverage);
+  const run = ranges.connections[0]?.imports[0];
+  if (!run) throw new Error("Missing fixture import");
+  run.from = "2025-10-11T22:00:00.000Z";
+  run.to = "2026-10-12T10:30:00.000Z";
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({ json: ranges }),
+  );
+  await page.goto("/connections");
+  await expect(
+    page.getByRole("region", { name: "Inbox coverage" }),
+  ).toContainText(
+    "Requested history (UTC): 11 Oct 2025, 22:00 – 12 Oct 2026, 10:30 (end exclusive)",
+  );
+  await expect(
+    page.getByText("Requested interval:", { exact: false }),
+  ).not.toBeVisible();
 });

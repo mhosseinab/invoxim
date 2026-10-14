@@ -149,6 +149,17 @@ export function PurchaseCard({ purchase }: { purchase: PurchaseView }) {
     </article>
   );
 }
+function importDateLabel(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Date unavailable"
+    : new Intl.DateTimeFormat("en-GB", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "UTC",
+      }).format(date);
+}
+
 export function Coverage({
   coverage,
   full = false,
@@ -156,10 +167,16 @@ export function Coverage({
   coverage: PurchaseCoverage;
   full?: boolean;
 }) {
+  const connectedCount = coverage.connections.filter(
+    (connection) => connection.state === "connected",
+  ).length;
   const paused = coverage.connections.some(
     (connection) =>
+      connection.schedulingState === "paused" ||
       connection.pausedJobs > 0 ||
-      connection.imports.some((run) => run.pauseReason !== null),
+      connection.imports.some(
+        (run) => run.pauseReason !== null || run.stage === "paused",
+      ),
   );
   const pending = coverage.connections.some(
     (connection) =>
@@ -174,12 +191,8 @@ export function Coverage({
       >
         <div>
           <strong>
-            {
-              coverage.connections.filter(
-                (connection) => connection.state === "connected",
-              ).length
-            }{" "}
-            {text.connectedInboxes}
+            {connectedCount}{" "}
+            {connectedCount === 1 ? text.connectedInbox : text.connectedInboxes}
           </strong>
           {paused ? (
             <span>{text.coveragePaused}</span>
@@ -197,82 +210,88 @@ export function Coverage({
       </section>
     );
   return (
-    <section className="private-connection-list" aria-label="Inbox coverage">
-      <div>
+    <section
+      className="private-connection-list workspace-connections"
+      aria-label="Inbox coverage"
+    >
+      <div className="workspace-overview">
         <strong>
-          {
-            coverage.connections.filter(
-              (connection) => connection.state === "connected",
-            ).length
-          }{" "}
-          connected inboxes · {coverage.readyPurchaseCount} purchase records
-          ready
+          {connectedCount}{" "}
+          {connectedCount === 1 ? text.connectedInbox : text.connectedInboxes} ·{" "}
+          {coverage.readyPurchaseCount}{" "}
+          {coverage.readyPurchaseCount === 1
+            ? text.recordReady
+            : text.recordsReady}
         </strong>
-        {paused ? (
-          <p>
-            Processing is paused. Your existing records remain available. View
-            coverage details for the affected inbox.
-          </p>
-        ) : (
-          pending && <p>{text.partial}</p>
-        )}
         {coverage.openReviewCount > 0 && (
-          <p>
-            {coverage.openReviewCount} items need attention. Existing documented
-            payments remain visible.{" "}
-            <a href="/needs-attention">View questions →</a>
-          </p>
+          <a href="/needs-attention">
+            {coverage.openReviewCount} {text.itemsNeedAttention}
+          </a>
         )}
         {coverage.connections.length === 0 && <p>{text.noMailbox}</p>}
       </div>
-      {!full && <a href="/connections">View coverage details →</a>}
-      {full &&
-        coverage.connections.map((connection) => (
-          <article className="private-panel" key={connection.id}>
-            <div className="section-heading">
-              <h2>{connection.address}</h2>
+      {coverage.connections.map((connection) => {
+        const connectionPaused =
+          connection.schedulingState === "paused" ||
+          connection.pausedJobs > 0 ||
+          connection.imports.some(
+            (run) => run.pauseReason !== null || run.stage === "paused",
+          );
+        const connectionPending =
+          connection.pendingJobs > 0 ||
+          connection.imports.some((run) => run.completedAt === null);
+        return (
+          <article
+            className="private-panel workspace-inbox"
+            key={connection.id}
+          >
+            <header className="workspace-inbox-heading">
+              <div>
+                <h2>{connection.address}</h2>
+                <span className="workspace-caption">
+                  {connection.provider} ·{" "}
+                  {connection.state.replaceAll("_", " ")}
+                </span>
+              </div>
               <span className="status">
-                {connection.state.replaceAll("_", " ")}
+                {connection.state !== "connected"
+                  ? text.mailboxNeedsReconnect
+                  : connectionPaused
+                    ? text.importPaused
+                    : connectionPending
+                      ? text.importInProgress
+                      : connection.imports.length > 0
+                        ? text.scanFinished
+                        : text.awaitingImport}
               </span>
-            </div>
-            <p>
-              {connection.provider} ·{" "}
-              {connection.schedulingState.replaceAll("_", " ")}
-            </p>
-            {connection.pausedJobs > 0 && (
-              <p className="notice">
-                Processing paused · {connection.pausedJobs} paused jobs. Your
-                existing records remain available.
-              </p>
-            )}
+            </header>
             {connection.state !== "connected" && (
               <p>{text["import.paused.auth"]}</p>
             )}
-            <p>
-              {connection.pendingJobs} pending jobs · {connection.failedJobs}{" "}
-              failed jobs
-            </p>
+            <div className="workspace-job-counts">
+              <span>{connection.pendingJobs} pending jobs</span>
+              <span
+                className={
+                  connection.failedJobs > 0 ? "workspace-warning" : undefined
+                }
+              >
+                {connection.failedJobs} failed jobs
+              </span>
+              {connection.pausedJobs > 0 && (
+                <span>{connection.pausedJobs} paused jobs</span>
+              )}
+            </div>
             {connection.imports.map((run) => (
-              <div className="private-import" key={run.id}>
-                <p>
-                  <strong>
-                    {run.completedAt !== null
-                      ? "Scan finished"
-                      : run.pauseReason !== null || run.stage === "paused"
-                        ? "Import paused"
-                        : "Import in progress"}
-                  </strong>{" "}
-                  · {run.stage.replaceAll("_", " ")}
-                </p>
-                <p>
-                  Requested interval: {run.from} to {run.to} (end exclusive).
-                </p>
-                <p>
-                  {run.discoveredSources} candidate messages ·{" "}
-                  {run.processedSources} processed messages
+              <section className="workspace-import" key={run.id}>
+                {run.completedAt !== null && (
+                  <strong>{text.scanFinished}</strong>
+                )}
+                <p className="workspace-caption">
+                  {text.requestedHistory} {importDateLabel(run.from)} –{" "}
+                  {importDateLabel(run.to)} {text.endExclusive}
                 </p>
                 {run.pauseReason && (
-                  <p className="notice">
+                  <p className="workspace-pause-reason">
                     {run.pauseReason.includes("budget")
                       ? text["import.paused.budget"]
                       : run.pauseReason.includes("auth")
@@ -280,10 +299,37 @@ export function Coverage({
                         : text["import.paused.service"]}
                   </p>
                 )}
-              </div>
+              </section>
             ))}
+            <div className="workspace-inbox-actions">
+              <a
+                href={`/onboarding/review?connectionId=${encodeURIComponent(connection.id)}`}
+              >
+                {text.reviewImport}
+              </a>
+            </div>
+            <details className="workspace-technical">
+              <summary>{text.importDetails}</summary>
+              <p>
+                Schedule setting:{" "}
+                {connection.schedulingState.replaceAll("_", " ")}
+              </p>
+              {connection.imports.map((run) => (
+                <div key={run.id}>
+                  <p>
+                    {run.stage.replaceAll("_", " ")} · {run.discoveredSources}{" "}
+                    candidate messages · {run.processedSources} processed
+                    messages
+                  </p>
+                  <p>
+                    Requested interval: {run.from} to {run.to} (end exclusive).
+                  </p>
+                </div>
+              ))}
+            </details>
           </article>
-        ))}
+        );
+      })}
     </section>
   );
 }

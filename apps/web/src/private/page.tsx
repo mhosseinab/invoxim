@@ -20,10 +20,11 @@ import { useEffect, useState } from "react";
 import { BrandMark, Icon } from "../icons";
 import { PrivateLoadError, readPrivate } from "./api";
 import { amount, Coverage, PurchaseCard, Totals } from "./components";
-import { reviewQuestions, privateCopy as text } from "./copy";
+import { privateCopy as text } from "./copy";
 import { Corrections } from "./corrections";
 import { Reviews } from "./reviews";
 import "./purchases.css";
+import "./workspace.css";
 
 type Data = {
   profile: ProfileView;
@@ -179,35 +180,53 @@ function Detail({
 }) {
   const purchase = detail.purchase;
   return (
-    <>
+    <div className="workspace-detail">
       <a href="/purchases">← Back to purchases</a>
-      <section className="private-heading">
-        <p className="eyebrow">
-          {purchase.date} · {purchase.evidenceCount} supporting documents
-        </p>
-        <h1>{purchase.merchant}</h1>
-        <p>
-          {purchase.category.replaceAll("_", " ")}
-          {purchase.invoiceReference &&
-            ` · Invoice ${purchase.invoiceReference}`}
-          {purchase.orderReference && ` · Order ${purchase.orderReference}`}
-        </p>
+      <section className="private-heading workspace-detail-heading">
+        <div>
+          <p className="eyebrow">
+            {purchase.date} · {purchase.evidenceCount}{" "}
+            {purchase.evidenceCount === 1
+              ? text.supportingDocument
+              : text.supportingDocuments}
+          </p>
+          <h1>{purchase.merchant}</h1>
+          <p>
+            {purchase.category.replaceAll("_", " ")}
+            {purchase.invoiceReference &&
+              ` · Invoice ${purchase.invoiceReference}`}
+            {purchase.orderReference && ` · Order ${purchase.orderReference}`}
+          </p>
+          <span className="status">
+            {purchase.paymentState === "paid"
+              ? text.paymentDocumented
+              : purchase.paymentState === "partially_paid"
+                ? text.partiallyPaid
+                : purchase.paymentState === "unpaid"
+                  ? text.unpaidInvoice
+                  : text.paymentUnconfirmed}
+          </span>
+        </div>
+        {purchase.documentTotalMinor !== null && purchase.currency && (
+          <div className="workspace-detail-document">
+            <span>{text["purchase.documentTotal"]}</span>
+            <strong>
+              {amount(purchase.documentTotalMinor, purchase.currency)}
+            </strong>
+          </div>
+        )}
       </section>
       {purchase.origin === "user-supplied" && (
         <p className="notice">{text["manualSource.userSuppliedRecord"]}</p>
       )}
-      <Totals values={purchase.lifecycle} label={text.lifecycle} />
-      {purchase.documentTotalMinor !== null && purchase.currency && (
-        <p>
-          {text["purchase.documentTotal"]}:{" "}
-          {amount(purchase.documentTotalMinor, purchase.currency)}
-        </p>
-      )}
+      <div className="workspace-detail-finances">
+        <Totals values={purchase.lifecycle} label={text.lifecycle} />
+      </div>
       {purchase.paymentState === "unpaid" && (
-        <p className="notice">{text["purchase.unpaid"]}</p>
+        <p className="workspace-caption">{text["purchase.unpaid"]}</p>
       )}
       {purchase.paymentState === "unknown" && (
-        <p className="notice">
+        <p className="workspace-caption">
           Payment is unconfirmed. The document total is not counted as a
           payment.
         </p>
@@ -269,13 +288,8 @@ function Detail({
           </ul>
         </section>
       )}
-      <Corrections
-        detail={detail}
-        onReload={onReload}
-        expectedUserId={expectedUserId}
-      />
-      <div className="private-detail-grid">
-        <section className="private-panel">
+      <div className="workspace-detail-content">
+        <section className="private-panel workspace-evidence">
           <h2>Purchase timeline</h2>
           <p className="muted">
             Supporting source records and documented events. Pending refunds do
@@ -301,15 +315,16 @@ function Detail({
                 <p>
                   <strong>{text["purchase.originalUnavailable"]}</strong>
                 </p>
-                <p className="muted">
-                  {item.source.reason === "source_deleted"
-                    ? text.sourceDeleted
-                    : item.source.reason === "mailbox_disconnected"
-                      ? text.sourceDisconnected
-                      : text.sourceNotImplemented}
-                </p>
                 <details>
                   <summary>{text["purchase.why"]}</summary>
+                  <p className="muted">
+                    {item.source.reason === "source_deleted"
+                      ? text.sourceDeleted
+                      : item.source.reason === "mailbox_disconnected"
+                        ? text.sourceDisconnected
+                        : text.sourceNotImplemented}
+                  </p>
+
                   <p>
                     Source: {item.source.provider}. Relationship:{" "}
                     {item.relationship.replaceAll("_", " ")}. Evidence:{" "}
@@ -322,30 +337,22 @@ function Detail({
             ))}
           </ol>
         </section>
-        <aside className="private-panel" aria-label="About these amounts">
-          <h2>About these amounts</h2>
+        <details className="workspace-about">
+          <summary>About these amounts</summary>
           <p>{text["home.spendingCaption"]}</p>
           <p>
             The document total describes the purchase. Paid and refunded amounts
             describe documented financial events.
           </p>
-          {purchase.reviewReasons.length > 0 && (
-            <div className="notice">
-              <strong>Needs attention</strong>
-              <ul>
-                {purchase.reviewReasons.map((reason) => (
-                  <li key={reason}>
-                    {reviewQuestions[reason] ??
-                      "Some source details need review. Uncertain events are excluded from spending."}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
           <p>Opening originals is not available on this screen yet.</p>
-        </aside>
+        </details>
       </div>
-    </>
+      <Corrections
+        detail={detail}
+        onReload={onReload}
+        expectedUserId={expectedUserId}
+      />
+    </div>
   );
 }
 export function PrivatePage({ displayName }: { displayName: string }) {
@@ -490,7 +497,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
   }, []);
   return (
     <div
-      className={`app-frame private-app${!detailId && !connectionPage && !attentionPage ? " purchase-list-page" : ""}`}
+      className={`app-frame private-app workspace-page${!detailId && !connectionPage && !attentionPage ? " purchase-list-page" : ""}`}
     >
       <a className="skip" href="#content">
         Skip to content
@@ -551,7 +558,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
             role="status"
             aria-live="polite"
             aria-atomic="true"
-            className={`private-load-status${state.kind === "ready" && !detailId && !connectionPage && !attentionPage ? " purchase-ready-status" : ""}`}
+            className={`private-load-status${state.kind === "ready" ? " purchase-ready-status" : ""}`}
           >
             {state.kind === "loading"
               ? text.loading
@@ -604,9 +611,8 @@ export function PrivatePage({ displayName }: { displayName: string }) {
             ) : connectionPage ? (
               <>
                 <h1>{text.connections}</h1>
-                <p>
-                  Mailbox access and import status. Signing in alone does not
-                  start reading email.
+                <p className="workspace-introduction">
+                  Mailbox access and receipt import status.
                 </p>
                 <Coverage coverage={state.data.coverage} full />
               </>
