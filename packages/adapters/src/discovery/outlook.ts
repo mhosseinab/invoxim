@@ -92,8 +92,10 @@ const prefix = "https://graph.microsoft.com/v1.0/me";
 const folderSelect = "id,parentFolderId,displayName,childFolderCount,isHidden";
 export function createOutlookGraphDiscovery(
   accessToken: string,
+  options: { pageSize?: 1 | 5 } = {},
 ): OutlookGraphDiscoveryPort {
-  const request = createOutlookGraphTransport(accessToken);
+  const pageSize = options.pageSize ?? 5;
+  const request = createOutlookGraphTransport(accessToken, pageSize);
   return {
     async folders(input) {
       const parent =
@@ -110,11 +112,13 @@ export function createOutlookGraphDiscovery(
       const url =
         input.nextLink !== undefined
           ? validateOutlookContinuation(input.nextLink, scope)
-          : `${collection}?${new URLSearchParams({ $select: folderSelect, $top: "5", includeHiddenFolders: "true" })}`;
+          : `${collection}?${new URLSearchParams({ $select: folderSelect, $top: String(pageSize), includeHiddenFolders: "true" })}`;
       const result = parse(
         folderPageSchema,
         await request(url, input.signal, "collection"),
       );
+      if (result.value.length > pageSize)
+        throw new DiscoveryError("UNAVAILABLE");
       const nextLink = result["@odata.nextLink"];
       if (
         parent &&
@@ -174,11 +178,13 @@ export function createOutlookGraphDiscovery(
       const url =
         input.nextLink !== undefined
           ? validateOutlookContinuation(input.nextLink, scope)
-          : `${prefix}/mailFolders/${encodeURIComponent(input.folderId)}/messages?${new URLSearchParams({ $select: "id", $top: "5", $filter: filter })}`;
+          : `${prefix}/mailFolders/${encodeURIComponent(input.folderId)}/messages?${new URLSearchParams({ $select: "id", $top: String(pageSize), $filter: filter })}`;
       const result = parse(
         messagePageSchema,
         await request(url, input.signal, "collection"),
       );
+      if (result.value.length > pageSize)
+        throw new DiscoveryError("UNAVAILABLE");
       const nextLink = result["@odata.nextLink"];
       if (nextLink === url) throw new DiscoveryError("UNAVAILABLE");
       return {
@@ -199,6 +205,8 @@ export function createOutlookGraphDiscovery(
         deltaPageSchema,
         await request(url, input.signal, "delta"),
       );
+      if (result.value.length > pageSize)
+        throw new DiscoveryError("UNAVAILABLE");
       const nextLink = result["@odata.nextLink"],
         deltaLink = result["@odata.deltaLink"];
       if (Boolean(nextLink) === Boolean(deltaLink) || nextLink === url)

@@ -9,21 +9,16 @@ import type {
 import {
   aiConfiguration,
   createFxReportingService,
-  createGmailContentFactory,
-  createGmailDiscoveryProviderFactory,
   createJobStore,
   createLifecycleCleanup,
-  createProcessingDiscoveryReadiness,
   createProcessingReviewResolver,
   createPublicReferenceRateReader,
   createRecurringService,
   fxReferenceConfiguration,
-  gmailConfiguration,
   lifecycleDependencies,
   loginConfiguration,
 } from "@invoxim/adapters";
 import { publicConfigSchema } from "@invoxim/contracts";
-import type { JobHandler } from "@invoxim/core";
 import { Hono } from "hono";
 import { createFxPeriodService } from "../../../packages/adapters/src/fx/period";
 import { createFxPeriodSigning } from "../../../packages/adapters/src/fx/period-signing";
@@ -31,7 +26,6 @@ import { runtimeAiBindings } from "./ai-bindings";
 import { createAiRoutes } from "./ai-routes";
 import { createAuthRoutes } from "./auth-routes";
 import { createCorrectionRoutes } from "./correction-routes";
-import { createDiscoveryRuntime } from "./discovery-runtime";
 import { createFxRoutes } from "./fx-routes";
 import { createInvocationDatabase } from "./invocation-database";
 import type { JobBindings } from "./job-configuration";
@@ -40,12 +34,15 @@ import { createJobRoutes } from "./job-routes";
 import { createJobRuntime } from "./job-runtime";
 import { createLifecycleRoutes } from "./lifecycle-routes";
 import { createMailboxRoutes } from "./mailbox-routes";
+import {
+  createMailboxRuntime,
+  mailboxProcessingConfiguration,
+} from "./mailbox-runtime";
 import { createOnboardingRoutes } from "./onboarding-routes";
 import {
   configuredOperationalObserver,
   type OperationalBindings,
 } from "./operational-configuration";
-import { createPipelineRuntime } from "./pipeline-runtime";
 import { createPurchaseRoutes } from "./purchase-routes";
 import { createRecurringRoutes } from "./recurring-routes";
 import { createStorageRoutes } from "./storage-routes";
@@ -78,15 +75,22 @@ const publicConfig = publicConfigSchema.parse({
   },
   policyRoutes: { privacy: null, terms: null },
 });
-app.get("/api/public-config", (context) =>
-  context.json(
+app.get("/api/public-config", (context) => {
+  const bindings = context.env ?? {};
+  const { providers } = mailboxProcessingConfiguration(bindings);
+  return context.json(
     publicConfigSchema.parse({
       ...publicConfig,
-      loginEnabled: !!loginConfiguration(context.env ?? {}),
-      mailProviders: gmailConfiguration(context.env ?? {}) ? ["gmail"] : [],
+      loginEnabled: !!loginConfiguration(bindings),
+      mailProviders: providers,
+      features: {
+        ...publicConfig.features,
+        outlook: providers.includes("outlook"),
+      },
     }),
-  ),
-);
+  );
+});
+
 app.route(
   "/",
   createFxRoutes({
@@ -142,6 +146,7 @@ type WorkerBindings = DriveBindings &
   GmailBindings &
   AiBindings & {
     GMAIL_DISCOVERY_ENABLED?: string;
+    OUTLOOK_DISCOVERY_ENABLED?: string;
     EXTRACTION_ENABLED?: string;
     RECURRING_ENABLED?: string;
   } & LifecycleBindings &
@@ -169,50 +174,13 @@ function configuredJobs(
   const database =
     sharedDatabase ??
     createInvocationDatabase(bindings.DB, policy.queryLimit ?? 40);
-  const gmail =
-    bindings.GMAIL_DISCOVERY_ENABLED === "true" ||
-    bindings.EXTRACTION_ENABLED === "true"
-      ? gmailConfiguration(bindings)
-      : null;
   const ai =
     bindings.EXTRACTION_ENABLED === "true" ? aiConfiguration(bindings) : null;
-  const discovery =
-    gmail && ai && bindings.GMAIL_DISCOVERY_ENABLED === "true"
-      ? createDiscoveryRuntime({
-          db: database.db,
-          providers: createGmailDiscoveryProviderFactory(database.db, gmail),
-          readiness: createProcessingDiscoveryReadiness(ai),
-          remainingStatements: database.remainingStatements,
-        })
-      : undefined;
-  const pipeline =
-    gmail && ai && (policy.queryLimit ?? 40) === 40
-      ? createPipelineRuntime({
-          db: database.db,
-          content: createGmailContentFactory(database.db, gmail),
-          ai,
-          classificationBinding: bindings.AI,
-          remainingStatements: database.remainingStatements,
-        })
-      : null;
-  const handler: JobHandler | null =
-    discovery || pipeline
-      ? {
-          run(lease, control) {
-            const selected = ["source-extract", "reprocess"].includes(
-              lease.type,
-            )
-              ? pipeline
-              : discovery;
-            return selected
-              ? selected.run(lease, control)
-              : Promise.resolve({
-                  kind: "paused" as const,
-                  code: "handler-unavailable" as const,
-                });
-          },
-        }
-      : null;
+  const handler = createMailboxRuntime({
+    db: database.db,
+    bindings,
+    remainingStatements: database.remainingStatements,
+  });
   return createJobRuntime({
     store: createJobStore(database.db, {
       policy,

@@ -508,7 +508,69 @@ export function createOutlookFolderStore(db: D1Database) {
         ? { kind: "stale" }
         : { kind: "conflict" };
   }
+  async function refreshInventory(lease: JobLease, dispatchAt: number) {
+    const guard = authorization(lease, Date.now());
+    const ready = await db
+      .prepare(
+        `SELECT 1 FROM sync_states parent JOIN jobs j ON j.user_id=parent.user_id AND j.sync_state_id=parent.id WHERE parent.user_id=? AND parent.id=? AND parent.scope_key='mailbox' AND parent.sync_kind='incremental' AND parent.stage='idle' AND j.id=? AND j.type='sync' AND j.dedupe_key LIKE 'sync:%' AND ${guard.sql}`,
+      )
+      .bind(
+        lease.context.userId,
+        lease.syncStateId,
+        lease.jobId,
+        ...guard.values,
+      )
+      .first();
+    if (!ready) return false;
+    const nonce = crypto.randomUUID();
+    const marker =
+      "EXISTS(SELECT 1 FROM sync_states parent WHERE parent.user_id=? AND parent.id=? AND parent.pending_history_id=? AND parent.stage='queued')";
+    const values = [lease.context.userId, lease.syncStateId, nonce];
+    const dedupe = `outlook:refresh:${lease.jobId}`;
+    const results = await db.batch([
+      db
+        .prepare(
+          `UPDATE sync_states SET stage='queued',pending_history_id=? WHERE user_id=? AND id=? AND stage='idle' AND ${guard.sql}`,
+        )
+        .bind(nonce, lease.context.userId, lease.syncStateId, ...guard.values),
+      db
+        .prepare(
+          `UPDATE outlook_inventory_states SET state='pending',next_link=NULL,version=version+1 WHERE user_id=? AND connection_id=? AND generation=? AND ${marker} AND ${guard.sql}`,
+        )
+        .bind(...owner(lease), ...values, ...guard.values),
+      db
+        .prepare(
+          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,'sync',?,'ready',?,0 WHERE ${marker} AND ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          lease.context.userId,
+          lease.connectionId,
+          lease.consentId,
+          lease.generation,
+          lease.syncStateId,
+          dedupe,
+          dispatchAt,
+          ...values,
+          ...guard.values,
+        ),
+      db
+        .prepare(
+          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
+        )
+        .bind(
+          lease.context.userId,
+          lease.jobId,
+          ...values,
+          ...guard.values,
+          lease.context.userId,
+          dedupe,
+        ),
+    ]);
+    return results.at(-1)?.meta.changes === 1;
+  }
   return {
+    refreshInventory,
     getNextInventory,
     saveExclusions,
     stageExclusions,

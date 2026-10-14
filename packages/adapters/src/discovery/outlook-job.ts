@@ -39,8 +39,6 @@ export function createOutlookJobRunner(
       const active = async () =>
         !control.signal.aborted &&
         (await control.checkpoint()) &&
-        !control.signal.aborted &&
-        (await store.checkpoint(lease)) &&
         !control.signal.aborted;
       const resolveExclusions = async (provider: OutlookGraphDiscoveryPort) => {
         const ids: string[] = [];
@@ -56,15 +54,24 @@ export function createOutlookJobRunner(
       };
       try {
         if (options.remainingStatements() < 20)
-          return { kind: "paused", code: "budget" };
+          return { kind: "retry", code: "transient" };
         if (!(await active())) return { kind: "paused", code: "auth" };
         let next = await store.getNextInventory(lease);
         if (next.kind === "stale") return { kind: "paused", code: "auth" };
         if (next.kind === "limit")
           return { kind: "terminal", code: "unsupported" };
+        if (
+          next.kind === "complete" &&
+          lease.type === "sync" &&
+          (await store.refreshInventory(lease, clock()))
+        )
+          return { kind: "completed" };
         if (!(await active())) return { kind: "paused", code: "auth" };
         const provider = await options.open(lease, control.signal);
         if (!(await active())) return { kind: "paused", code: "auth" };
+        // Refresh may consume this invocation; resume with the durable fresh token.
+        if (options.remainingStatements() < (next.excludedFolderIds ? 20 : 16))
+          return { kind: "retry", code: "transient" };
         const excludedFolderIds =
           next.excludedFolderIds ?? (await resolveExclusions(provider));
         if (
@@ -99,7 +106,7 @@ export function createOutlookJobRunner(
         }
         if (!(await active())) return { kind: "paused", code: "auth" };
         if (options.remainingStatements() < 12)
-          return { kind: "paused", code: "budget" };
+          return { kind: "retry", code: "transient" };
         const page = await provider.folders({
           ...(next.parentFolderId === null
             ? {}
@@ -111,7 +118,7 @@ export function createOutlookJobRunner(
         if (next.nextLink !== null && page.nextLink === next.nextLink)
           return { kind: "terminal", code: "malformed" };
         if (options.remainingStatements() < 9)
-          return { kind: "paused", code: "budget" };
+          return { kind: "retry", code: "transient" };
         const committed = await store.commitInventoryPage(
           lease,
           {
@@ -153,7 +160,7 @@ export function createOutlookJobRunner(
               !Number.isFinite(cause.retryAfterMs ?? 30000) ||
               (cause.retryAfterMs ?? 30000) > 86400000;
             if (options.remainingStatements() < (longPause ? 5 : 3))
-              return { kind: "paused", code: "budget" };
+              return { kind: "retry", code: "transient" };
             const deferred = await store.deferRate(
               lease,
               cause.retryAfterMs ?? 30000,

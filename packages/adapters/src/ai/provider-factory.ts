@@ -94,8 +94,10 @@ export function createAiProviderFactory(
         throw new AiSettingsError("UNAVAILABLE");
       key = credential.secret.key;
     }
-    async function current() {
-      const latest = await settings.current(tenant);
+    async function current(checkSettings = true) {
+      // Initial selection already read settings. Actual transport always reloads
+      // settings and consent after every intervening await.
+      const latest = checkSettings ? await settings.current(tenant) : row;
       if (
         !latest ||
         latest.revision !== row?.revision ||
@@ -131,7 +133,7 @@ export function createAiProviderFactory(
           .first(),
       );
     }
-    if (!(await current())) throw new AiSettingsError("CONFLICT");
+    if (!(await current(false))) throw new AiSettingsError("CONFLICT");
     const configurationDigest = await selectedAiConfigurationDigest(
       destination,
       model,

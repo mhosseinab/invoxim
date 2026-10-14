@@ -1,13 +1,10 @@
-import type { AiBindings, GmailBindings } from "@invoxim/adapters";
 import {
   AuthRequestError,
-  aiConfiguration,
   createGmailDiscoveryProviderFactory,
   createLoginAuth,
   createOnboardingImportPreparation,
   createOnboardingRepository,
   createProfileService,
-  gmailConfiguration,
   loginConfiguration,
   ProcessingNotConfiguredError,
   readAuthJson,
@@ -15,13 +12,11 @@ import {
 import { createOnboardingUsecases, OnboardingError } from "@invoxim/core";
 import { Hono } from "hono";
 import { createInvocationDatabase } from "./invocation-database";
-import type { JobBindings } from "./job-configuration";
-import { jobConfiguration } from "./job-configuration";
-export interface OnboardingBindings
-  extends AiBindings, GmailBindings, JobBindings {
-  GMAIL_DISCOVERY_ENABLED?: string;
-  EXTRACTION_ENABLED?: string;
-}
+import {
+  type MailboxRuntimeBindings,
+  mailboxProcessingConfiguration,
+} from "./mailbox-runtime";
+export type OnboardingBindings = MailboxRuntimeBindings;
 function error(
   status: 400 | 401 | 403 | 409 | 413 | 415 | 429 | 503,
   code: string,
@@ -146,21 +141,14 @@ export function createOnboardingRoutes() {
         config,
       ).current(request.headers);
     if (!current) return { response: error(401, "unauthorized") } as const;
-    const ai = aiConfiguration(bindings),
-      gmail = gmailConfiguration(bindings),
-      jobs = jobConfiguration(bindings);
+    const { ai, gmail, outlook, providers } =
+      mailboxProcessingConfiguration(bindings);
     const repository = createOnboardingRepository(database.db, {
       ai,
-      ready:
-        !!ai &&
-        !!gmail &&
-        !!jobs &&
-        jobs.queryLimit === 40 &&
-        bindings.GMAIL_DISCOVERY_ENABLED === "true" &&
-        bindings.EXTRACTION_ENABLED === "true",
+      ready: providers.length > 0,
       signingSecret: config.secret,
-      mailboxLimit: gmail?.limit ?? 3,
-      mailboxProviders: gmail ? ["gmail"] : [],
+      mailboxLimit: gmail?.limit ?? outlook?.limit ?? 3,
+      mailboxProviders: providers,
       remainingStatements: database.remainingStatements,
     });
     return {
@@ -175,7 +163,7 @@ export function createOnboardingRoutes() {
           gmail
             ? createGmailDiscoveryProviderFactory(database.db, gmail)
             : null,
-          false,
+          !!outlook,
         ),
       }),
     };

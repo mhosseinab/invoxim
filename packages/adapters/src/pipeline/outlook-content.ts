@@ -181,7 +181,7 @@ export function createOutlookContentReader(
         } finally {
           reader.releaseLock();
         }
-        await checkpoint();
+        active();
         return JSON.parse(
           new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
             bytes.subarray(0, length),
@@ -265,7 +265,9 @@ export function createOutlookContentReader(
             bytes,
           });
         }
-        await checkpoint();
+        // Returning transient bytes has no external effect. The pipeline checks
+        // the accepted processing selection before models and fences every write.
+        active();
         const root: MimePart =
           input.partKey === undefined
             ? { partId: "", mimeType: "multipart/mixed", children }

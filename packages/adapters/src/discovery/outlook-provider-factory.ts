@@ -89,7 +89,9 @@ export function createOutlookDiscoveryProviderFactory(
         )
           throw new DiscoveryError("AUTH_REQUIRED");
         await requireConnection();
-        return createOutlookGraphDiscovery(snapshot.secret.accessToken);
+        return createOutlookGraphDiscovery(snapshot.secret.accessToken, {
+          pageSize: 1,
+        });
       } catch (cause) {
         active();
         if (cause instanceof DiscoveryError) throw cause;

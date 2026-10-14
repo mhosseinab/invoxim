@@ -33,7 +33,6 @@ export function createOutlookContentFactory(
           throw new ContentError("CONTENT_AUTH_CHANGED");
       }
       async function requireConnection() {
-        await active();
         const row = await db
           .prepare(
             "SELECT id,scopes FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='outlook' AND state='connected' AND generation=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
@@ -45,7 +44,6 @@ export function createOutlookContentFactory(
             lease.context.userId,
           )
           .first<{ id: string; scopes: string }>();
-        await active();
         if (!row) throw new ContentError("CONTENT_AUTH_REQUIRED");
         let scopes: string[];
         try {
@@ -56,6 +54,7 @@ export function createOutlookContentFactory(
         validateOutlookReadScopes(scopes.join(" "), true);
       }
       try {
+        await active();
         await requireConnection();
         const target = {
           kind: "connection" as const,
@@ -63,7 +62,8 @@ export function createOutlookContentFactory(
           generation: lease.generation,
         };
         let snapshot = await vault.read(lease.context, target);
-        await active();
+        if (control.signal.aborted)
+          throw new ContentError("CONTENT_AUTH_CHANGED");
         if (
           !snapshot ||
           !("accessToken" in snapshot.secret) ||
@@ -80,6 +80,7 @@ export function createOutlookContentFactory(
           await active();
           snapshot = await vault.read(lease.context, target);
           await active();
+          await requireConnection();
         }
         if (
           !snapshot ||
@@ -89,7 +90,8 @@ export function createOutlookContentFactory(
           snapshot.secret.expiresAt <= Date.now() + 30000
         )
           throw new ContentError("CONTENT_AUTH_REQUIRED");
-        await requireConnection();
+        if (control.signal.aborted)
+          throw new ContentError("CONTENT_AUTH_CHANGED");
         return createOutlookContentReader(snapshot.secret.accessToken);
       } catch (cause) {
         if (control.signal.aborted)

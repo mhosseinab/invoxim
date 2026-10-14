@@ -65,7 +65,8 @@ export function createPipelineService(
         | ((code: string) => Promise<JobOutcome>)
         | undefined;
       try {
-        if (!(await authorized())) return stale;
+        // load performs the full lease/source/processing-selection check in its
+        // owned query; avoid repeating that read before any external effect.
         const work = await repository.load(lease);
         if (!work) return stale;
         const currentDocument = work.documents[work.documentIndex];
@@ -296,7 +297,8 @@ export function createPipelineService(
               }
             : {}),
         }));
-        if (!(await authorized())) return stale;
+        // Selection has no external effects. Both metered engines re-check the
+        // lease and accepted selection immediately before model authorization.
         const selected = await options.inference.open(lease, work, parts);
         let classifiedCategory: ReceiptCategory | undefined;
         if (options.classification) {

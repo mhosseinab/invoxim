@@ -162,7 +162,7 @@ export function createOutlookDeltaRunner(
     if (control.signal.aborted || !(await control.checkpoint()))
       return { kind: "paused", code: "auth" };
     if (options.remainingStatements() < 6)
-      return { kind: "paused", code: "budget" };
+      return { kind: "retry", code: "transient" };
     const now = clock();
     const nonce = crypto.randomUUID();
     const leaseGuard = guard(lease, now);
@@ -338,7 +338,7 @@ export function createOutlookDeltaRunner(
     if (control.signal.aborted || !(await control.checkpoint()))
       return { kind: "paused", code: "auth" };
     if (options.remainingStatements() < 5)
-      return { kind: "paused", code: "budget" };
+      return { kind: "retry", code: "transient" };
     const now = clock();
     const nonce = crypto.randomUUID();
     const leaseGuard = guard(lease, now);
@@ -416,7 +416,7 @@ export function createOutlookDeltaRunner(
     if (control.signal.aborted || !(await control.checkpoint()))
       return { kind: "paused", code: "auth" };
     if (options.remainingStatements() < 5)
-      return { kind: "paused", code: "budget" };
+      return { kind: "retry", code: "transient" };
     const now = clock();
     const delay = Number.isFinite(delayMs) ? Math.max(1000, delayMs) : 86400001;
     const paused =
@@ -569,7 +569,7 @@ export function createOutlookDeltaRunner(
           false,
         );
       if (options.remainingStatements() < 16)
-        return { kind: "paused", code: "budget" };
+        return { kind: "retry", code: "transient" };
       if (control.signal.aborted || !(await control.checkpoint()))
         return { kind: "paused", code: "auth" };
       const continuation = folder.page_token ?? folder.history_cursor;
@@ -668,7 +668,7 @@ export function createOutlookDeltaRunner(
       if (control.signal.aborted || !(await control.checkpoint()))
         return { kind: "paused", code: "auth" };
       if (options.remainingStatements() < metadata.length * 4 + 5)
-        return { kind: "paused", code: "budget" };
+        return { kind: "retry", code: "transient" };
       const leaseGuard = guard(lease, now);
       const nonce = crypto.randomUUID();
       const childMarker = `EXISTS(SELECT 1 FROM sync_states child WHERE child.user_id=? AND child.id=? AND child.discovery_version=? AND child.pending_history_id=?)`;

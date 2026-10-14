@@ -101,7 +101,10 @@ export function validateOutlookContinuation(
   }
   return value;
 }
-export function createOutlookGraphTransport(accessToken: string) {
+export function createOutlookGraphTransport(
+  accessToken: string,
+  pageSize: 1 | 5 = 5,
+) {
   if (
     typeof accessToken !== "string" ||
     !/^[\x21-\x7e]{1,8192}$/.test(accessToken)
@@ -131,7 +134,7 @@ export function createOutlookGraphTransport(accessToken: string) {
         fetch(url, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
-            Prefer: 'IdType="ImmutableId", odata.maxpagesize=5',
+            Prefer: `IdType="ImmutableId", odata.maxpagesize=${pageSize}`,
           },
           redirect: "manual",
           signal: controller.signal,
