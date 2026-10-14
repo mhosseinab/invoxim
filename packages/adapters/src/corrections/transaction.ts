@@ -1,6 +1,7 @@
 import type { CorrectionCommand, CorrectionResult } from "@invoxim/contracts";
 import type { CorrectionSession } from "@invoxim/core";
 import { CorrectionError } from "@invoxim/core";
+import { sha256Hex } from "../hash";
 export type SqlValue = string | number | null;
 export interface VersionCheck {
   sql: string;
@@ -15,14 +16,6 @@ function canonical(value: unknown): unknown {
         .map(([key, item]) => [key, canonical(item)]),
     );
   return value;
-}
-async function digest(value: string) {
-  return Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
-    ),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
 }
 export function commandRoute(command: CorrectionCommand) {
   return `${command.kind}:${"purchaseId" in command ? command.purchaseId : "entryId" in command ? command.entryId : "reviewId" in command ? command.reviewId : command.request.target.id}`;
@@ -46,7 +39,7 @@ export async function replayCorrection(
     )
     .first();
   if (!live) throw new CorrectionError("CONFLICT");
-  const bodyHash = await digest(JSON.stringify(canonical(command)));
+  const bodyHash = await sha256Hex(JSON.stringify(canonical(command)));
   const route = commandRoute(command);
   const saved = await db
     .prepare(

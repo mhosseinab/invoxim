@@ -1,3 +1,4 @@
+import { sha256Hex } from "../hash";
 import type { TenantContext } from "../tenant-context";
 import type {
   AiAttemptIdentity,
@@ -203,18 +204,13 @@ export async function aiRunIdentityKey(
   checkpoint: AiCheckpoint,
 ): Promise<string> {
   const { tenant, identity, config } = checkpoint;
-  const key = JSON.stringify([
-    tenant.userId,
-    identity.documentId,
-    identity.contentHash,
-    identity.extractionVersion,
-    config.fingerprint,
-  ]);
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(key),
+  return sha256Hex(
+    JSON.stringify([
+      tenant.userId,
+      identity.documentId,
+      identity.contentHash,
+      identity.extractionVersion,
+      config.fingerprint,
+    ]),
   );
-  return Array.from(new Uint8Array(digest), (value) =>
-    value.toString(16).padStart(2, "0"),
-  ).join("");
 }

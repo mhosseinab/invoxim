@@ -1,12 +1,15 @@
 import { hasControlCharacters } from "@invoxim/contracts";
 import { z } from "zod";
+import { sha256Hex } from "../hash";
 
 /**
  * Shared security primitives (D12, S7, S8, D13). Later cards migrate
  * drive/mailbox/ai/corrections call sites onto these; this module is the
  * single definition so the same-body twins (`key`/`signingKey`,
  * `digest`/`hash`, `noticeText`/`policyText`) collapse onto one name each.
+ * SHA-256 hex lives in `../hash` (SW-1) and is re-exported here.
  */
+export { sha256Hex } from "../hash";
 
 /** Unpadded base64url (S7). The strict decode below is the only decoder. */
 export function encodeBase64url(bytes: Uint8Array): string {
@@ -36,16 +39,6 @@ export function decodeBase64url(value: unknown): Uint8Array<ArrayBuffer> {
   );
   if (encodeBase64url(bytes) !== value) throw new Error("decode");
   return bytes;
-}
-
-/** SHA-256 lowercase hex of UTF-8 text or raw bytes. Collapses `digest`/`hash`. */
-export async function sha256Hex(value: string | Uint8Array): Promise<string> {
-  const data =
-    typeof value === "string" ? new TextEncoder().encode(value) : value;
-  return Array.from(
-    new Uint8Array(await crypto.subtle.digest("SHA-256", data)),
-    (byte) => byte.toString(16).padStart(2, "0"),
-  ).join("");
 }
 
 /** OAuth state digest (D12). Same output as the former per-module stateHash. */

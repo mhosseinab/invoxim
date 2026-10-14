@@ -2,7 +2,7 @@ import {
   type ApprovedAiConfig,
   EMAIL_CLASSIFICATION_VERSION,
 } from "@invoxim/core";
-import { hashOnboardingValue } from "../onboarding/configuration";
+import { hashJsonValue } from "../hash";
 import type { PipelineClassificationFactory } from "../pipeline/types";
 import type { AiPriceSnapshot } from "./budget";
 import {
@@ -23,7 +23,7 @@ export async function computeClassificationFingerprint(input: {
   credentialVersion: number;
   policyVersion: number;
 }): Promise<string> {
-  return hashOnboardingValue(
+  return hashJsonValue(
     buildFingerprintTuple({
       mode: "hosted",
       ...input,
@@ -57,7 +57,7 @@ export function createReceiptClassifierFactory(
       if (!row) throw new AiSettingsError("CONFLICT");
       const document = work.documents[work.documentIndex];
       if (!document) throw new AiSettingsError("CONFLICT");
-      const configurationDigest = await hashOnboardingValue({
+      const configurationDigest = await hashJsonValue({
         classification: configuration,
         classifierPolicyVersion: CLEF_RECEIPT_POLICY_VERSION,
         sourceDocuments: [

@@ -1,5 +1,6 @@
 import type { DeleteDataPreview, TenantContext } from "@invoxim/core";
 import { LifecycleError } from "@invoxim/core";
+import { sha256Hex } from "../hash";
 export const targetObservations =
   "SELECT o.id FROM observations o JOIN documents d ON d.user_id=o.user_id AND d.id=o.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id WHERE s.user_id=? AND s.connection_id=?";
 export const alternateObservation =
@@ -38,12 +39,7 @@ export async function previewSnapshot(
 export async function projectPreview(
   snapshot: string,
 ): Promise<DeleteDataPreview> {
-  const fingerprint = Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(snapshot)),
-    ),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
+  const fingerprint = await sha256Hex(snapshot);
   return {
     ...JSON.parse(snapshot),
     fingerprint,

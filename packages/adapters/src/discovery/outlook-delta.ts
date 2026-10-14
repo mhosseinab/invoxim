@@ -1,6 +1,7 @@
 import type { JobLease, JobOutcome } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
+import { sourceKey } from "../hash";
 import type { OutlookGraphDiscoveryPort } from "./outlook";
 import {
   validateOutlookContinuation,
@@ -55,15 +56,6 @@ function exclusionOwner(lease: JobLease) {
     lease.connectionId,
     lease.generation,
   ];
-}
-async function sourceKey(lease: JobLease, messageId: string) {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(
-      JSON.stringify([lease.context.userId, lease.connectionId, messageId]),
-    ),
-  );
-  return `source:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}:${lease.generation}`;
 }
 function guard(lease: JobLease, now: number) {
   return {
@@ -763,7 +755,12 @@ export function createOutlookDeltaRunner(
             ...leaseGuard.values,
           ],
         );
-        const dedupeKey = await sourceKey(lease, item.id);
+        const dedupeKey = await sourceKey(
+          lease.context.userId,
+          lease.connectionId,
+          item.id,
+          lease.generation,
+        );
         add(
           `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,'source-extract',?,'ready',?,? WHERE ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
           [

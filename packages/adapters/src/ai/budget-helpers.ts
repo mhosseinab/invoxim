@@ -1,4 +1,5 @@
 import type { AiUsage, ApprovedAiConfig } from "@invoxim/core";
+import { hashJsonValue } from "../hash";
 import type { AiBudgetPolicy, AiPriceSnapshot } from "./budget-types";
 import { buildFingerprintTuple } from "./configuration";
 
@@ -26,15 +27,7 @@ export function ceil(value: bigint): bigint {
   return (value + MILLION - 1n) / MILLION;
 }
 export async function digest(value: unknown): Promise<string> {
-  return Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(JSON.stringify(value)),
-      ),
-    ),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
+  return hashJsonValue(value);
 }
 
 /** Run fingerprint recipe (A1). Must stay byte-identical to configuration.ts and classifier-factory.ts. */

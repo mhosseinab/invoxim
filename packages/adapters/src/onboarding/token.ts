@@ -1,7 +1,7 @@
 import { OnboardingError } from "@invoxim/core";
 import { z } from "zod";
+import { hashJsonValue } from "../hash";
 import { signToken, type TokenDomain, verifyToken } from "../security/token";
-import { hashOnboardingValue } from "./configuration";
 
 /** Historical review domain: signs the decoded JSON payload (S2). */
 const reviewDomain: TokenDomain = {
@@ -38,7 +38,7 @@ export async function signReview(payload: ReviewPayload, secret: string) {
     json = JSON.stringify(checked);
   return {
     reviewToken: await signToken(reviewDomain, json, secret),
-    disclosureVersion: await hashOnboardingValue(checked),
+    disclosureVersion: await hashJsonValue(checked),
   };
 }
 export async function verifyReview(

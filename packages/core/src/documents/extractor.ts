@@ -1,3 +1,4 @@
+import { sha256Hex } from "../hash";
 import { selectBodyText } from "./body-selection";
 import { inertHtmlText } from "./html";
 import { binarySignature } from "./signatures";
@@ -30,13 +31,6 @@ function partRole(
     part.disposition !== "attachment"
     ? "body"
     : "attachment";
-}
-
-async function hashHex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 /**
@@ -337,7 +331,7 @@ async function directModelInput(
     const grouped = group.length > 1;
     const identityPart = grouped ? input.root : first;
     const hashBytes = grouped ? framedGroupBytes(group) : first.bytes;
-    const contentHash = await hashHex(hashBytes);
+    const contentHash = await sha256Hex(hashBytes);
     const mimeType = normalizeMime(identityPart.mimeType);
     const base = {
       identity: {
@@ -564,7 +558,7 @@ export function createDocumentTextExtractor(
         const bytes = node.bytes;
         if (!bytes) return failure("unreadable", "invalid_mime");
         const mimeType = normalizeMime(node.mimeType);
-        const contentHash = await hashHex(bytes);
+        const contentHash = await sha256Hex(bytes);
         const base = {
           identity: {
             connectionId: input.connectionId,

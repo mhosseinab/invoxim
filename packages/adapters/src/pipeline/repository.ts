@@ -8,6 +8,7 @@ import type {
 } from "@invoxim/core";
 import { normalizeLedgerMerchant, parseMoney } from "@invoxim/core";
 import { z } from "zod";
+import { hashJsonValue } from "../hash";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 import { loadLedgerSnapshot } from "./ledger-snapshot";
 import {
@@ -841,21 +842,15 @@ async function continuationKey(
   sourceId: string,
   next: PipelineAdvance,
 ): Promise<string> {
-  const bytes = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(
-      json([
-        lease.context.userId,
-        sourceId,
-        lease.connectionId,
-        lease.generation,
-        lease.consentId,
-        lease.type,
-        next.stage,
-        next.documentIndex,
-        next.extractionFingerprint ?? null,
-      ]),
-    ),
-  );
-  return `pipeline:${Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  return `pipeline:${await hashJsonValue([
+    lease.context.userId,
+    sourceId,
+    lease.connectionId,
+    lease.generation,
+    lease.consentId,
+    lease.type,
+    next.stage,
+    next.documentIndex,
+    next.extractionFingerprint ?? null,
+  ])}`;
 }

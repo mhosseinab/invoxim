@@ -20,6 +20,7 @@ import {
 import type { TenantContext } from "@invoxim/core";
 import { parseMinor } from "@invoxim/core";
 import { z } from "zod";
+import { hashJsonValue } from "../hash";
 import { activeProfile } from "../pipeline/repository-guards";
 
 export class PurchaseViewError extends Error {
@@ -194,10 +195,7 @@ function display(row: Row, filter: PurchaseFilters): PurchaseView {
   });
 }
 async function filterKey(filter: PurchaseFilters) {
-  const data = new TextEncoder().encode(JSON.stringify(filter));
-  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", data))]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return hashJsonValue(filter);
 }
 function encodeCursor(date: string, id: string, filter: string) {
   return btoa(

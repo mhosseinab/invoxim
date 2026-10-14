@@ -6,6 +6,7 @@ import type {
   TenantContext,
 } from "@invoxim/core";
 import { validateExtraction } from "@invoxim/core";
+import { hashJsonValue } from "../hash";
 import { selectedOnboardingConfigurationDigest } from "../onboarding/configuration";
 import { noticesReady } from "../onboarding/read";
 import { createCredentialVault } from "../security/vault";
@@ -272,17 +273,11 @@ export function createAiProbeService(
         const reserved = await store.reserve(input);
         if (reserved === "budget") throw new AiSettingsError("BUDGET");
         if (reserved === "existing") throw new AiSettingsError("CONFLICT");
-        const attemptDigest = await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(
-            JSON.stringify([
-              session.tenant.userId,
-              selected.config.fingerprint,
-              "synthetic-ai-test-v1",
-            ]),
-          ),
-        );
-        const attemptId = `probe:${Array.from(new Uint8Array(attemptDigest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+        const attemptId = `probe:${await hashJsonValue([
+          session.tenant.userId,
+          selected.config.fingerprint,
+          "synthetic-ai-test-v1",
+        ])}`;
         if (!(await store.authorize(input))) {
           await store.settle(input, { state: "not-sent", usage: null });
           throw new AiSettingsError("CONFLICT");

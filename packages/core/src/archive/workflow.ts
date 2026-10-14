@@ -1,3 +1,4 @@
+import { sha256Hex } from "../hash";
 import type { TenantContext } from "../tenant-context";
 import type { ArchiveFolderLease } from "./folders";
 import type { ArchiveUploadPlan } from "./objects";
@@ -15,12 +16,6 @@ class DeferredArchiveStage extends ArchiveServiceError {
   constructor() {
     super("UNAVAILABLE");
   }
-}
-async function digest(bytes: Uint8Array) {
-  const hash = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-  return [...new Uint8Array(hash)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 /** Executes one bounded archive stage; queue dispatch is separate. */
 export function createArchiveWorkflow(ports: ArchiveWorkflowPorts) {
@@ -86,7 +81,7 @@ export function createArchiveWorkflow(ports: ArchiveWorkflowPorts) {
         return { status: "unsupported" };
       const bytes = new Uint8Array(original.bytes);
       resumableStage = bytes.length > MAX_MULTIPART_ORIGINAL_BYTES;
-      const sha256 = await digest(bytes);
+      const sha256 = await sha256Hex(bytes);
       const isBody = ["text/plain", "text/html"].includes(work.documentMime);
       if (
         isBody
