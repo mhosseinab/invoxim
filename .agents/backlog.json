@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "maxConcurrentSubagents": 4,
+  "maxConcurrentSubagents": 6,
   "statusValues": [
     "not_started",
     "in_progress",
