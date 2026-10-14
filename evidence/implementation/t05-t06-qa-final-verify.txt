@@ -1,0 +1,212 @@
+$ pnpm check:boundaries && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm test:integration && pnpm build && pnpm test:e2e
+$ node tools/implementation/check-boundaries.mjs
+Package boundaries valid (5 concrete packages).
+$ prettier --check package.json pnpm-workspace.yaml turbo.json tsconfig.base.json eslint.config.mjs apps tools/implementation .github/workflows packages --no-error-on-unmatched-pattern
+Checking formatting...
+All matched files use Prettier code style!
+$ eslint apps tools/implementation eslint.config.mjs packages --no-error-on-unmatched-pattern
+$ turbo run typecheck
+
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/web, @invoxim/worker
+   • Running typecheck in 5 packages
+   • Remote caching disabled
+
+ WARNING  failed to get git status for dirty hash: Git error: fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+@invoxim/contracts:typecheck: cache miss, executing adc3f743bba6bb61
+@invoxim/contracts:typecheck: $ tsc --noEmit
+@invoxim/core:typecheck: cache miss, executing ff914321612e47f5
+@invoxim/core:typecheck: $ tsc --noEmit
+@invoxim/web:typecheck: cache miss, executing d46bb1293f65e079
+@invoxim/adapters:typecheck: cache miss, executing 5a7ae9b1e97be6bf
+@invoxim/web:typecheck: $ tsc --noEmit
+@invoxim/adapters:typecheck: $ tsc --noEmit
+@invoxim/worker:typecheck: cache miss, executing f08be5a1dcaa404f
+@invoxim/worker:typecheck: $ tsc --noEmit
+
+ Tasks:    5 successful, 5 total
+Cached:    0 cached, 5 total
+  Time:    4.7s
+
+$ node --test tools/implementation/*.test.mjs && turbo run test:unit
+✔ FOUND-03 allows web/contracts and worker/core/adapters (0.860225ms)
+✔ FOUND-03 rejects unknown workspace dependency (0.193216ms)
+✔ FOUND-03 rejects cycles (0.137974ms)
+✔ FOUND-03 rejects infrastructure in core and production testkit (0.682136ms)
+✔ FOUND-03 rejects relative cross-layer bypass and undeclared imports (0.117937ms)
+✔ FOUND-03 CLI checks relative and workspace-subpath imports including re-exports (195.727628ms)
+✔ FOUND-03 CLI rejects import types, import-equals and declared external infrastructure (179.662888ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 416.023712
+
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/web, @invoxim/worker
+   • Running test:unit in 5 packages
+   • Remote caching disabled
+
+ WARNING  failed to get git status for dirty hash: Git error: fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+@invoxim/contracts:test:unit: cache miss, executing 8de8a5c2047230b2
+@invoxim/contracts:build: cache miss, executing 094fa05730e08dd8
+@invoxim/contracts:test:unit: $ vitest run
+@invoxim/contracts:build: $ tsc --noEmit
+@invoxim/contracts:test:unit:
+@invoxim/contracts:test:unit:  RUN  v5.0.3 /tmp/invoxim-t05-t06-qa-final-xikiub6j/source/packages/contracts
+@invoxim/contracts:test:unit:
+@invoxim/contracts:test:unit:  ✓ test/presentation.test.ts (6 tests) 23ms
+@invoxim/contracts:test:unit:  ✓ test/contracts.test.ts (33 tests) 24ms
+@invoxim/contracts:test:unit:
+@invoxim/contracts:test:unit:  Test Files  2 passed (2)
+@invoxim/contracts:test:unit:       Tests  39 passed (39)
+@invoxim/contracts:test:unit:    Start at  12:14:40
+@invoxim/contracts:test:unit:    Duration  291ms (import 56%, transform 28%, tests 14%, worker 2%)
+@invoxim/contracts:test:unit:
+@invoxim/core:test:unit: cache miss, executing 9990394d824d63f3
+@invoxim/core:build: cache miss, executing 7f2fe30ae927aa20
+@invoxim/core:build: $ tsc --noEmit
+@invoxim/core:test:unit: $ vitest run
+@invoxim/core:test:unit:
+@invoxim/core:test:unit:  RUN  v5.0.3 /tmp/invoxim-t05-t06-qa-final-xikiub6j/source/packages/core
+@invoxim/core:test:unit:
+@invoxim/core:test:unit:  ✓ test/presentation-oracle.test.ts (1 test) 4ms
+@invoxim/core:test:unit:  ✓ test/financial-fixtures.test.ts (20 tests) 6ms
+@invoxim/core:test:unit:  ✓ test/financial-facts.test.ts (8 tests) 18ms
+@invoxim/core:test:unit:  ✓ test/money.test.ts (10 tests) 52ms
+@invoxim/core:test:unit:
+@invoxim/core:test:unit:  Test Files  4 passed (4)
+@invoxim/core:test:unit:       Tests  39 passed (39)
+@invoxim/core:test:unit:    Start at  12:14:41
+@invoxim/core:test:unit:    Duration  246ms (import 42%, transform 41%, tests 15%, worker 2%)
+@invoxim/core:test:unit:
+@invoxim/adapters:build: cache miss, executing 8fa6500206e94824
+@invoxim/adapters:build: $ tsc --noEmit
+
+ Tasks:    5 successful, 5 total
+Cached:    0 cached, 5 total
+  Time:    2.599s
+
+ WARNING  no output files found for task @invoxim/adapters#build. Please check your `outputs` key in `turbo.json`
+ WARNING  no output files found for task @invoxim/contracts#build. Please check your `outputs` key in `turbo.json`
+ WARNING  no output files found for task @invoxim/core#build. Please check your `outputs` key in `turbo.json`
+$ turbo run test:integration
+
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/web, @invoxim/worker
+   • Running test:integration in 5 packages
+   • Remote caching disabled
+
+ WARNING  failed to get git status for dirty hash: Git error: fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+@invoxim/contracts:build: cache hit, replaying logs 094fa05730e08dd8
+@invoxim/contracts:build: $ tsc --noEmit
+@invoxim/core:build: cache hit, replaying logs 7f2fe30ae927aa20
+@invoxim/core:build: $ tsc --noEmit
+@invoxim/adapters:build: cache hit, replaying logs 8fa6500206e94824
+@invoxim/adapters:build: $ tsc --noEmit
+@invoxim/worker:test:integration: cache bypass, force executing 0fa4de3e84501e87
+@invoxim/worker:test:integration: $ vitest run
+@invoxim/worker:test:integration:
+@invoxim/worker:test:integration:  RUN  v5.0.3 /tmp/invoxim-t05-t06-qa-final-xikiub6j/source/apps/worker
+@invoxim/worker:test:integration:
+@invoxim/worker:test:integration:  ✓ test/auth-adversarial.test.ts (14 tests) 389ms
+@invoxim/worker:test:integration:  ✓ test/database-adversarial.test.ts (14 tests) 102ms
+@invoxim/worker:test:integration:  ✓ test/vault-adversarial.test.ts (12 tests) 68ms
+@invoxim/worker:test:integration:  ✓ test/auth.test.ts (10 tests) 124ms
+@invoxim/worker:test:integration:  ✓ test/vault.test.ts (8 tests) 54ms
+@invoxim/worker:test:integration:  ✓ test/database.test.ts (6 tests) 61ms
+@invoxim/worker:test:integration:  ✓ test/proxy.test.ts (2 tests) 2ms
+@invoxim/worker:test:integration:  ✓ test/security-headers.test.ts (2 tests) 4ms
+@invoxim/worker:test:integration:  ✓ test/public-config.test.ts (1 test) 5ms
+@invoxim/worker:test:integration:  ✓ test/health.test.ts (2 tests) 2483ms
+@invoxim/worker:test:integration:    ✓ T02 scaffold transport (2)
+@invoxim/worker:test:integration:      ✓ exposes scaffold health without claiming working providers 2481ms
+@invoxim/worker:test:integration:
+@invoxim/worker:test:integration:  Test Files  10 passed (10)
+@invoxim/worker:test:integration:       Tests  71 passed (71)
+@invoxim/worker:test:integration:    Start at  12:14:43
+@invoxim/worker:test:integration:    Duration  25.95s (transform 63%, import 22%, tests 14%)
+@invoxim/worker:test:integration:
+@invoxim/worker:test:integration:   Transform  transforming modules took 14.41s · 63% of tracked time, re-done on every run
+@invoxim/worker:test:integration:              persist transforms across runs with fsModuleCache: true
+@invoxim/worker:test:integration:              on CI this only helps when the cache directory is persisted between runs
+@invoxim/worker:test:integration:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+@invoxim/worker:test:integration:
+
+ Tasks:    4 successful, 4 total
+Cached:    3 cached, 4 total
+  Time:    26.582s
+
+$ turbo run build
+
+   • Packages in scope: @invoxim/adapters, @invoxim/contracts, @invoxim/core, @invoxim/web, @invoxim/worker
+   • Running build in 5 packages
+   • Remote caching disabled
+
+ WARNING  failed to get git status for dirty hash: Git error: fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+@invoxim/contracts:build: cache hit, replaying logs 094fa05730e08dd8
+@invoxim/contracts:build: $ tsc --noEmit
+@invoxim/core:build: cache hit, replaying logs 7f2fe30ae927aa20
+@invoxim/core:build: $ tsc --noEmit
+@invoxim/web:build: cache miss, executing 49297f33314a5dee
+@invoxim/adapters:build: cache hit, replaying logs 8fa6500206e94824
+@invoxim/adapters:build: $ tsc --noEmit
+@invoxim/worker:build: cache miss, executing 94129116506f86d9
+@invoxim/worker:build: $ wrangler deploy --dry-run --outdir dist
+@invoxim/web:build: $ vite build && wrangler pages functions build functions --outdir dist/_worker.js
+@invoxim/web:build: vite v8.3.4 building client environment for production...
+@invoxim/web:build: transforming...
+@invoxim/web:build: ✓ 103 modules transformed.
+@invoxim/web:build: rendering chunks...
+@invoxim/web:build: computing gzip size...
+@invoxim/web:build: dist/index.html                   0.40 kB │ gzip:  0.26 kB
+@invoxim/web:build: dist/assets/index-DdFxrylh.css   11.84 kB │ gzip:  3.12 kB
+@invoxim/web:build: dist/assets/index-4hgsbY3C.js   322.83 kB │ gzip: 97.78 kB
+@invoxim/web:build:
+@invoxim/web:build: ✓ built in 117ms
+@invoxim/worker:build:
+@invoxim/worker:build:  ⛅️ wrangler 4.149.0
+@invoxim/worker:build: ────────────────────
+@invoxim/worker:build:
+@invoxim/worker:build: Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
+@invoxim/web:build:
+@invoxim/web:build:  ⛅️ wrangler 4.149.0
+@invoxim/web:build: ────────────────────
+@invoxim/web:build: ✨ Compiled Worker successfully
+@invoxim/worker:build: Total Upload: 2761.29 KiB / gzip: 477.07 KiB
+@invoxim/worker:build: No bindings found.
+@invoxim/worker:build: --dry-run: exiting now.
+@invoxim/worker:build:
+@invoxim/worker:build: Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
+
+ Tasks:    5 successful, 5 total
+Cached:    3 cached, 5 total
+  Time:    1.284s
+
+$ pnpm --filter @invoxim/web exec playwright test --config playwright.config.ts
+[WebServer] (node:2532) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 7 tests using 1 worker
+
+(node:2578) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 tests/demo.spec.ts:4:1 › PRESENT-02 only the example is an available product action (317ms)
+  ✓  2 tests/demo.spec.ts:25:1 › DEMO-01/03/04 exact records, local retrieval and evidence without API traffic (352ms)
+  ✓  3 tests/demo.spec.ts:75:1 › DEMO-02 storage sentinels cannot influence static example (not real auth/cache integration) (183ms)
+  ✓  4 tests/demo.spec.ts:87:1 › mobile keyboard, reduced motion, reflow and automated accessibility (828ms)
+  ✓  5 tests/demo.spec.ts:147:1 › UX-01 example actions lead to real refund and unpaid histories without dead ends (260ms)
+  ✓  6 tests/demo.spec.ts:186:1 › UX-02 search finds receipt details and quick filters recover from empty results (336ms)
+  ✓  7 tests/fixture.spec.ts:5:1 › DEMO-03 production example matches canonical synthetic fixture (1ms)
+
+  7 passed (3.2s)
+
+EXIT_CODE=0

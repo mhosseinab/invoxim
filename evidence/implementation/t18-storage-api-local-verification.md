@@ -1,0 +1,25 @@
+# T18 local storage API integration
+
+Status: local API increment verified; T18 and full M1/MVP remain in progress. No independent source review is claimed for this increment: specialist agents stopped at their account usage limit. Root implemented and executed the new API acceptance tests.
+
+Separate Drive authorization now has actual Worker routes for start/callback, private storage settings, local disconnect and explicit consent disable. Settings return a storage-purpose mutation token bound to the actual application user/session; it cannot replace another purpose's token. Mutations require the exact origin, recent database session, strict body and current versions. Callback state remains purpose/session/actor-bound and single-use. The concrete signed-token/JWKS/UserInfo path stores the independent Drive identity with encrypted credentials, leaving archiving disabled and creating no import/upload work.
+
+The canonical connections collection now returns owned mailbox/storage metadata without requiring external OAuth adapters. It remains bounded and supports mailbox-only schemas before migration 0017. Local storage disconnect/disable are independent of Drive OAuth configuration and preserve unrelated mailbox/login grants and user Drive files. Provider selection remains server configured; DRIVE_ENABLED is checked in false, with client secrets/keyrings confined to server configuration. Public archive availability remains false.
+
+## Actual evidence
+
+Initial missing-route tests produced 12 failures, then 14 route/token regressions passed. The signed callback test first failed on an invalid synthetic JWK containing export-only fields; the fixture was corrected to the strict Google-key shape without relaxing production validation. Mixed connection metadata had two genuine failures, followed by 24 route/token/nearby Outlook positives. The extended 12-file native integration group passed 101 tests, including grant/consent/lifecycle and pre-Drive migration compatibility.
+
+A first plain `pnpm verify` failed on the service-binding health test's 5000 ms timeout; 912 native tests passed. The timeout reproduced in isolation. Preparing the actual Worker entrypoint's module graph before timed binding requests repaired test setup. The real binding, body/cache/status assertions and original timeout remain unchanged; the focused test passed both cases and the full rerun passed the health test. This is not a production cold-start benchmark. All failed logs are preserved.
+
+Final plain command: `CI=true TURBO_TELEMETRY_DISABLED=1 WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH=/tmp/invoxim-storage-api-final-verify.log PLAYWRIGHT_BROWSERS_PATH=/tmp/invoxim-playwright-browsers pnpm verify`; session 66221, exit 0. **1417 distinct tests**: 22 tooling, 48 contracts, 372 core, 913 native Worker tests across 64 files, and 62 browser tests. Formatting, fatal-warning Biome, ESLint, types, boundaries, scanners/policy, builds/dry-run and browser gate all executed. This checkout used existing valid dependencies and Turbo caches; it is not a newly installed isolated-copy certificate.
+
+403 runtime/test/tool/configuration/document inputs were hashed before and after the final plain verification with no differences: SHA-256 `56a9d8ac620429a10a4c25ee24cce29522a325a9e88bb40cd02a0ccffa07d58c`. Inventory excludes protected agent/evidence/environment/generated state; it is not a whole-filesystem secret-free claim. The earlier 385-input certificate remains historical.
+
+After plain verification, the only captured source delta was five additional storage acceptance paths in the explicit security-gate list. This configuration delta passed 12 tooling tests plus scoped Biome/ESLint/format checks and actual expanded `pnpm test:security`: **310 repeated tests across 23 files**, exit 0. Root did not relabel the prior manifest as this changed script. Current closeout SHA is `d2bd7988fff50cb247c1d56a5fc431c6b823cf1efa5c8cc112ecb43bb8f588b1`.
+
+Additional required checks: `pnpm db:check` exit 0, **79 repeated tests**; `pnpm check:deps` exit 0, seven manifests/no policy findings and zero advisory counts across all severities. These counts overlap the full gate and are not summed. Raw logs/manifests and SHA mappings are preserved in `t18-storage-api-log-map-20261013.json` and adjacent `t18-...-20261013.txt` files.
+
+## Remaining work and effects
+
+Archive consent persistence is separate from actual upload capability. There is no archive-enable/upload/link/backfill API or corresponding UI yet. Next work is durable folder/file plans, source/storage fences, exact original acquisition, reconciliation/resumable uploads and bounded backfill, followed by UI and independent review. Schema 0017 was exercised locally, not applied to a remote resource. No live OAuth, uploads, paid inference, model-quality evaluation, grant revocation, user-file deletion or deployment was performed. Manual and deployment checklists document the actual callback/configuration and outstanding operator gates.

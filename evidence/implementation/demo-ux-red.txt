@@ -1,0 +1,68 @@
+[WebServer] (node:132) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 2 tests using 1 worker
+
+(node:158) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 apps/web/tests/demo.spec.ts:146:1 › UX-01 example actions lead to real refund and unpaid histories without dead ends (5.2s)
+(node:255) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 apps/web/tests/demo.spec.ts:168:1 › UX-02 search finds receipt details and quick filters recover from empty results (5.2s)
+
+
+  1) apps/web/tests/demo.spec.ts:146:1 › UX-01 example actions lead to real refund and unpaid histories without dead ends
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('link', { name: 'See a refund', exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('link', { name: 'See a refund', exact: true }) with timeout 5000ms
+      - waiting for getByRole('link', { name: 'See a refund', exact: true })
+
+
+      149 |   await page.goto("/demo");
+      150 |   const refundLink = page.getByRole("link", { name: "See a refund", exact: true });
+    > 151 |   await expect(refundLink).toBeVisible();
+          |                            ^
+      152 |   await expect(page.locator("button:disabled")).toHaveCount(0);
+      153 |   await refundLink.click();
+      154 |   await expect(page.getByRole("article")).toHaveCount(1);
+        at /home/geek/workspace/invoxim/apps/web/tests/demo.spec.ts:151:28
+
+    Error Context: evidence/implementation/t28-browser-results/demo-UX-01-example-actions-54169-histories-without-dead-ends/error-context.md
+
+  2) apps/web/tests/demo.spec.ts:168:1 › UX-02 search finds receipt details and quick filters recover from empty results
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByRole('article', { name: 'Example Audio purchase' })
+    Expected: 1
+    Received: 0
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" getByRole('article', { name: 'Example Audio purchase' }) with timeout 5000ms
+      - waiting for getByRole('article', { name: 'Example Audio purchase' })
+        14 × locator resolved to 0 elements
+           - unexpected value "0"
+
+
+      170 |   const search = page.getByLabel("Find a receipt or purchase");
+      171 |   await search.fill("  RECEIVED   pay-audio-001  ");
+    > 172 |   await expect(page.getByRole("article", { name: "Example Audio purchase" })).toHaveCount(1);
+          |                                                                               ^
+      173 |   await expect(page.getByRole("article")).toHaveCount(1);
+      174 |   await search.fill("SUP-A");
+      175 |   await expect(page.getByRole("article", { name: "Example Supplies purchase" })).toHaveCount(1);
+        at /home/geek/workspace/invoxim/apps/web/tests/demo.spec.ts:172:79
+
+    Error Context: evidence/implementation/t28-browser-results/demo-UX-02-search-finds-re-62453--recover-from-empty-results/error-context.md
+
+  2 failed
+    apps/web/tests/demo.spec.ts:146:1 › UX-01 example actions lead to real refund and unpaid histories without dead ends
+    apps/web/tests/demo.spec.ts:168:1 › UX-02 search finds receipt details and quick filters recover from empty results

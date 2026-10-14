@@ -13,7 +13,7 @@
       "id": "T00",
       "title": "Inspect repository, sources and toolchain",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [],
       "ownerRole": "orchestrator",
       "reviewerRole": "principal-reviewer",
@@ -30,14 +30,18 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Inspection report and task graph validation.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t00-discovery.md",
+        "evidence/implementation/t00-blueprint-validation.txt",
+        "evidence/implementation/t00-helper-tests.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T01",
       "title": "Prove the narrow Cloudflare runtime stack",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T00"
       ],
@@ -55,14 +59,20 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Real workerd evidence and a short compatibility decision record; flag live credentials separately.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t01-completion.md",
+        "evidence/implementation/t01-review.md",
+        "evidence/implementation/t01-qa-install-final.txt",
+        "evidence/implementation/t01-qa-verify-final-1.txt",
+        "evidence/implementation/t01-qa-verify-final-2.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T02",
       "title": "Scaffold monorepo and truthful CI",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T01"
       ],
@@ -77,14 +87,21 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Clean install, package boundaries, deliberate failing-check proof, lint/typecheck/build logs.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t02-completion.md",
+        "evidence/implementation/t02-review.md",
+        "evidence/implementation/t02-qa-install.txt",
+        "evidence/implementation/t02-qa-verify-1.txt",
+        "evidence/implementation/t02-qa-verify-2.txt",
+        "evidence/implementation/biome-repair.md"
+      ],
       "blockedBy": []
     },
     {
       "id": "T27",
       "title": "Freeze truthful presentation, capability and copy contract",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T00"
       ],
@@ -102,14 +119,18 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Copy/capability checklist, fixture arithmetic expectations and scoped handoff; discovery validation, not fabricated red tests.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t27-capability-contract.md",
+        "evidence/implementation/t27-validation.txt",
+        "evidence/implementation/t27-review.md"
+      ],
       "blockedBy": []
     },
     {
       "id": "T03",
       "title": "Implement shared contracts and money kernel",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T02",
         "T27"
@@ -142,7 +163,7 @@
       "id": "T04",
       "title": "Implement D1 schema and tenant repositories",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T03"
       ],
@@ -160,14 +181,27 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Clean/upgrade migrations and hostile tenant queries tested in workerd.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t04-completion.md",
+        "evidence/implementation/t04-review.md",
+        "evidence/implementation/t04-persistence-decision.md",
+        "evidence/implementation/t04-implementer-completion.md",
+        "evidence/implementation/t04-implementer-red.txt",
+        "evidence/implementation/t04-db-check.txt",
+        "evidence/implementation/t04-qa.md",
+        "evidence/implementation/t04-qa-final-install.txt",
+        "evidence/implementation/t04-qa-final-verify.txt",
+        "evidence/implementation/t04-qa-final-db-check.txt",
+        "evidence/implementation/t04-qa-final-snapshot.txt",
+        "evidence/implementation/t04-qa-source-match.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T05",
       "title": "Implement Google login and isolated sessions",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T04"
       ],
@@ -188,14 +222,23 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Two-tenant session tests and consent state replay tests; live login blocked until credentials supplied.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t05-t06-completion.md",
+        "evidence/implementation/t05-t06-review.md",
+        "evidence/implementation/t05-implementer-completion.md",
+        "evidence/implementation/t05-t06-qa-final-install.txt",
+        "evidence/implementation/t05-t06-qa-final-verify.txt",
+        "evidence/implementation/t05-t06-qa-final-db-check.txt",
+        "evidence/implementation/t05-t06-qa-final-snapshot.txt",
+        "evidence/implementation/t05-t06-qa-source-match.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T06",
       "title": "Implement credential vault and OAuth state",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T04"
       ],
@@ -214,14 +257,23 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Ciphertext swap/rotation/race tests; settings and logs contain no keys.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t05-t06-completion.md",
+        "evidence/implementation/t05-t06-review.md",
+        "evidence/implementation/t06-implementer-completion.md",
+        "evidence/implementation/t05-t06-qa-final-install.txt",
+        "evidence/implementation/t05-t06-qa-final-verify.txt",
+        "evidence/implementation/t05-t06-qa-final-db-check.txt",
+        "evidence/implementation/t05-t06-qa-final-snapshot.txt",
+        "evidence/implementation/t05-t06-qa-source-match.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T07",
       "title": "Implement durable scheduler and job engine",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T04",
         "T06"
@@ -244,14 +296,24 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Duplicate/lost delivery, lease takeover and crash-after-commit failure injection.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t07-t08-completion.md",
+        "evidence/implementation/t07-t08-review.md",
+        "evidence/implementation/t07-implementer-report.md",
+        "evidence/implementation/t07-t08-qa.md",
+        "evidence/implementation/t07-t08-qa-final-install.txt",
+        "evidence/implementation/t07-t08-qa-final-verify.txt",
+        "evidence/implementation/t07-t08-qa-final-db-check.txt",
+        "evidence/implementation/t07-t08-qa-final-snapshot.txt",
+        "evidence/implementation/t07-t08-qa-source-match.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T08",
       "title": "Implement independent Gmail consent adapter",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T05",
         "T06"
@@ -272,14 +334,24 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Contract tests for login A/mailbox B, consent denial, missing refresh token and account mismatch.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t07-t08-completion.md",
+        "evidence/implementation/t07-t08-review.md",
+        "evidence/implementation/t08-implementer-completion.md",
+        "evidence/implementation/t07-t08-qa.md",
+        "evidence/implementation/t07-t08-qa-final-install.txt",
+        "evidence/implementation/t07-t08-qa-final-verify.txt",
+        "evidence/implementation/t07-t08-qa-final-db-check.txt",
+        "evidence/implementation/t07-t08-qa-final-snapshot.txt",
+        "evidence/implementation/t07-t08-qa-source-match.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T09",
       "title": "Implement Gmail backfill and incremental discovery",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T07",
         "T08"
@@ -309,14 +381,22 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Contract fixtures for cursor recovery/new mail during import/rate limits and duplicate accounts.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t09-t10-completion.md",
+        "evidence/implementation/t09-t10-review.md",
+        "evidence/implementation/t09-t10-qa.md",
+        "evidence/implementation/t09-t10-qa-frozen-install.txt",
+        "evidence/implementation/t09-t10-qa-verify.txt",
+        "evidence/implementation/t09-t10-qa-db-check.txt",
+        "evidence/implementation/t09-t10-qa-source-match.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T10",
       "title": "Implement inert MIME and document parsing",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T03",
         "T07"
@@ -337,14 +417,22 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Synthetic multipart and generated PDF/image/resource-limit fixtures; no external asset fetch.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t09-t10-completion.md",
+        "evidence/implementation/t09-t10-review.md",
+        "evidence/implementation/t09-t10-qa.md",
+        "evidence/implementation/t09-t10-qa-frozen-install.txt",
+        "evidence/implementation/t09-t10-qa-verify.txt",
+        "evidence/implementation/t09-t10-qa-db-check.txt",
+        "evidence/implementation/t09-t10-qa-source-match.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T11",
       "title": "Implement provider-agnostic AI, BYOK and budgets",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T03",
         "T06",
@@ -370,7 +458,12 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Malformed/injection/SSRF/capability/budget race tests; synthetic endpoint smoke and masked settings.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t11-completion.md",
+        "evidence/implementation/t11-qa.md",
+        "evidence/implementation/t11-qa-doc-closeout.md",
+        "evidence/implementation/t11-final-review.md"
+      ],
       "blockedBy": [],
       "localProgressEvidence": [
         "evidence/implementation/ai-runtime-activation-20261013.md"
@@ -380,7 +473,7 @@
       "id": "T12",
       "title": "Implement extraction-to-ledger pipeline",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T09",
         "T10",
@@ -406,14 +499,19 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Order/invoice/receipt, installments, credit note, reissued invoice and cross-tenant duplicate tests.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t12-completion.md",
+        "evidence/implementation/t12-qa.md",
+        "evidence/implementation/t12-qa-doc-closeout.md",
+        "evidence/implementation/t12-final-review.md"
+      ],
       "blockedBy": []
     },
     {
       "id": "T13",
       "title": "Implement purchase-first Home, detail timeline and connection status",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T05",
         "T12"
@@ -441,14 +539,19 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Responsive keyboard E2E, import continuing without open tab, totals and pagination checks.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t13-completion.md",
+        "evidence/implementation/t13-qa-final-certificate.md",
+        "evidence/implementation/t13-final-review.md",
+        "evidence/implementation/t13-t15-qa-doc-closeout.md"
+      ],
       "blockedBy": []
     },
     {
       "id": "T14",
       "title": "Implement corrections and review actions",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T12",
         "T13"
@@ -469,14 +572,20 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Replay preserves overrides; conflict, merge round-trip and idempotent confirmation tests.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t14-completion.md",
+        "evidence/implementation/t14-final-source-review.md",
+        "evidence/implementation/t14-t29-qa-final-certificate.md",
+        "evidence/implementation/t14-t29-qa-doc-closeout.md",
+        "evidence/implementation/t14-t29-root-biome.md"
+      ],
       "blockedBy": []
     },
     {
       "id": "T15",
       "title": "Implement basic export, disconnect and deletion",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T05",
         "T07",
@@ -499,14 +608,19 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Cross-tenant export, spreadsheet injection, in-flight deletion and no-raw-data inspection.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t15-completion.md",
+        "evidence/implementation/t13-qa-final-certificate.md",
+        "evidence/implementation/t15-security-review.md",
+        "evidence/implementation/t13-t15-qa-doc-closeout.md"
+      ],
       "blockedBy": []
     },
     {
       "id": "T28",
       "title": "Build landing and isolated read-only example",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T02",
         "T27"
@@ -528,14 +642,26 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Browser/network proof of demo isolation, exact synthetic totals, capability guards and mobile/keyboard screenshots.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t28-completion.md",
+        "evidence/implementation/t28-review.md",
+        "evidence/implementation/design-match-completion.md",
+        "evidence/implementation/design-match-qa.md",
+        "evidence/implementation/demo-ux-completion.md",
+        "evidence/implementation/demo-ux-integration.md",
+        "evidence/implementation/demo-ux-review.md",
+        "evidence/implementation/demo-ux-qa.md",
+        "evidence/implementation/demo-ux-red.txt",
+        "evidence/implementation/demo-ux-green.txt",
+        "evidence/implementation/demo-ux-qa-verify.txt"
+      ],
       "blockedBy": []
     },
     {
       "id": "T29",
       "title": "Implement resumable consent-safe onboarding",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "done",
       "dependsOn": [
         "T08",
         "T09",
@@ -571,7 +697,13 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "State projection and API guard tests; Playwright refusal/wrong-account/two-tab/reload/paused/no-results paths; explicit absence of pre-consent content requests.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t29-completion.md",
+        "evidence/implementation/t29-final-source-review.md",
+        "evidence/implementation/t14-t29-qa-final-certificate.md",
+        "evidence/implementation/t14-t29-qa-doc-closeout.md",
+        "evidence/implementation/t14-t29-root-biome.md"
+      ],
       "blockedBy": [],
       "localProgressEvidence": [
         "evidence/implementation/login-recovery-local-verification-20261013.md",
@@ -583,7 +715,7 @@
       "id": "T16",
       "title": "Verify private Gmail vertical slice",
       "milestone": "M0",
-      "status": "not_started",
+      "status": "in_progress",
       "dependsOn": [
         "T13",
         "T14",
@@ -722,9 +854,25 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "M0 completion report with command evidence, security review and known limitations. Not full-MVP completion.",
-      "completionEvidence": [],
-      "blockedBy": [],
+      "completionEvidence": [
+        "evidence/implementation/t16-local-verification.md",
+        "evidence/implementation/t16-qa-final-certificate.md",
+        "evidence/implementation/t16-qa-doc-closeout.md",
+        "evidence/implementation/t16-security-review.md",
+        "evidence/implementation/t16-tooling-review.md",
+        "evidence/implementation/t16-pipeline-review.md",
+        "evidence/implementation/t16-qa-gate-map.md",
+        "MANUAL_TASKS.md",
+        "DEPLOYMENT_CHECKLIST.md"
+      ],
+      "blockedBy": [
+        "Actual Gate B smoke requires approved Google OAuth project/domain/test identities, explicit mailbox consent and isolated Cloudflare staging/deployment authorization; see MANUAL_TASKS.md M01/M02/M10/M12.",
+        "Live hosted/BYOK model smoke requires approved processing terms/model/pricing/notices/secrets and bounded spend; see MANUAL_TASKS.md M04/M05/M08/M11.",
+        "Independent journal durability, suppression-before-serving restore and measured production cleanup/logging/cadence remain unproved; see MANUAL_TASKS.md M09/M10/M12."
+      ],
       "localProgressEvidence": [
+        "evidence/implementation/m1-qa-final-certificate.md",
+        "evidence/implementation/m1-reader-increment-completion.md",
         "evidence/implementation/deployed-login-browser-qa-20261013.md",
         "evidence/implementation/goal-progress-20261013-login-and-m1.md"
       ]
@@ -755,6 +903,14 @@
       "completionEvidence": [],
       "blockedBy": [],
       "localProgressEvidence": [
+        "evidence/implementation/m1-local-dependency-decision.md",
+        "evidence/implementation/t17-auth-provider.md",
+        "evidence/implementation/m1-root-integration-progress.md",
+        "evidence/implementation/t17-auth-security-review.md",
+        "evidence/implementation/m1-provider-stream-bounds-review.md",
+        "evidence/implementation/m1-gmail-ai-stream-review.md",
+        "evidence/implementation/m1-qa-final-certificate.md",
+        "evidence/implementation/m1-reader-increment-completion.md",
         "evidence/implementation/t17-outlook-service-checkpoint.md",
         "evidence/implementation/outlook-durable-job-checkpoint-20261013.md",
         "evidence/implementation/t17-outlook-floor-review-20261013.md",
@@ -792,6 +948,20 @@
       "completionEvidence": [],
       "blockedBy": [],
       "localProgressEvidence": [
+        "evidence/implementation/m1-local-dependency-decision.md",
+        "evidence/implementation/m1-root-integration-progress.md",
+        "evidence/implementation/t18-original-mail-security-review.md",
+        "evidence/implementation/m1-drive-fx-auth-stream-review.md",
+        "evidence/implementation/m1-qa-final-certificate.md",
+        "evidence/implementation/m1-reader-increment-completion.md",
+        "evidence/implementation/t18-storage-service-local-progress.md",
+        "evidence/implementation/t18-archive-workflow-design.md",
+        "evidence/implementation/t18-storage-api-local-verification.md",
+        "evidence/implementation/t18-archive-objects-local-progress.md",
+        "evidence/implementation/t18-archive-objects-independent-review.md",
+        "evidence/implementation/t18-archive-objects-security-review.md",
+        "evidence/implementation/t18-archive-objects-qa-report.md",
+        "evidence/implementation/t18-folder-backfill-data-plan.md",
         "evidence/implementation/t18-workflow-wip-checkpoint.md",
         "evidence/implementation/t18-workflow-repair-checkpoint.md",
         "evidence/implementation/t18-dispatch-backfill-checkpoint-20261013.md",
@@ -825,6 +995,14 @@
       "completionEvidence": [],
       "blockedBy": [],
       "localProgressEvidence": [
+        "evidence/implementation/m1-local-dependency-decision.md",
+        "evidence/implementation/t19-fx-domain.md",
+        "evidence/implementation/m1-root-integration-progress.md",
+        "evidence/implementation/t19-fx-review.md",
+        "evidence/implementation/t19-fx-stream-bounds.md",
+        "evidence/implementation/m1-drive-fx-auth-stream-review.md",
+        "evidence/implementation/m1-qa-final-certificate.md",
+        "evidence/implementation/m1-reader-increment-completion.md",
         "evidence/implementation/t19-fx-service-checkpoint.md",
         "evidence/implementation/t19-period-integration-plan-20261013.md",
         "evidence/implementation/t19-reporting-revision-checkpoint.md",
@@ -835,7 +1013,7 @@
       "id": "T20",
       "title": "Implement recurring estimates and changes",
       "milestone": "M1",
-      "status": "not_started",
+      "status": "in_progress",
       "dependsOn": [
         "T19"
       ],
@@ -859,6 +1037,10 @@
       "completionEvidence": [],
       "blockedBy": [],
       "localProgressEvidence": [
+        "evidence/implementation/m1-local-dependency-decision.md",
+        "evidence/implementation/m1-root-integration-progress.md",
+        "evidence/implementation/m1-qa-final-certificate.md",
+        "evidence/implementation/m1-reader-increment-completion.md",
         "evidence/implementation/recurring-persistence-checkpoint-20261013.md",
         "evidence/implementation/t20-recurring-api-checkpoint-20261013.md",
         "evidence/implementation/t20-recurring-api-review-20261013.md",
@@ -903,7 +1085,7 @@
       "id": "T22",
       "title": "Expand extraction corpus and run evaluations",
       "milestone": "M1",
-      "status": "not_started",
+      "status": "in_progress",
       "dependsOn": [
         "T16"
       ],
@@ -923,7 +1105,15 @@
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Deterministic report plus separately approved live-model report with denominators, costs and error taxonomy.",
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/m1-local-dependency-decision.md",
+        "evidence/implementation/t22-corpus-offline.md",
+        "evidence/implementation/m1-root-integration-progress.md",
+        "evidence/implementation/t22-corpus-review.md",
+        "evidence/implementation/m1-qa-final-certificate.md",
+        "evidence/implementation/m1-reader-increment-completion.md"
+      ]
     },
     {
       "id": "T23",
@@ -1287,6 +1477,30 @@
         "/tmp/invoxim-clef-red.txt",
         "/tmp/invoxim-clef-configuration-red.txt",
         "evidence/implementation/clef-email-classification-20261013.md"
+      ],
+      "blockedBy": []
+    },
+    {
+      "id": "AI-DIRECT-01",
+      "title": "Extract purchase fields from original email input after mandatory Clef classification",
+      "milestone": "Runtime repair",
+      "status": "review",
+      "dependsOn": [
+        "CLEF-01"
+      ],
+      "ownerRole": "ai",
+      "reviewerRole": "principal-reviewer",
+      "read": [
+        "docs/05-ai-and-evaluations.md"
+      ],
+      "scope": "Direct bounded text/HTML model interpretation with strict structured financial validation; preserve paid caches and block processing without Clef. Binary Luna capability remains unverified.",
+      "acceptanceCaseIds": [
+        "AI-DIRECT-01",
+        "CLEF-02",
+        "ONBOARD-09"
+      ],
+      "completionEvidence": [
+        "evidence/implementation/direct-model-extraction-20261014.md"
       ],
       "blockedBy": []
     },

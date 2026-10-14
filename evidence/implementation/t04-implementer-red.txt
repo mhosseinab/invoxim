@@ -1,0 +1,50 @@
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+ ❯ test/database.test.ts (1 test | 1 failed) 27ms
+   × DB-01: rejects cross-tenant purchase observation association at database boundary 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/database.test.ts > DB-01: rejects cross-tenant purchase observation association at database boundary
+AssertionError: promise resolved "{ success: true, meta: { …(8) }, …(1) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "meta": {
++     "changed_db": true,
++     "changes": 1,
++     "duration": 0,
++     "last_row_id": 1,
++     "rows_read": 0,
++     "rows_written": 2,
++     "served_by": "miniflare.db",
++     "size_after": 237568,
++   },
++   "results": [],
++   "success": true,
+  }
+
+ ❯ test/database.test.ts:22:171
+     20| });
+     21| it('DB-01: rejects cross-tenant purchase observation association at da…
+     22|  await expect(env.DB.prepare("INSERT INTO purchase_evidence(user_id,pu…
+       |                                                                                                                                                                           ^
+     23| });
+     24|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  00:11:56
+   Duration  789ms (tests 40%, transform 30%, worker 18%, import 12%)
+
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /home/geek/workspace/invoxim/apps/worker

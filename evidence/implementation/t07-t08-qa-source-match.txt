@@ -1,0 +1,6 @@
+{
+  "snapshot": "/tmp/invoxim-t07-t08-qa-final-9osf93r7/source",
+  "count": 130,
+  "manifest_sha256": "94ef32013db72cb5321a2ac1bc9f6d4253eaa5d7e04d32cd7c0f888c9539af00",
+  "source_differences": []
+}

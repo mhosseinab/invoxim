@@ -1,0 +1,19 @@
+COMMAND: CI=true WRANGLER_LOG_PATH=/tmp/invoxim-t09-t10-qa-final-ovd7zptk/wrangler.log TURBO_TELEMETRY_DISABLED=1 WRANGLER_SEND_METRICS=false pnpm db:check
+CWD: /tmp/invoxim-t09-t10-qa-final-ovd7zptk/source
+$ pnpm --filter @invoxim/worker exec vitest run test/database.test.ts test/database-adversarial.test.ts
+
+ RUN  v5.0.3 /tmp/invoxim-t09-t10-qa-final-ovd7zptk/source/apps/worker
+
+
+ Test Files  2 passed (2)
+      Tests  20 passed (20)
+   Start at  19:34:05
+   Duration  8.51s (transform 75%, import 22%, tests 2%)
+
+  Transform  transforming modules took 5.63s · 75% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             on CI this only helps when the cache directory is persisted between runs
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+
+EXIT_CODE=0

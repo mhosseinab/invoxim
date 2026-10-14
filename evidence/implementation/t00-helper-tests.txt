@@ -1,0 +1,25 @@
+test_helper_copy_is_idempotent (__main__.BlueprintHelperTests.test_helper_copy_is_idempotent) ... ok
+test_helper_dry_run_writes_no_skill_files (__main__.BlueprintHelperTests.test_helper_dry_run_writes_no_skill_files) ... ok
+test_helper_refuses_modified_managed_copy (__main__.BlueprintHelperTests.test_helper_refuses_modified_managed_copy) ... ok
+test_helper_refuses_symlinked_state (__main__.BlueprintHelperTests.test_helper_refuses_symlinked_state) ... ok
+test_helper_refuses_unmanaged_conflict (__main__.BlueprintHelperTests.test_helper_refuses_unmanaged_conflict) ... ok
+test_validator_accepts_package (__main__.BlueprintHelperTests.test_validator_accepts_package) ... ok
+test_validator_rejects_incorrect_money_oracle (__main__.BlueprintHelperTests.test_validator_rejects_incorrect_money_oracle) ... ok
+test_validator_rejects_missing_concrete_doc_link (__main__.BlueprintHelperTests.test_validator_rejects_missing_concrete_doc_link) ... ok
+test_validator_rejects_missing_demo_evidence (__main__.BlueprintHelperTests.test_validator_rejects_missing_demo_evidence) ... ok
+test_validator_rejects_missing_skill (__main__.BlueprintHelperTests.test_validator_rejects_missing_skill) ... ok
+test_validator_rejects_premature_no_matches (__main__.BlueprintHelperTests.test_validator_rejects_premature_no_matches) ... ok
+test_validator_rejects_secret_in_onboarding_projection (__main__.BlueprintHelperTests.test_validator_rejects_secret_in_onboarding_projection) ... ok
+test_validator_rejects_start_button_in_wrong_state (__main__.BlueprintHelperTests.test_validator_rejects_start_button_in_wrong_state) ... ok
+test_validator_rejects_task_cycle (__main__.BlueprintHelperTests.test_validator_rejects_task_cycle) ... ok
+test_validator_rejects_unknown_acceptance_case (__main__.BlueprintHelperTests.test_validator_rejects_unknown_acceptance_case) ... ok
+test_validator_rejects_unknown_onboarding_copy (__main__.BlueprintHelperTests.test_validator_rejects_unknown_onboarding_copy) ... ok
+test_validator_rejects_unknown_role (__main__.BlueprintHelperTests.test_validator_rejects_unknown_role) ... ok
+test_validator_rejects_unlabeled_demo (__main__.BlueprintHelperTests.test_validator_rejects_unlabeled_demo) ... ok
+test_validator_rejects_unmatched_evidence (__main__.BlueprintHelperTests.test_validator_rejects_unmatched_evidence) ... ok
+test_validator_rejects_wrong_demo_net (__main__.BlueprintHelperTests.test_validator_rejects_wrong_demo_net) ... ok
+
+----------------------------------------------------------------------
+Ran 20 tests in 2.479s
+
+OK

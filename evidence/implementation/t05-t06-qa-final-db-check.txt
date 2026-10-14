@@ -1,0 +1,17 @@
+$ pnpm --filter @invoxim/worker exec vitest run test/database.test.ts test/database-adversarial.test.ts
+
+ RUN  v5.0.3 /tmp/invoxim-t05-t06-qa-final-xikiub6j/source/apps/worker
+
+
+ Test Files  2 passed (2)
+      Tests  20 passed (20)
+   Start at  12:15:57
+   Duration  8.12s (transform 76%, import 21%, tests 2%)
+
+  Transform  transforming modules took 5.40s · 76% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             on CI this only helps when the cache directory is persisted between runs
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+
+EXIT_CODE=0

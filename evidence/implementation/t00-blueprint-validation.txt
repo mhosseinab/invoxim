@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "scope": "blueprint structure and synthetic fixtures only",
+  "checks": [
+    "All JSON and TOML files parse.",
+    "Skill registry and all three native adapter sets resolve (16 skills, 13 roles).",
+    "Task DAG and acceptance links are valid (31 tasks, 160 cases).",
+    "All bracketed source references resolve (45 primary sources).",
+    "All evidence quotes occur in their synthetic inputs (14 fixtures).",
+    "Both JSON Schemas validate; example config and all labeled outputs conform; negative shape cases rejected.",
+    "All 20 synthetic numerical/state oracles verified independently; this is not application testing.",
+    "Presentation fixture/copy/schema references and exact demo arithmetic checked (16 views, 73 copy keys).",
+    "Concrete packaged path references resolve (52 unique paths)."
+  ],
+  "warnings": [],
+  "counts": {
+    "skills": 16,
+    "roles": 13,
+    "tasks": 31,
+    "acceptanceCases": 160,
+    "extractionFixtures": 14,
+    "financialCases": 20,
+    "sources": 45,
+    "rules": 7,
+    "copyKeys": 73,
+    "onboardingFixtures": 16,
+    "demoPurchases": 4,
+    "demoEvidence": 7,
+    "concretePathsChecked": 52,
+    "onboardingSchemaValidated": true,
+    "scope": "Static fixture/schema/copy-reference checks and exact arithmetic only; no application tests."
+  },
+  "notExecuted": [
+    "Application unit/integration/E2E tests",
+    "Native agent discovery/spawning/permission enforcement",
+    "OAuth or mailbox API smoke tests",
+    "Cloudflare deployment/runtime benchmark",
+    "Live AI extraction/evaluation",
+    "External security assessment or public-release approval"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "snapshot": "/tmp/invoxim-t09-t10-qa-final-ovd7zptk/source",
+  "count": 161,
+  "manifest_sha256": "26a0ec4fb234a12d8f1ef75e3c073010c96daeb1ac6a5ea76a62fbecd5277340",
+  "tested_vs_initial_differences": [],
+  "root_vs_tested_differences": []
+}

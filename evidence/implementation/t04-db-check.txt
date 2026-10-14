@@ -1,0 +1,12 @@
+$ pnpm --filter @invoxim/worker exec vitest run test/database.test.ts test/database-adversarial.test.ts
+
+ RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+
+ Test Files  2 passed (2)
+      Tests  20 passed (20)
+   Start at  00:21:56
+   Duration  2.24s (transform 65%, import 18%, tests 15%, worker 2%)
+
+    Isolate  2 workers spawned · ~513ms startup each (spawn + environment, per file)
+             at least ~513ms faster with isolate: false — reuses workers across files instead of one per file

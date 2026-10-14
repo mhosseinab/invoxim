@@ -1,0 +1,25 @@
+Scope: all 3 workspace projects
+? Verifying lockfile against supply-chain policies (256 entries)...
+Packages are hard linked from the content-addressable store to the virtual store.
+  Content-addressable store is at: /tmp/.pnpm-store/v11
+  Virtual store is at:             node_modules/.pnpm
+Update available! 12.6.0 → 12.11.2.
+Changelog: https://pnpm.io/v/12.11.2
+To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+Downloading @turbo/linux-64@2.11.7: 0.00 B/17.62 MB
+✓ Lockfile passes supply-chain policies (256 entries in 1.3s)
+Lockfile is up to date, resolution step is skipped
+Packages: +171
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 171, reused 161, downloaded 10, added 171, done
+
+devDependencies:
++ eslint 10.12.0
++ prettier 3.8.3
++ turbo 2.11.7
++ typescript 6.0.3
++ typescript-eslint 8.71.1
+
+Done in 1.6s using pnpm v12.6.0
+
+Observed exit code: 0

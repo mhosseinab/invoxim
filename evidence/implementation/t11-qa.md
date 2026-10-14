@@ -1,0 +1,42 @@
+# T11 independent QA completion
+
+Status: PASS for the bounded T11 implementation and existing regressions. This is deterministic validation/protocol/accounting evidence, not live-model accuracy or deployment approval. QA changed only packages/core/test/ai-adversarial.test.ts, apps/worker/test/ai-adversarial.test.ts and ai-budget-adversarial.test.ts; production defects were returned to the assigned implementers. Root and the read-only reviewer independently inspect those changes. No further agents were spawned.
+
+## Tested identity and actual checks
+
+Approved clean copied snapshot: /tmp/invoxim-t11-qa-final-kpxm4pdp/source. No Git commit/worktree identity or OS/network sandbox is claimed. Baseline inventory: 182 files SHA256 9e8aaf9566127787962a31b8d235307658598e7258ec569196d1544f9cb2d24d. t11-qa-final-snapshot.txt records every path/hash; t11-qa-source-match.txt confirms zero tested-versus-initial and zero root-versus-tested differences, exit 0.
+
+Inventory includes root package/pnpm/Turbo/TS/ESLint/Biome/VScode/CI, apps/packages including all nine SQL migrations and extensionless Pages _headers, contracts/test-design/tools/implementation, CONFIGURATION.md, MANUAL_TASKS.md and DEPLOYMENT_CHECKLIST.md. Mutable evidence/backlog/owner blueprint changes and generated dependencies/dist/cache/test outputs are excluded explicitly. Owner changes were preserved.
+
+Each final log begins with the exact command, environment and cwd and ends with EXIT_CODE:
+
+| Check | Observed outcome | Evidence |
+| --- | --- | --- |
+| pnpm install --frozen-lockfile |0; committed ignoreScripts policy; no approval bypass |t11-qa-frozen-install.txt |
+| CI=true WRANGLER_LOG_PATH=<snapshot parent>/wrangler.log TURBO_TELEMETRY_DISABLED=1 WRANGLER_SEND_METRICS=false PLAYWRIGHT_BROWSERS_PATH=/tmp/invoxim-playwright-browsers pnpm verify |0; boundaries, format, Biome, ESLint, types, units, workerd, local builds, browser |t11-qa-verify.txt |
+| CI=true WRANGLER_LOG_PATH=<snapshot parent>/wrangler.log TURBO_TELEMETRY_DISABLED=1 WRANGLER_SEND_METRICS=false pnpm db:check |0; 20/20 real D1 tests |t11-qa-db-check.txt |
+| python3 /tmp/invoxim-t11-source-match.py |0; 182 files, zero differences |t11-qa-source-match.txt |
+
+Full verification freshly executes447 distinct tests: 10 tooling, 108 core, 40 contracts, 282 workerd and 7 browser. Explicit db:check reexecutes 20 of those tests; it is not another 20 distinct cases. Three money properties run 500 samples each (seeds 20261011, 20261012, 20261013), 1,500 total; these are samples inside the test count. No final tests are skipped. Biome checks 151 files with no fixes/errors. Five package typechecks are cache misses. Core/contracts/adapters build checks first execute tsc --noEmit in the same verify, then later replay those build logs during integration/build; those later hits are not additional execution. Worker dry-run bundle and web build execute freshly; browser runs freshly. Remote caching is disabled. Copied non-Git checkout/hash warnings and no-output warnings for no-emit builds do not indicate deployed CI or generated domain binaries.
+
+## Acceptance and findings resolution
+
+AI-01/02: exact manually labeled source/candidate oracles cover subtotal versus total, payment versus tax/total, explicit installments/mixed tender, pending/negated refunds, clipped payment negation, supported/unsupported currency context, coherent signed/accounting monetary forms, actual event-date provenance, critical evidence/part binding and bounded malformed persistence. Positive ordinary receipts/installments/full totals remain accepted; accepting a grounded structured candidate does not commit spending. Quotes/text/model transcripts are stripped from persisted candidate projections. The 27 independent core cases pass in the final 108-core run; latest scoped evidence t11-qa-core-final-green.txt.
+
+AI-03/04/07/08 and ONBOARD-10: 29 independent native HTTP/settings/probe cases cover strict registry/SSRF inputs, fixed destination/manual redirect rejection, declared capability-only request bodies, no tools or unsupported images/PDF fields, malformed/truncated/refusal/timeout responses, serialized-request reservations, safe credential projections, real signed-cookie lookup, forged request fields/origin rejection, encrypted BYOK/key deletion/stale revision, post-provider settings/session invalidation, no provider replay, missing-usage retained reservations and selected-key authority. Two hosted tenants share the same approved operator key but distinct opaque idempotency headers. Unsafe Retry-After floors persist across settings revisions; hosted cooldown also blocks another tenant and survives deletion of the original tenant, while an explicitly chosen independent BYOK key succeeds. These use exact synthetic intercepted endpoint responses, not a real provider request.
+
+AI-05/06: 12 independent budget cases run on real workerd D1, including atomic concurrent document/global USDmicro reservations, idempotent attempt replay, generation/consent/lease invalidation, cumulative overflow with exact decimal event recording and retained reservations, hosted historical global blocking after profile cascade, and BYOK tenant-only overrun. Shared InvocationDatabase counts include all participating repositories. Fresh logs measure direct probe 17 statements/replay 4 and a native JobEngine/AI-store composition 19. Additional actual normal provider-factory compositions include hosted and BYOK real vault reads, one-call accepted extraction and structural repair(two HTTP attempts), actual JobStore claim/checkpoints, cache/settlement, final completed job and ACK; all four paths remain within the same 40-statement handle. No counter reset/limit raise/omitted finalization is used. These manually compose tested building blocks; T12 public ingestion wiring is not implied.
+
+Behavioral REDs and their repairs are preserved across t11-qa-core-*.txt, t11-qa-probe-tenant-red.txt, t11-qa-budget-cumulative-red.txt, t11-qa-retry-floor-red.txt, t11-qa-probe-current.txt(shared-key cooldown) and t11-qa-normal-native.txt(repair cap). Each records actual failure; selective RED runs explicitly report unselected cases and do not count as full verification. Final fresh 447 supersedes all diagnostic snapshots. Initial missing CLI/copied module, wrong fixture SQL column and prior-case synthetic global bucket contamination were test-authoring/setup defects, not product REDs. Fixture isolation resets only ephemeral workerd data. A former >20 SQL instrumentation lower bound failed after valid optimization reduced the count to 17; it became >0 while <=40 and all durable effects/authority assertions remain. No financial/security expectation was removed to get GREEN.
+
+## Privacy, costs and limits
+
+All test data, keys, sessions, documents, clocks and provider responses are synthetic. No customer document, real OAuth/model/provider call, deployment, credential acquisition, resource creation or charge occurred. Real signed-cookie session lookup is not live Google login. No claim of model accuracy, actual hosted pricing/privacy terms, CPU/Free-plan viability, deployed Pages policy or complete MVP launch is made. Mandatory live/model/operator prerequisites remain root-owned manual/deployment gates.
+
+Existing browser checks cover exact synthetic money, local search/guided histories, no API/external requests, static storage-sentinel isolation, keyboard/reduced-motion/360px/axe and 200% CSS zoom reflow. CSS zoom is not native zoom; sentinels are not authenticated private query-cache/logout proof. Data/migration/accounting effects and configuration are reviewed separately by the assigned source reviewer. Read-only review is source/evidence inspection, not another execution claim.
+
+Root may update only closeout prose after this baseline certificate. Any such change must receive a separate format check and explicit documentation-only fingerprint audit/new hash; this baseline hash must not be represented as unchanged after those edits. No broad code-suite repeat is necessary absent implementation changes.
+
+## Documentation closeout phase
+
+The subsequent three-document prose-only audit is recorded in t11-qa-doc-closeout.md. Current closeout manifest: 9e115348c4d6efec546772608c95125e5808ce2ec916b3e5a5cc5574d704f9e0. The earlier 447-test certificate and baseline hash remain historical; all 179 other inventoried implementation inputs are unchanged, and no code test rerun is claimed.

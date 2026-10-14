@@ -1,0 +1,5 @@
+{
+  "snapshot": "/tmp/invoxim-t04-qa-post-barrier-917l8rhi/source",
+  "manifest_sha256": "55b9f0d8b375e9c6a186b661c85f2754a92c5a324d599ed10dc2fd1bf8ef81d7",
+  "source_differences": []
+}
