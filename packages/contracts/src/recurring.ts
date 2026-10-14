@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fxEntrySchema } from "./fx";
-import { hasControlCharacters, validCalendarDate } from "./primitives";
+import { dateSchema as date, hasControlCharacters } from "./primitives";
 
 export const recurringMethodVersion = "recurring-v1" as const;
 export const recurringPostingToleranceDays = 3 as const;
@@ -15,7 +15,6 @@ const key = z
   .max(200)
   .refine((value) => value.trim() === value && !hasControlCharacters(value));
 const minor = fxEntrySchema.shape.amountMinor;
-const date = z.string().refine(validCalendarDate);
 const signed = z
   .string()
   .max(48)

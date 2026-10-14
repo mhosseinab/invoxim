@@ -2,9 +2,9 @@ import { z } from "zod";
 import { extractionSchema } from "./designs";
 import {
   MINOR_BOUND,
+  dateSchema as date,
   hasControlCharacters,
   supportedCurrency,
-  validCalendarDate,
 } from "./primitives";
 
 const id = z
@@ -13,7 +13,6 @@ const id = z
   .max(4096)
   .refine((value) => !hasControlCharacters(value));
 const version = z.number().int().min(1).max(2147483646);
-const date = z.string().refine(validCalendarDate);
 const currency = supportedCurrency;
 const amount = z
   .string()

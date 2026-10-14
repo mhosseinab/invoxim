@@ -51,6 +51,56 @@ export function calendarDate(value: string): string {
   if (!validCalendarDate(value)) throw new Error("INVALID_DATE");
   return value;
 }
+
+/** ISO calendar-date string. Replaces the 5 copy-pasted refinements. */
+export const dateSchema = z.string().refine(validCalendarDate);
+/**
+ * Optimistic-concurrency generation / revision counter.
+ * Replaces the 5 copy-pasted `min(1).max(MAX_SAFE_INTEGER)` schemas.
+ */
+export const generationSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(Number.MAX_SAFE_INTEGER);
+/** Owned connection identifier. Replaces the 3 copy-pasted schemas. */
+export const connectionIdSchema = z.string().min(1).max(120);
+
+/**
+ * Versioned credential keyring: active key encrypts; older keys decrypt.
+ * Replaces the 4 copy-pasted schemas in adapters (drive, mailbox, outlook, ai).
+ */
+export const keyringSchema = z.strictObject({
+  activeVersion: z.number().int().positive().max(2147483647),
+  keys: z.record(
+    z.string().regex(/^[1-9][0-9]*$/),
+    z.string().min(1).max(100),
+  ),
+});
+
+const oauthTokenText = z
+  .string()
+  .min(1)
+  .max(8192)
+  .regex(/^[\x21-\x7e]+$/);
+/** OAuth token-endpoint response. Replaces the 2 copy-pasted provider schemas. */
+export const oauthTokenResponseSchema = z.object({
+  access_token: oauthTokenText,
+  refresh_token: oauthTokenText.optional(),
+  expires_in: z.number().int().min(1).max(86400),
+  token_type: z.string().refine((value) => value.toLowerCase() === "bearer"),
+  scope: z.string().max(4096).optional(),
+  id_token: z.string().min(1).max(16384).optional(),
+});
+
+/** Shared mailbox/storage connection-start request shape. */
+export const connectionStartRequestSchema = z.strictObject({
+  connectionId: connectionIdSchema.optional(),
+});
+/** Shared mailbox/storage connection-start response shape. */
+export const connectionStartResponseSchema = z.strictObject({
+  authorizationUrl: z.url().max(4096),
+});
 export function validTimezone(value: string): boolean {
   if (value.length === 0 || value.length > 80 || /^[+-]/.test(value))
     return false;

@@ -1,15 +1,15 @@
 import { z } from "zod";
+import {
+  connectionIdSchema as connectionId,
+  connectionStartRequestSchema,
+  connectionStartResponseSchema,
+  generationSchema as generation,
+} from "./primitives";
 
-const connectionId = z.string().min(1).max(120);
-const generation = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const credentialVersion = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
-export const mailboxStartRequestSchema = z.strictObject({
-  connectionId: connectionId.optional(),
-});
-export const mailboxStartResponseSchema = z.strictObject({
-  authorizationUrl: z.url().max(4096),
-});
+export const mailboxStartRequestSchema = connectionStartRequestSchema;
+export const mailboxStartResponseSchema = connectionStartResponseSchema;
 export const mailboxConnectionViewSchema = z.strictObject({
   id: connectionId,
   provider: z.enum(["gmail", "outlook"]),
