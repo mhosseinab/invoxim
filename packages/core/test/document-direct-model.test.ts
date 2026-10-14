@@ -1,6 +1,10 @@
 import { expect, it, vi } from "vitest";
 import { createDocumentTextExtractor } from "../src/documents/extractor";
-import type { DocumentContext, DocumentInput } from "../src/documents/types";
+import {
+  DOCUMENT_LIMITS,
+  type DocumentContext,
+  type DocumentInput,
+} from "../src/documents/types";
 import type { TenantContext } from "../src/tenant-context";
 
 const tenant = { userId: "synthetic", authority: "job" } as TenantContext;
@@ -75,28 +79,65 @@ it("combined alternatives honor aggregate text bounds without partial model inpu
   expect(result.code).toBe("text_limit");
   expect(result.documents).toEqual([]);
 });
-it("direct mode never invokes a PDF converter and legacy mode remains available", async () => {
+it("direct PDF mode converts page text with original source identity while legacy conversion remains available", async () => {
+  const originalBytes = bytes("%PDF-synthetic");
+  const pdfInput: DocumentInput = {
+    ...input(),
+    root: {
+      partId: "invoice",
+      mimeType: "application/pdf",
+      bytes: originalBytes,
+    },
+  };
   const pdf = vi.fn(async () => ({
     status: "ready" as const,
-    pages: ["Synthetic receipt"],
+    pages: ["Synthetic invoice date 14.10.2026", "Total EUR 123,45"],
     parserVersion: "synthetic",
   }));
   const extractor = createDocumentTextExtractor({ pdf: { extract: pdf } });
-  const result = await extractor.extract(
-    {
-      ...input(),
-      root: {
-        partId: "invoice",
-        mimeType: "application/pdf",
-        bytes: bytes("%PDF-synthetic"),
-      },
-    },
-    context,
+  const result = await extractor.extract(pdfInput, context);
+  expect(pdf).toHaveBeenNthCalledWith(
+    1,
+    originalBytes,
+    DOCUMENT_LIMITS,
+    undefined,
   );
-  expect(pdf).not.toHaveBeenCalled();
-  expect(result.documents[0]).toMatchObject({
-    status: "needs_review",
-    code: "converter_unavailable",
+  const expectedPdf = {
+    identity: {
+      connectionId: "synthetic-mailbox",
+      providerMessageId: "synthetic-message",
+      partId: "invoice",
+    },
+    role: "attachment",
+    mimeType: "application/pdf",
+    contentHash:
+      "a01de6a6a86f3503b20a3a18ba0e5cca91f7ab089e7ab0d2e559297331b7294b",
+    status: "ready",
+    textParts: [
+      { page: 1, text: "Synthetic invoice date 14.10.2026" },
+      { page: 2, text: "Total EUR 123,45" },
+    ],
+    pageCount: 2,
+  };
+  expect(result).toEqual({
+    status: "ready",
+    documents: [
+      { ...expectedPdf, parserVersion: "documents-direct-pdf-v2/synthetic" },
+    ],
+    ignoredPartIds: [],
+  });
+  const legacyPdf = await extractor.extract(pdfInput, { tenant });
+  expect(pdf).toHaveBeenNthCalledWith(
+    2,
+    originalBytes,
+    DOCUMENT_LIMITS,
+    undefined,
+  );
+  expect(pdf).toHaveBeenCalledTimes(2);
+  expect(legacyPdf).toEqual({
+    status: "ready",
+    documents: [{ ...expectedPdf, parserVersion: "synthetic" }],
+    ignoredPartIds: [],
   });
   const legacy = await extractor.extract(input(), {
     tenant,
