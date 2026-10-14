@@ -1122,7 +1122,7 @@ footer {
     min-height: 0;
     width: auto;
     display: block;
-    padding: 16px;
+    padding: 10px 12px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
@@ -1131,7 +1131,7 @@ footer {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 16px;
+    margin-top: 8px;
   }
   .private-app .sidebar-nav a {
     padding: 9px 7px;
@@ -1151,7 +1151,7 @@ footer {
     gap: 8px;
   }
   .private-app main {
-    padding: 20px 16px;
+    padding: 12px 16px;
   }
   .private-account {
     width: 100%;
