@@ -104,7 +104,7 @@ The bounded collection supports user-selected series, current/stale evidence pro
 
 ## Optional LangSmith adapter tracing
 
-Tracing is disabled by default. It uses the pinned LangSmith SDK directly. The OpenAI-compatible adapter uses LangChain Chat Completions with automatic callbacks blocked; no LangGraph workflow engine is added. It covers OpenAI-compatible extraction calls and synthetic credential probes, for both hosted inference and BYOK. Clef classification and financial validation are outside this adapter trace.
+Tracing is disabled when no enabling variable is supplied. The checked-in Wrangler configuration explicitly enables metadata-only tracing for the `invoxim-ai` project and leaves content capture disabled. It uses the pinned LangSmith SDK directly. The OpenAI-compatible adapter uses LangChain Chat Completions with automatic callbacks blocked; no LangGraph workflow engine is added. It covers OpenAI-compatible extraction calls and synthetic credential probes, for both hosted inference and BYOK. Clef classification and financial validation are outside this adapter trace.
 
 Set these **Worker-only** Wrangler variables to enable metadata tracing:
 
