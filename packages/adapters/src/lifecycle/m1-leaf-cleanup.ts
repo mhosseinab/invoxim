@@ -9,8 +9,16 @@ interface BaseItem {
 export type M1CleanupItem =
   | (BaseItem & { readonly scope: "account"; readonly deleted_at: number })
   | (BaseItem & { readonly scope: "connection" });
-const leaves = [
+/**
+ * New-style leaf tables drained before legacy parent erasure. Children first so
+ * foreign keys stay satisfiable. Keep in sync with the schema-completeness test.
+ */
+export const m1LeafTables = [
   "archive_upload_sessions",
+  "archive_backfill_items",
+  "archive_dispatch",
+  "archive_document_order",
+  "archive_backfill_runs",
   "archive_objects",
   "archive_folders",
   "recurring_entries",
@@ -22,7 +30,7 @@ const leaves = [
   "storage_oauth_intents",
   "storage_refresh_leases",
 ] as const;
-type Leaf = (typeof leaves)[number];
+type Leaf = (typeof m1LeafTables)[number];
 function current(item: M1CleanupItem): {
   text: string;
   values: (string | number)[];
@@ -68,6 +76,21 @@ function predicate(
       text: "(v.mailbox_connection_id=? OR v.storage_connection_id=?)",
       values: [item.target_id, item.target_id],
     };
+  if (table === "archive_dispatch")
+    return {
+      text: "EXISTS(SELECT 1 FROM archive_objects a WHERE a.user_id=v.user_id AND a.id=v.object_id AND (a.mailbox_connection_id=? OR a.storage_connection_id=?))",
+      values: [item.target_id, item.target_id],
+    };
+  if (table === "archive_backfill_items")
+    return {
+      text: "EXISTS(SELECT 1 FROM archive_backfill_runs r WHERE r.user_id=v.user_id AND r.id=v.run_id AND r.connection_id=?)",
+      values: [item.target_id],
+    };
+  if (table === "archive_document_order")
+    return {
+      text: "EXISTS(SELECT 1 FROM documents d JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id WHERE d.user_id=v.user_id AND d.id=v.document_id AND s.connection_id=?)",
+      values: [item.target_id],
+    };
   if (table !== "entry_valuations" && table !== "recurring_entries")
     return { text: "v.connection_id=?", values: [item.target_id] };
   if (item.stage < 6) return { text: "0", values: [] };
@@ -82,14 +105,16 @@ export async function cleanupM1Leaves(
   item: M1CleanupItem,
 ): Promise<boolean> {
   try {
+    const placeholders = m1LeafTables.map(() => "?").join(",");
     const available = (
       await db
         .prepare(
-          "SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('archive_upload_sessions','archive_objects','archive_folders','recurring_entries','recurring_series','entry_valuations','outlook_inventory_states','outlook_folders','archive_settings','storage_oauth_intents','storage_refresh_leases') LIMIT 11",
+          `SELECT name FROM sqlite_schema WHERE type='table' AND name IN (${placeholders}) LIMIT ${m1LeafTables.length}`,
         )
+        .bind(...m1LeafTables)
         .all<{ name: string }>()
     ).results;
-    const present = leaves.filter((name) =>
+    const present = m1LeafTables.filter((name) =>
       available.some((row) => row.name === name),
     );
     if (present.length === 0) return false;
@@ -104,7 +129,7 @@ export async function cleanupM1Leaves(
       argumentsList.push(item.user_id, ...scope.values);
     }
     // A changed request/profile must stop this unit, not fall through to legacy parent erasure.
-    // Check the shared guard once, keeping all eleven leaves below D1's 100-bind limit.
+    // Check the shared guard once, keeping all leaves below D1's 100-bind limit.
     const selected = await db
       .prepare(
         `SELECT json_extract(selected,'$.leaf') AS leaf,json_extract(selected,'$.ids') AS ids FROM (SELECT CASE WHEN ${guard.text} THEN (SELECT value FROM json_each(json_array(${queries.join(",")})) WHERE value IS NOT NULL ORDER BY CAST(key AS INTEGER) LIMIT 1) ELSE json_object('leaf','blocked','ids',json('[]')) END AS selected) WHERE selected IS NOT NULL`,
@@ -113,7 +138,7 @@ export async function cleanupM1Leaves(
       .first<{ leaf: string; ids: string }>();
     if (!selected) return false;
     if (selected.leaf === "blocked") return true;
-    const table = leaves.find((name) => name === selected.leaf);
+    const table = m1LeafTables.find((name) => name === selected.leaf);
     if (!table) throw new Error("INVALID_LEAF");
     const ids: unknown = JSON.parse(selected.ids);
     if (

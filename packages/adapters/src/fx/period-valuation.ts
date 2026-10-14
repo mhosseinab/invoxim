@@ -1,9 +1,11 @@
 import {
   type FxConversionPolicy,
   type FxEntry,
+  type FxPeriodSummary,
   type FxRateQuote,
   fxCalculationVersion,
   fxConversionResultSchema,
+  fxPeriodSummarySchema,
   fxRateQuoteSchema,
 } from "@invoxim/contracts";
 import { convertFxEntry } from "@invoxim/core";
@@ -34,7 +36,8 @@ export interface ValuationRow extends OwnedEntry {
   retrieved_at: number | null;
   source_version: string | null;
 }
-function entry(row: OwnedEntry): FxEntry {
+/** Single ledger-entry row mapper for every FX valuation read (C12). */
+export function mapFxEntry(row: OwnedEntry): FxEntry {
   return {
     id: row.id,
     kind: row.kind,
@@ -42,6 +45,43 @@ function entry(row: OwnedEntry): FxEntry {
     currency: row.currency,
     eventDate: row.event_date,
   };
+}
+/** Bind a text minor-unit amount to the integer original_minor column. */
+export function minorBinding(value: string): number {
+  const minor = Number(value);
+  if (!Number.isSafeInteger(minor) || minor < 0 || minor > 9000000000000)
+    throw new Error("INVALID_FX_INPUT");
+  return minor;
+}
+/** One policy-hash recipe for every valuation read and write (C4). */
+export function fxPolicyHash(policy: FxConversionPolicy): Promise<string> {
+  return fxSnapshotHash([
+    policy.source,
+    policy.maxPriorAgeDays,
+    fxCalculationVersion,
+  ]);
+}
+/** Bind values matching `valuationJoin`'s four placeholders. */
+export function valuationPolicyBinds(
+  policy: FxConversionPolicy,
+  key: string,
+): [string, string, string, number] {
+  return [fxCalculationVersion, key, policy.source, policy.maxPriorAgeDays];
+}
+export function ownedEntryColumns(entryAlias = "e"): string {
+  return `${entryAlias}.id,${entryAlias}.kind,CAST(${entryAlias}.amount_minor AS TEXT) AS amount_minor,${entryAlias}.currency,${entryAlias}.event_date,${entryAlias}.version`;
+}
+export function profileColumns(profileAlias: string): string {
+  return `${profileAlias}.version AS profile_version,${profileAlias}.reporting_currency AS profile_currency`;
+}
+export const valuationColumns =
+  "v.version AS valuation_version,v.status,v.signed_minor,v.basis,v.reason,v.rate_id,r.source,r.from_currency,r.to_currency,r.requested_date,r.effective_date,r.rate,r.retrieved_at,r.source_version";
+/**
+ * One valuation JOIN for every FX read (C4, ext#14). The four `?` placeholders
+ * bind `valuationPolicyBinds(policy, key)` in the same order.
+ */
+export function valuationJoin(profileAlias: string, entryAlias = "e"): string {
+  return `LEFT JOIN entry_valuations v ON v.user_id=${entryAlias}.user_id AND v.entry_id=${entryAlias}.id AND v.profile_version=${profileAlias}.version AND v.entry_version=${entryAlias}.version AND v.reporting_currency=${profileAlias}.reporting_currency AND v.calculation_version=? AND v.policy_hash=? AND v.policy_source=? AND v.max_prior_age_days=? AND v.original_kind=${entryAlias}.kind AND v.original_minor=${entryAlias}.amount_minor AND v.original_currency=${entryAlias}.currency AND v.original_event_date=${entryAlias}.event_date LEFT JOIN fx_rates r ON r.id=v.rate_id`;
 }
 export async function fxSnapshotHash(value: unknown): Promise<string> {
   return Array.from(
@@ -92,12 +132,12 @@ export async function decodeFxValuation(
     row.status === "unconverted" && quote === null
       ? {
           status: "unconverted",
-          entry: entry(row),
+          entry: mapFxEntry(row),
           reportingCurrency: reportingCurrency,
           reason: row.reason,
           calculationVersion: fxCalculationVersion,
         }
-      : convertFxEntry(entry(row), reportingCurrency, quote, policy),
+      : convertFxEntry(mapFxEntry(row), reportingCurrency, quote, policy),
   );
   if (!persisted.success) throw new Error("CORRUPT_FX_VALUATION");
   const result = persisted.data;
@@ -114,4 +154,68 @@ export async function decodeFxValuation(
     valuationVersion: row.valuation_version,
     result,
   };
+}
+
+export interface PeriodTotals {
+  paid: bigint;
+  refunded: bigint;
+  converted: bigint;
+  pending: bigint;
+  unconverted: bigint;
+  reasons: Record<string, string>;
+}
+/** One period-totals reducer for every FX period export (C3). */
+export function emptyPeriodTotals(): PeriodTotals {
+  return {
+    paid: 0n,
+    refunded: 0n,
+    converted: 0n,
+    pending: 0n,
+    unconverted: 0n,
+    reasons: {},
+  };
+}
+export function periodTotalsFromSummary(
+  summary: FxPeriodSummary,
+): PeriodTotals {
+  return {
+    paid: BigInt(summary.paidMinor),
+    refunded: BigInt(summary.refundedMinor),
+    converted: BigInt(summary.convertedCount),
+    pending: BigInt(summary.pendingCount),
+    unconverted: BigInt(summary.unconvertedCount),
+    reasons: { ...summary.reasons },
+  };
+}
+export function includePeriodValuation(
+  sum: PeriodTotals,
+  valuation: FxValuationRead,
+): void {
+  if (valuation.status !== "valued") {
+    sum.pending++;
+    return;
+  }
+  const result = valuation.result;
+  if (result.status === "unconverted") {
+    sum.unconverted++;
+    sum.reasons[result.reason] = (
+      BigInt(sum.reasons[result.reason] ?? "0") + 1n
+    ).toString();
+    return;
+  }
+  sum.converted++;
+  const minor = BigInt(result.signedMinor);
+  if (result.entry.kind === "payment") sum.paid += minor;
+  else sum.refunded -= minor;
+}
+export function finalizePeriodTotals(sum: PeriodTotals): FxPeriodSummary {
+  return fxPeriodSummarySchema.parse({
+    paidMinor: sum.paid.toString(),
+    refundedMinor: sum.refunded.toString(),
+    netMinor: (sum.paid - sum.refunded).toString(),
+    convertedCount: sum.converted.toString(),
+    pendingCount: sum.pending.toString(),
+    unconvertedCount: sum.unconverted.toString(),
+    reasons: sum.reasons,
+  });
 }

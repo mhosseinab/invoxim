@@ -2,8 +2,11 @@ import type { DeletionJournal } from "@invoxim/core";
 import { cleanupConnection } from "./connection-cleanup";
 import { cleanupM1Leaves } from "./m1-leaf-cleanup";
 
-/** Leaf-first bounded erasure. Profiles remain deleting until the entire active graph is empty. */
-const accountTables = [
+/**
+ * Account-scope erasure stages, in fixed integer order (restore/replay depends
+ * on the indices). New leaf tables belong in `m1LeafTables`, not here.
+ */
+export const accountTables = [
   "usage_events",
   "ai_extractions",
   "purchase_evidence",

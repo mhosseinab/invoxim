@@ -1,7 +1,6 @@
 import {
   type FxConversionPolicy,
   type FxPeriodSummary,
-  fxCalculationVersion,
   fxConversionPolicySchema,
   fxPeriodSummarySchema,
   hasControlCharacters,
@@ -13,8 +12,16 @@ import { z } from "zod";
 import { conditions } from "../purchase-views";
 import {
   decodeFxValuation,
-  fxSnapshotHash,
+  finalizePeriodTotals,
+  fxPolicyHash,
+  includePeriodValuation,
+  ownedEntryColumns,
+  periodTotalsFromSummary,
+  profileColumns,
   type ValuationRow,
+  valuationColumns,
+  valuationJoin,
+  valuationPolicyBinds,
 } from "./period-valuation";
 
 /** Root implements purpose-specific authenticated tokens with its existing auth secret. */
@@ -135,11 +142,7 @@ export function createFxPeriodService(
   },
 ) {
   const policy = fxConversionPolicySchema.parse(options.policy);
-  const policyHash = fxSnapshotHash([
-    policy.source,
-    policy.maxPriorAgeDays,
-    fxCalculationVersion,
-  ]);
+  const policyHash = fxPolicyHash(policy);
   const clock = options.clock ?? Date.now;
   async function profile(context: TenantContext) {
     const row = await db
@@ -308,13 +311,10 @@ export function createFxPeriodService(
       const rows = (
         await db
           .prepare(
-            `SELECT e.id,e.kind,CAST(e.amount_minor AS TEXT) AS amount_minor,e.currency,e.event_date,e.version,profile.version AS profile_version,profile.reporting_currency AS profile_currency,v.version AS valuation_version,v.status,v.signed_minor,v.basis,v.reason,v.rate_id,r.source,r.from_currency,r.to_currency,r.requested_date,r.effective_date,r.rate,r.retrieved_at,r.source_version FROM ledger_entries e JOIN purchases p ON p.user_id=e.user_id AND p.id=e.purchase_id JOIN profiles profile ON profile.user_id=e.user_id LEFT JOIN entry_valuations v ON v.user_id=e.user_id AND v.entry_id=e.id AND v.profile_version=profile.version AND v.entry_version=e.version AND v.reporting_currency=profile.reporting_currency AND v.calculation_version=? AND v.policy_hash=? AND v.policy_source=? AND v.max_prior_age_days=? AND v.original_kind=e.kind AND v.original_minor=e.amount_minor AND v.original_currency=e.currency AND v.original_event_date=e.event_date LEFT JOIN fx_rates r ON r.id=v.rate_id WHERE ${where.sql} AND e.eligible=1 AND e.id>? AND e.event_date BETWEEN ? AND ?${filters.currency ? " AND e.currency=?" : ""} ORDER BY e.id LIMIT 256`,
+            `SELECT ${ownedEntryColumns()},${profileColumns("profile")},${valuationColumns} FROM ledger_entries e JOIN purchases p ON p.user_id=e.user_id AND p.id=e.purchase_id JOIN profiles profile ON profile.user_id=e.user_id ${valuationJoin("profile")} WHERE ${where.sql} AND e.eligible=1 AND e.id>? AND e.event_date BETWEEN ? AND ?${filters.currency ? " AND e.currency=?" : ""} ORDER BY e.id LIMIT 256`,
           )
           .bind(
-            fxCalculationVersion,
-            key,
-            policy.source,
-            policy.maxPriorAgeDays,
+            ...valuationPolicyBinds(policy, key),
             ...where.values,
             after,
             filters.from ?? "0001-01-01",
@@ -326,37 +326,9 @@ export function createFxPeriodService(
       const values = await Promise.all(
         rows.map((row) => decodeFxValuation(row, initial.currency, policy)),
       );
-      let paid = BigInt(state.paidMinor),
-        refunded = BigInt(state.refundedMinor),
-        converted = BigInt(state.convertedCount),
-        pending = BigInt(state.pendingCount),
-        unconverted = BigInt(state.unconvertedCount);
-      const reasons = { ...state.reasons };
-      for (const valuation of values) {
-        if (valuation.status !== "valued") {
-          pending++;
-          continue;
-        }
-        if (valuation.result.status === "unconverted") {
-          unconverted++;
-          const reason = valuation.result.reason;
-          reasons[reason] = (BigInt(reasons[reason] ?? "0") + 1n).toString();
-          continue;
-        }
-        converted++;
-        const minor = BigInt(valuation.result.signedMinor);
-        if (valuation.result.entry.kind === "payment") paid += minor;
-        else refunded -= minor;
-      }
-      state = summarySchema.parse({
-        paidMinor: paid.toString(),
-        refundedMinor: refunded.toString(),
-        netMinor: (paid - refunded).toString(),
-        convertedCount: converted.toString(),
-        pendingCount: pending.toString(),
-        unconvertedCount: unconverted.toString(),
-        reasons,
-      });
+      const totals = periodTotalsFromSummary(state);
+      for (const valuation of values) includePeriodValuation(totals, valuation);
+      state = finalizePeriodTotals(totals);
       const last = rows.at(-1);
       if (last) after = last.id;
       if (rows.length < 256) {

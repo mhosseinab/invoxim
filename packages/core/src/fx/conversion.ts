@@ -22,6 +22,21 @@ function signedMagnitude(entry: FxEntry): bigint {
   return BigInt(entry.amountMinor) * (entry.kind === "refund" ? -1n : 1n);
 }
 
+/**
+ * Days from a quote's effective date to the entry event date. Explicit ISO UTC
+ * strings preserve Gregorian years 0001..0099, unlike Date.UTC(year,...).
+ */
+export function fxRateAgeDays(
+  eventDate: string,
+  effectiveDate: string,
+): number {
+  return (
+    (Date.parse(`${eventDate}T00:00:00.000Z`) -
+      Date.parse(`${effectiveDate}T00:00:00.000Z`)) /
+    86400000
+  );
+}
+
 function referenceMinor(
   entry: FxEntry,
   target: string,
@@ -87,12 +102,11 @@ export function convertFxEntry(
   if (quote.source !== policy.data.source)
     return unconverted("source_mismatch");
   if (quote.effectiveDate > entry.eventDate) return unconverted("rate_future");
-  // Explicit ISO UTC strings preserve Gregorian years 0001..0099, unlike Date.UTC(year,...).
-  const ageDays =
-    (Date.parse(`${entry.eventDate}T00:00:00.000Z`) -
-      Date.parse(`${quote.effectiveDate}T00:00:00.000Z`)) /
-    86400000;
-  if (ageDays > policy.data.maxPriorAgeDays) return unconverted("rate_stale");
+  if (
+    fxRateAgeDays(entry.eventDate, quote.effectiveDate) >
+    policy.data.maxPriorAgeDays
+  )
+    return unconverted("rate_stale");
   const minor = referenceMinor(entry, target, quote);
   const bound = BigInt(fxMaxConvertedMinor);
   if (minor > bound || minor < -bound) return unconverted("magnitude_overflow");
