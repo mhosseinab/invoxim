@@ -1289,6 +1289,33 @@
         "evidence/implementation/clef-email-classification-20261013.md"
       ],
       "blockedBy": []
+    },
+    {
+      "id": "AI-TRACE-01",
+      "title": "Add optional LangSmith tracing to OpenAI-compatible inference",
+      "milestone": "Runtime observability",
+      "status": "done",
+      "dependsOn": [],
+      "ownerRole": "observability",
+      "reviewerRole": "principal-reviewer",
+      "read": [
+        "docs/09-operations-and-costs.md",
+        "docs/06-security-and-privacy.md"
+      ],
+      "scope": "Metadata-only adapter traces with opt-in synthetic probe content; preserve bounded provider calls, budgets, missing-usage behavior and original results. No LangChain/LangGraph migration or private transcript upload.",
+      "acceptanceCaseIds": [
+        "TRACE-01",
+        "TRACE-02",
+        "TRACE-03",
+        "TRACE-04",
+        "TRACE-05"
+      ],
+      "redFirst": "Native tracing tests demonstrate absent exports before implementation; outage and timeout cannot replay inference.",
+      "deliverableEvidence": "Native workerd tests, clean-checkout verification and configuration runbook.",
+      "completionEvidence": [
+        "evidence/implementation/langsmith-adapter-tracing-20261014.md"
+      ],
+      "blockedBy": []
     }
   ]
 }
