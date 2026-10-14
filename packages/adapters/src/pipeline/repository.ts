@@ -721,6 +721,7 @@ export function createPipelineRepository(
     fingerprint: string,
     compatibility?: CachedExtractionCompatibility,
   ): Promise<PersistableAiResult | null> {
+    if (!(await ensureAccepted(lease))) return null;
     identifier.parse(documentId);
     fingerprintSchema.parse(fingerprint);
     if (

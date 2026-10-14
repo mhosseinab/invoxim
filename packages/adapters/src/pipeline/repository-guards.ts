@@ -119,7 +119,7 @@ export function currentDocumentGuard(
     options.checkParseState === false
       ? ""
       : ` AND ${d}.parse_state IN('ready','extracted')`;
-  return `EXISTS(SELECT 1 FROM discovery_source_jobs ${j} JOIN documents ${d} ON ${d}.user_id=${j}.user_id AND ${d}.source_message_id=${j}.source_message_id WHERE ${j}.user_id=? AND ${j}.job_id=? AND ${j}.pipeline_stage='infer' AND ${d}.id=? AND ${d}.pipeline_index=${j}.document_index${parseCheck})`;
+  return `EXISTS(SELECT 1 FROM discovery_source_jobs ${j} JOIN documents ${d} ON ${d}.user_id=${j}.user_id AND ${d}.source_message_id=${j}.source_message_id WHERE ${j}.user_id=? AND ${j}.job_id=? AND ${j}.pipeline_stage IN ('infer','reconcile') AND ${d}.id=? AND ${d}.pipeline_index=${j}.document_index${parseCheck})`;
 }
 /**
  * P1.5c / P9: the next-document guard. Verifies a successor document exists
