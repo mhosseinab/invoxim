@@ -48,6 +48,8 @@ export const onboardingCopy = {
     "Gmail API is disabled for this app. Enable it in the Google Cloud project before importing.",
   providerUnavailable:
     "The mailbox authorization could not be started. Your workspace is still available; retry only when you are ready.",
+  mailboxPermissionDenied:
+    "Mailbox permission was not granted. You are still signed in; no import has started.",
   progressTitle: "Your import",
   finished: "Scan finished",
   noReady:
@@ -77,6 +79,9 @@ export const onboardingCopy = {
   pageReceiptInbox: "Receipt inbox",
   pageReviewSelectedInbox: "Review selected inbox",
   pageConnectGmailInbox: "Connect Gmail inbox",
+  connectOutlookInbox: "Connect Outlook inbox",
+  mailboxReadPermission:
+    "We ask for read-only access to the selected mailbox. This permission is broader than receipts alone. You review the import range before processing starts; connecting does not start an import.",
   pageYourMailboxLimitHasBeenReached:
     "Your mailbox limit has been reached. Choose an existing inbox or manage connections.",
   pageViewConnectionStatus: "View connection status",

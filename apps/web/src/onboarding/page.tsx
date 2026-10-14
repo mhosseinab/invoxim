@@ -17,6 +17,8 @@ import {
   confirmActor,
   googleAuthorization,
   identityFailure,
+  mailboxAuthorization,
+  OnboardingRequestError,
   sendOnboarding,
 } from "./api";
 import { onboardingCopy as text } from "./copy";
@@ -156,8 +158,16 @@ export function OnboardingPage({
     return () => window.clearInterval(timer);
   }, [progress, refresh]);
   useEffect(() => () => action.current?.abort(), []);
-  async function authorize(connectionId?: string) {
-    if (!workspace || busy) return;
+  async function authorize(
+    provider: "gmail" | "outlook",
+    connectionId?: string,
+  ) {
+    if (
+      !workspace ||
+      busy ||
+      !workspace.data.capabilities.mailboxProviders.includes(provider)
+    )
+      return;
     const actor = workspace.profile.user.id;
     const request = new AbortController();
     action.current = request;
@@ -167,7 +177,7 @@ export function OnboardingPage({
       await confirmActor(actor, request.signal);
       const result = mailboxStartResponseSchema.safeParse(
         await sendOnboarding(
-          "/api/connections/mailbox/gmail/start",
+          `/api/connections/mailbox/${provider}/start`,
           connectionId ? { connectionId } : {},
           request.signal,
         ),
@@ -175,10 +185,16 @@ export function OnboardingPage({
       if (!result.success) throw new Error("Invalid authorization response");
       await confirmActor(actor, request.signal);
       if (!request.signal.aborted)
-        location.assign(googleAuthorization(result.data.authorizationUrl));
+        location.assign(
+          mailboxAuthorization(result.data.authorizationUrl, provider),
+        );
     } catch (failure) {
       if (!request.signal.aborted) {
-        if (identityFailure(failure)) identityChanged();
+        const permissionDenied =
+          failure instanceof OnboardingRequestError &&
+          ["missing_permission", "denied"].includes(failure.code);
+        if (permissionDenied) setError(text.mailboxPermissionDenied);
+        else if (identityFailure(failure)) identityChanged();
         else setError(text.providerUnavailable);
       }
     } finally {
@@ -216,8 +232,8 @@ export function OnboardingPage({
     data?.connections.find(
       (item) => item.id === (selected || data.view.connectionId),
     ) ?? data?.connections[0];
-  const canConnect =
-    data?.capabilities.mailboxProviders.includes("gmail") === true;
+  const providers = data?.capabilities.mailboxProviders ?? [];
+  const canConnect = providers.length > 0;
   const callback = new URLSearchParams(location.search).get("mailbox");
   const callbackNotice =
     callback === "cancelled" || callback === "denied"
@@ -309,7 +325,7 @@ export function OnboardingPage({
             {chooseMailbox || !connection ? (
               <section className="private-panel">
                 <h1>{text.connectTitle}</h1>
-                <p>{text.pageGmailAuthorizationGrantsBroadReadAccess}</p>
+                <p>{text.mailboxReadPermission}</p>
                 {data.connections.length > 0 && (
                   <>
                     <label>
@@ -337,14 +353,21 @@ export function OnboardingPage({
                   </>
                 )}
                 {canConnect && data.connections.length < data.mailboxLimit ? (
-                  <button
-                    className="primary"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void authorize()}
-                  >
-                    {text.pageConnectGmailInbox}
-                  </button>
+                  <div className="onboarding-actions">
+                    {providers.map((provider, index) => (
+                      <button
+                        key={provider}
+                        className={index === 0 ? "primary" : undefined}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void authorize(provider)}
+                      >
+                        {provider === "gmail"
+                          ? text.pageConnectGmailInbox
+                          : text.connectOutlookInbox}
+                      </button>
+                    ))}
+                  </div>
                 ) : (
                   <p>
                     {canConnect
@@ -364,11 +387,13 @@ export function OnboardingPage({
                   {connection.address}{" "}
                   {text.pageNeedsAuthorizationWithTheRequiredRead}
                 </p>
-                {canConnect && (
+                {providers.includes(connection.provider) && (
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => void authorize(connection.id)}
+                    onClick={() =>
+                      void authorize(connection.provider, connection.id)
+                    }
                   >
                     {text.reconnectPrefix}
                     {connection.address}
