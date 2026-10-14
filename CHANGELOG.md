@@ -28,7 +28,7 @@ This revision adapts the original agent blueprint to the market evaluation, espe
 - Added T27–T30 and revised existing task dependencies/acceptance criteria. There are now 31 tasks; the IDs are stable identifiers, not execution order. M0 completion includes its presentation/onboarding tasks, while Outlook/Drive/recurring remain full-MVP work.
 - Added 53 acceptance specifications, bringing the total from 107 to 160. They cover sample/private isolation, consent, account selection, double Start, refresh, partial/no-result import, quota pauses, evidence displays, accessibility, optional Drive, and opt-in measurement.
 - Added 73 central copy keys, an onboarding projection JSON Schema, 16 labeled onboarding views, and a four-purchase synthetic presentation fixture with independently checked arithmetic.
-- Added presentation validation and eight helper regression tests. All 20 helper tests pass. The red log records eight expected failures before the new validator was implemented; the green log records the final passing suite. See `VALIDATION.md` for scope and evidence.
+- Added presentation validation and eight helper regression tests; the original blueprint helper suite contains 20 tests. Application verification uses `pnpm verify`.
 - Added five dated primary-source entries for competitor offerings and OAuth/data-use policies. Existing platform-source entries remain; not all were re-researched in this revision. Competitor accuracy, privacy, traction, and product-market fit have not been independently established.
 
 ### Decisions preserved
