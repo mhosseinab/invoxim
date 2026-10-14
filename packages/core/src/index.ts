@@ -1,5 +1,4 @@
-import { calendarDate, minorDigits, validTimezone } from "@invoxim/contracts";
-import { roundRatio } from "./money-conversion";
+import { calendarDate, minorDigits } from "@invoxim/contracts";
 
 export {
   calendarDate,
@@ -93,149 +92,6 @@ export function ledgerTotals(
   };
 }
 
-export { monthlyAnchor } from "./calendar-anchor";
-export { convertMinor } from "./money-conversion";
-
-export function timestampDate(instant: string, timezone: string): string {
-  if (!validTimezone(timezone)) throw new Error("INVALID_TIMEZONE");
-  if (
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(instant) ||
-    !Number.isFinite(Date.parse(instant))
-  )
-    throw new Error("INVALID_INSTANT");
-  calendarDate(instant.slice(0, 10));
-  const [hour = 99, minute = 99, second = 99] = instant
-    .slice(11, 19)
-    .split(":")
-    .map(Number);
-  if (hour > 23 || minute > 59 || second > 59)
-    throw new Error("INVALID_INSTANT");
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(instant));
-  const get = (type: string) => parts.find((p) => p.type === type)?.value;
-  return calendarDate(
-    `${get("year")?.padStart(4, "0")}-${get("month")}-${get("day")}`,
-  );
-}
-export function historicalRateDate(
-  event: string,
-  dates: readonly string[],
-  age: number,
-): string {
-  calendarDate(event);
-  if (!Number.isInteger(age) || age < 0 || age > 14)
-    throw new Error("INVALID_RATE_AGE");
-  const selected = dates
-    .map(calendarDate)
-    .filter((d) => d <= event)
-    .sort()
-    .at(-1);
-  if (!selected || (Date.parse(event) - Date.parse(selected)) / 86400000 > age)
-    throw new Error("FX_RATE_MISSING");
-  return selected;
-}
-export function annualEstimate(minor: bigint): bigint {
-  if (minor < 0n || minor > ENTRY_MINOR_BOUND)
-    throw new Error("AMOUNT_OUT_OF_RANGE");
-  return minor * 12n;
-}
-export function priceChange(previous: bigint, next: bigint) {
-  if (previous <= 0n || next < 0n) throw new Error("INVALID_AMOUNT");
-  const delta = next - previous;
-  return {
-    deltaMinor: delta.toString(),
-    percentRounded2: formatMinor(roundRatio(delta * 10000n, previous), "EUR"),
-  };
-}
-export interface VerifiedFinancialFact {
-  verified: boolean;
-  documentType:
-    | "receipt"
-    | "invoice"
-    | "order-confirmation"
-    | "refund"
-    | "credit-note"
-    | "statement"
-    | "non-purchase"
-    | "cancellation"
-    | "unknown";
-  total: string | null;
-  currency: string | null;
-  date: string | null;
-  paymentEvidence: "explicitly-paid" | "explicitly-unpaid" | "unknown";
-  refundEvidence: "completed" | "pending" | "none" | "unknown";
-  paymentAmount: string | null;
-  refundAmount: string | null;
-  paymentMethodHint:
-    | "card"
-    | "cash"
-    | "bank-transfer"
-    | "wallet"
-    | "store-credit"
-    | "unknown";
-}
-/** Pure decision over verified facts, never validates model grounding or authorizes writes. */
-export function financialEntries(fact: VerifiedFinancialFact): {
-  entries: AcceptedLedgerEntry[];
-  needsReview: boolean;
-} {
-  if (!fact.verified) return { entries: [], needsReview: true };
-  if (fact.documentType === "credit-note")
-    return { entries: [], needsReview: fact.refundEvidence === "completed" };
-  if (
-    [
-      "statement",
-      "non-purchase",
-      "cancellation",
-      "credit-note",
-      "unknown",
-    ].includes(fact.documentType)
-  )
-    return { entries: [], needsReview: false };
-  if (fact.total === null || fact.currency === null || fact.date === null)
-    return { entries: [], needsReview: true };
-  parseMoney(fact.total, fact.currency);
-  calendarDate(fact.date);
-  const entries: AcceptedLedgerEntry[] = [];
-  if (
-    fact.paymentEvidence === "explicitly-paid" &&
-    fact.paymentMethodHint !== "store-credit"
-  ) {
-    const amount = parseMoney(fact.paymentAmount, fact.currency);
-    if (amount === null) return { entries: [], needsReview: true };
-    entries.push({
-      kind: "payment",
-      minor: amount.toString(),
-      currency: fact.currency,
-      date: fact.date,
-      eligible: true,
-    });
-  }
-  if (
-    fact.refundEvidence === "completed" &&
-    fact.paymentMethodHint !== "store-credit"
-  ) {
-    const amount = parseMoney(fact.refundAmount, fact.currency);
-    if (amount === null) return { entries: [], needsReview: true };
-    entries.push({
-      kind: "refund",
-      minor: amount.toString(),
-      currency: fact.currency,
-      date: fact.date,
-      eligible: true,
-    });
-  }
-  return {
-    entries,
-    needsReview:
-      fact.paymentEvidence === "unknown" &&
-      (fact.refundEvidence === "none" || fact.refundEvidence === "unknown"),
-  };
-}
 
 export * from "./ai/classification";
 export { aiRunIdentityKey, createInferenceEngine } from "./ai/engine";
@@ -254,6 +110,7 @@ export type {
 } from "./archive/folders";
 export * from "./archive/objects";
 export * from "./archive/service-types";
+export { monthlyAnchor } from "./calendar-anchor";
 export { createCorrectionService } from "./corrections/service";
 export * from "./corrections/settlement";
 export * from "./corrections/types";
@@ -292,6 +149,7 @@ export { createLifecycleService } from "./lifecycle/service";
 export * from "./lifecycle/types";
 export * from "./mailbox/authorization";
 export * from "./mailbox/types";
+export { convertMinor } from "./money-conversion";
 export { createOnboardingUsecases } from "./onboarding/service";
 export * from "./onboarding/types";
 export { deriveRecurringSuggestion } from "./recurring/derive";

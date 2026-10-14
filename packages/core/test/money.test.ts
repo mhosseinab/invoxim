@@ -1,18 +1,36 @@
+import type { RecurringPayment } from "@invoxim/contracts";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { convertFxEntry } from "../src/fx/conversion";
 import {
-  annualEstimate,
   calendarDate,
   convertMinor,
   formatMinor,
-  historicalRateDate,
   ledgerTotals,
   monthlyAnchor,
   parseMoney,
-  priceChange,
-  timestampDate,
 } from "../src/index";
+import { deriveRecurringSuggestion } from "../src/recurring/derive";
 import { requireFixture } from "./fixture-value";
+
+function recurringPayment(
+  entryId: string,
+  eventDate: string,
+  amountMinor: string,
+): RecurringPayment {
+  return {
+    entryId,
+    purchaseId: `purchase-${entryId}`,
+    kind: "payment",
+    eligible: true,
+    installment: false,
+    amountMinor,
+    currency: "EUR",
+    eventDate,
+    serviceIdentity: { kind: "service-reference", key: "service-plan-id" },
+    pricing: { kind: "unknown", evidence: "unknown" },
+  };
+}
 
 describe("MONEY-01..07 exact domain arithmetic", () => {
   it("MONEY-01 decimal 0.10 + 0.20 is exactly 30; null is unknown", () => {
@@ -71,9 +89,6 @@ describe("MONEY-01..07 exact domain arithmetic", () => {
     for (const date of ["03/04/2026", "2026-02-29", "2026-13-01", "0000-01-01"])
       expect(() => calendarDate(date)).toThrow("INVALID_DATE");
     expect(calendarDate("2024-02-29")).toBe("2024-02-29");
-    expect(timestampDate("2026-10-01T00:30:00Z", "America/Los_Angeles")).toBe(
-      "2026-09-30",
-    );
     expect(calendarDate("2026-10-01")).toBe("2026-10-01");
   });
   it("MONEY-04 exact large sums beyond safe JS Number", () => {
@@ -93,23 +108,62 @@ describe("MONEY-01..07 exact domain arithmetic", () => {
   it("calendar recurrence: preserve anchored month, never create forecast ledger", () => {
     expect(monthlyAnchor("2027-02", 31)).toBe("2027-02-28");
     expect(monthlyAnchor("2027-03", 31)).toBe("2027-03-31");
-    expect(annualEstimate(999n)).toBe(11988n);
-    expect(priceChange(999n, 1199n)).toEqual({
-      deltaMinor: "200",
-      percentRounded2: "20.02",
+    // CORE-4: production annual/comparison live in deriveRecurringSuggestion.
+    const monthly = deriveRecurringSuggestion({
+      payments: [
+        recurringPayment("a", "2027-01-31", "999"),
+        recurringPayment("b", "2027-02-28", "999"),
+        recurringPayment("c", "2027-03-31", "999"),
+      ],
     });
+    if (monthly.status !== "series") throw new Error("expected series");
+    expect(monthly.forecast?.annualMinor).toBe("11988");
+    const pair = deriveRecurringSuggestion({
+      payments: [
+        recurringPayment("first", "2026-12-31", "500"),
+        recurringPayment("prev", "2027-01-31", "999"),
+        recurringPayment("next", "2027-02-28", "1199"),
+      ],
+    });
+    if (pair.status !== "series" || !pair.comparison)
+      throw new Error("expected comparison");
+    expect(pair.comparison.previousAmountMinor).toBe("999");
+    expect(pair.comparison.currentAmountMinor).toBe("1199");
+    expect(pair.comparison.deltaMinor).toBe("200");
+    expect(pair.comparison.percentHundredths).toBe("2002");
   });
   it("FX: entrywise signed rounding and no future/stale FX", () => {
     expect(convertMinor(1n, 2, 2, "0.5") + convertMinor(1n, 2, 2, "0.5")).toBe(
       2n,
     );
     expect(convertMinor(-1n, 2, 2, "0.5")).toBe(-1n);
+    // CORE-4: rate-date rules live in convertFxEntry, not the deleted helper.
+    const policy = { source: "reference-source", maxPriorAgeDays: 7 };
+    const entry = {
+      id: "e",
+      kind: "payment" as const,
+      amountMinor: "1",
+      currency: "EUR",
+      eventDate: "2026-10-11",
+    };
+    const base = {
+      fromCurrency: "EUR",
+      toCurrency: "USD",
+      requestedDate: "2026-10-11",
+      rate: "0.5",
+      source: policy.source,
+      version: "snapshot-1",
+      retrievedAt: 1791676800000,
+    };
     expect(
-      historicalRateDate("2026-10-11", ["2026-10-09", "2026-10-12"], 7),
-    ).toBe("2026-10-09");
-    expect(() =>
-      historicalRateDate("2026-10-11", ["2026-09-30", "2026-10-12"], 7),
-    ).toThrow("FX_RATE_MISSING");
+      convertFxEntry(entry, "USD", { ...base, effectiveDate: "2026-10-09" }, policy),
+    ).toMatchObject({ status: "converted" });
+    expect(
+      convertFxEntry(entry, "USD", { ...base, effectiveDate: "2026-10-12" }, policy),
+    ).toMatchObject({ status: "unconverted", reason: "rate_future" });
+    expect(
+      convertFxEntry(entry, "USD", { ...base, effectiveDate: "2026-09-30" }, policy),
+    ).toMatchObject({ status: "unconverted", reason: "rate_stale" });
   });
   it("fixed-seed decimal round trip independent integer oracle (500 runs)", () => {
     fc.assert(
