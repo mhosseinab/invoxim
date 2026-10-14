@@ -31,7 +31,7 @@ beforeAll(async () => {
     "INSERT INTO profiles(user_id,created_at,updated_at) VALUES('parallel',0,0)",
   ).run();
   await env.DB.prepare(
-    "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state) VALUES('c','parallel','mailbox','gmail','subject','parallel@example.invalid','active')",
+    "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,credential_ciphertext,credential_key_version) VALUES('c','parallel','mailbox','gmail','subject','parallel@example.invalid','active','synthetic-envelope',1)",
   ).run();
   await env.DB.prepare(
     "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES('consent','parallel','c',1,'synthetic','local',0,0,1)",

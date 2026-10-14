@@ -6,9 +6,13 @@ import type {
   NewJob,
   TenantContext,
 } from "@invoxim/core";
-import { z } from "zod";
 import type { ReceiptClassificationConfiguration } from "../ai/clef";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
+import {
+  connectionConsentLiveSql,
+  processingSelectionSchema,
+  processingSelectionSql,
+} from "../pipeline/repository-guards";
 import {
   buildOnboardingRecoveryStatements,
   type OnboardingRecoveryRow,
@@ -176,19 +180,11 @@ export function createJobStore(
       throw new Error("INVALID_CLOCK");
     return value;
   };
-  const live = `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND c.generation=jobs.connection_generation AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND p.status='active' AND pc.id=jobs.consent_id AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=?)`;
+  // P2: one connection/consent live rule shared with pipeline/repository-guards.
+  const live = `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND c.generation=jobs.connection_generation AND pc.id=jobs.consent_id AND ${connectionConsentLiveSql()} AND pc.accepted_at<=?)`;
   // Reuse the recovery metadata shape within the existing checkpoint statement.
   // The current configuration resolver is pure: no provider call or extra D1 read.
-  const processingSelection = `(SELECT json_object('mode',a.mode,'settingsRevision',a.revision,'providerId',a.provider_id,'modelId',a.model_id,'configVersion',a.config_version,'policyVersion',a.consent_version,'acceptedDigest',pc.accepted_configuration_digest) FROM connections c JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id JOIN ai_settings a ON a.user_id=c.user_id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND pc.id=jobs.consent_id AND a.status='active' AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL) AND pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version)`;
-  const processingSelectionSchema = z.strictObject({
-    mode: z.enum(["hosted", "byok"]),
-    settingsRevision: z.number().int().positive(),
-    providerId: z.string().min(1).max(120),
-    modelId: z.string().min(1).max(120),
-    configVersion: z.string().min(1).max(120),
-    policyVersion: z.number().int().nonnegative(),
-    acceptedDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  });
+  const processingSelection = `(SELECT ${processingSelectionSql()} FROM connections c JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id JOIN ai_settings a ON a.user_id=c.user_id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND pc.id=jobs.consent_id AND a.status='active' AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL) AND pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version)`;
   const columns =
     "id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,status,fence,retry_count,lease_id,lease_expires_at,dispatched_at,dispatch_at";
   // Only internal, validated database rows may acquire opaque job authority.
@@ -253,7 +249,7 @@ export function createJobStore(
       throw new Error("INVALID_JOB_INPUT");
     const at = now();
     const result = await prepare(
-      "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.generation=? AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND p.status='active' AND pc.id=? AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=?) ON CONFLICT(user_id,dedupe_key) DO NOTHING",
+      `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.generation=? AND pc.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=?) ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
     )
       .bind(
         input.id,
@@ -277,7 +273,7 @@ export function createJobStore(
   }
   async function eligibleConnection(ctx: TenantContext, connectionId: string) {
     return prepare(
-      "SELECT c.id,c.generation,pc.id AS consent_id,c.next_sync_at,c.manual_sync_at FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND p.status='active' AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? ORDER BY pc.accepted_at DESC,pc.id LIMIT 1",
+      `SELECT c.id,c.generation,pc.id AS consent_id,c.next_sync_at,c.manual_sync_at FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=? ORDER BY pc.accepted_at DESC,pc.id LIMIT 1`,
     )
       .bind(ctx.userId, connectionId, now())
       .first<EligibleConnection>();
@@ -312,7 +308,7 @@ export function createJobStore(
     const jobId = id();
     const dedupe = `sync:${connectionId}:${row.generation}:${manual ? "manual" : "hourly"}:${Math.floor(at / (manual ? 300000 : 3600000))}`;
     const guard =
-      "EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.generation=? AND c.state='connected' AND c.scheduling_state='active' AND p.status='active' AND pc.id=? AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND (?=0 OR c.manual_sync_at IS NULL OR c.manual_sync_at<=?)) AND NOT EXISTS(SELECT 1 FROM jobs pending WHERE pending.user_id=? AND pending.connection_id=? AND pending.connection_generation=? AND pending.type='sync' AND pending.status IN ('ready','leased','retry_wait') AND pending.id<>?)";
+      `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.generation=? AND pc.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=? AND (?=0 OR c.manual_sync_at IS NULL OR c.manual_sync_at<=?)) AND NOT EXISTS(SELECT 1 FROM jobs pending WHERE pending.user_id=? AND pending.connection_id=? AND pending.connection_generation=? AND pending.type='sync' AND pending.status IN ('ready','leased','retry_wait') AND pending.id<>?)`;
     const bindings = [
       ctx.userId,
       connectionId,
@@ -380,7 +376,7 @@ export function createJobStore(
           if (remaining() < 6) break;
           const rows = (
             await prepare(
-              "SELECT c.id,c.generation,pc.id AS consent_id,c.next_sync_at,c.manual_sync_at FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.scheduling_state='active' AND c.state='connected' AND c.kind='mailbox' AND p.status='active' AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND (c.next_sync_at IS NULL OR c.next_sync_at<=?) AND NOT EXISTS(SELECT 1 FROM jobs pending WHERE pending.user_id=c.user_id AND pending.connection_id=c.id AND pending.connection_generation=c.generation AND pending.type='sync' AND pending.status IN ('ready','leased','retry_wait')) ORDER BY c.next_sync_at,c.id,pc.accepted_at DESC,pc.id LIMIT 1",
+              `SELECT c.id,c.generation,pc.id AS consent_id,c.next_sync_at,c.manual_sync_at FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=? AND (c.next_sync_at IS NULL OR c.next_sync_at<=?) AND NOT EXISTS(SELECT 1 FROM jobs pending WHERE pending.user_id=c.user_id AND pending.connection_id=c.id AND pending.connection_generation=c.generation AND pending.type='sync' AND pending.status IN ('ready','leased','retry_wait')) ORDER BY c.next_sync_at,c.id,pc.accepted_at DESC,pc.id LIMIT 1`,
             )
               .bind(user.user_id, now(), now())
               .all<EligibleConnection>()

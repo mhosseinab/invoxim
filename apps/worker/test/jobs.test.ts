@@ -32,7 +32,7 @@ beforeAll(async () => {
     .run();
   await db
     .prepare(
-      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state) VALUES('conn-a','job-a','mailbox','gmail','subject-a','job-a@example.invalid','active')",
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,credential_ciphertext,credential_key_version) VALUES('conn-a','job-a','mailbox','gmail','subject-a','job-a@example.invalid','active','synthetic-envelope',1)",
     )
     .run();
   await db
@@ -187,7 +187,7 @@ it("JOBS-02: an uncooperative handler cannot hold the queue beyond the lease dea
 it("JOBS-03: new periodic scheduling commits its job and advances the processed tenant cursor", async () => {
   await db
     .prepare(
-      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state) VALUES('conn-periodic','job-a','mailbox','gmail','subject-periodic','periodic@example.invalid','active')",
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,credential_ciphertext,credential_key_version) VALUES('conn-periodic','job-a','mailbox','gmail','subject-periodic','periodic@example.invalid','active','synthetic-envelope',1)",
     )
     .run();
   await db
@@ -236,7 +236,7 @@ it("JOBS-06: an existing due sync cannot consume cursor headroom and starve the 
     .run();
   await db
     .prepare(
-      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state) VALUES('conn-cold','job-b','mailbox','gmail','subject-cold','cold@example.invalid','active')",
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,credential_ciphertext,credential_key_version) VALUES('conn-cold','job-b','mailbox','gmail','subject-cold','cold@example.invalid','active','synthetic-envelope',1)",
     )
     .run();
   await db
@@ -285,7 +285,7 @@ it("JOBS-05/06: minimum production budget cancels stale work and dispatches whil
     .run();
   await db
     .prepare(
-      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,generation) VALUES('conn-budget','job-c','mailbox','gmail','subject-budget','budget@example.invalid','active',2)",
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,generation,credential_ciphertext,credential_key_version) VALUES('conn-budget','job-c','mailbox','gmail','subject-budget','budget@example.invalid','active',2,'synthetic-envelope',1)",
     )
     .run();
   await db
