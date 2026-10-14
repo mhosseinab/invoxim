@@ -1,0 +1,9 @@
+Non-sensitive output excerpt; original /tmp/ux-purchases-root-gates-final.log. Parent execution session 81255 exited 0.
+Package boundaries valid (6 concrete packages).
+{"scannedFiles":759,"skippedBinaryFiles":14,"bytes":8096630,"findings":[]}
+{"manifests":7,"findings":[]}
+All matched files use Prettier code style!
+Checked 466 files in 146ms. No fixes applied.
+ Tasks:    5 successful, 5 total
+ Tasks:    5 successful, 5 total
+Production artifacts and build inputs passed the test/debug publication guard.
