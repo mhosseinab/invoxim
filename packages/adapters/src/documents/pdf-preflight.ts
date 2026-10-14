@@ -38,6 +38,8 @@ const MAX_INFLATED_BYTES = 8 * 1024 * 1024;
 const MAX_STREAMS = 128;
 const MAX_OBJECTS = 4096;
 export const LOCAL_PDF_PARSER_VERSION = "unpdf-1.8.1/bounded-flate-v3";
+/** Wall-clock budget for one PDF conversion (A7). */
+export const PDF_TIMEOUT_MS = 10000;
 
 /** Byte-preserving representation: unlike TextDecoder(latin1), never maps PDF bytes. */
 function binaryText(bytes: Uint8Array): string {
@@ -288,7 +290,7 @@ export async function preflightPdf(
   }
   const invalidCatalog = validateCatalog(source, Number(xref?.[1]), offsets);
   if (invalidCatalog) return invalidCatalog;
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + PDF_TIMEOUT_MS;
   const streamRanges: { start: number; end: number }[] = [];
   let offset = 0;
   let inflated = 0;

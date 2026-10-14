@@ -15,6 +15,105 @@ import type {
 } from "./types";
 import { DOCUMENT_LIMITS } from "./types";
 
+/** Normalise a MIME type to its essence (lowercase, no parameters). */
+function normalizeMime(mimeType: string): string {
+  return mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+}
+
+/** Body vs attachment role from the part's MIME, filename and disposition (K9). */
+function partRole(
+  part: Pick<MimePart, "mimeType" | "filename" | "disposition">,
+): "body" | "attachment" {
+  const mime = normalizeMime(part.mimeType);
+  return (mime === "text/plain" || mime === "text/html") &&
+    !part.filename &&
+    part.disposition !== "attachment"
+    ? "body"
+    : "attachment";
+}
+
+async function hashHex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * One PDF conversion call with the shared unavailable/disabled fallback (K9).
+ * Callers own limit accounting and parser-version wrapping.
+ */
+async function convertPdf(
+  pdf: PdfTextExtractor | undefined,
+  bytes: Uint8Array,
+  budget: Readonly<DocumentLimits>,
+  signal: AbortSignal | undefined,
+): Promise<PdfTextResult> {
+  try {
+    return pdf
+      ? await pdf.extract(bytes, budget, signal)
+      : {
+          status: "needs_review",
+          code: "converter_unavailable",
+          parserVersion: "disabled",
+        };
+  } catch {
+    return {
+      status: "needs_review",
+      code: "converter_unavailable",
+      parserVersion: "unavailable",
+    };
+  }
+}
+
+function textlessPdf(result: PdfTextResult): boolean {
+  return (
+    result.status === "ready" &&
+    (!Array.isArray(result.pages) ||
+      result.pages.length === 0 ||
+      result.pages.some(
+        (text) => typeof text !== "string" || text.trim().length === 0,
+      ))
+  );
+}
+
+type PdfDocumentBase = Pick<
+  DocumentResult,
+  "identity" | "role" | "mimeType" | "contentHash"
+>;
+
+/**
+ * Map a converted PDF onto one document result (K9). Both the legacy extract
+ * loop and directModelInput share this shape; callers own limit accounting and
+ * parser-version wrapping.
+ */
+function pdfDocument(
+  base: PdfDocumentBase,
+  parserVersion: string,
+  converted: PdfTextResult,
+): DocumentResult {
+  if (converted.status !== "ready")
+    return { ...base, ...converted, parserVersion };
+  if (textlessPdf(converted))
+    return {
+      ...base,
+      status: "needs_review",
+      code: "textless_pdf",
+      parserVersion,
+    };
+  const pages = converted.pages;
+  return {
+    ...base,
+    status: "ready",
+    parserVersion,
+    textParts: pages.map((text, index) => ({
+      page: index + 1,
+      text,
+    })),
+    pageCount: pages.length,
+  };
+}
+
 function boundedText(
   value: unknown,
   maximum: number,
@@ -87,7 +186,7 @@ function validate(
       for (const child of node.children)
         pending.push({ node: child, depth: depth + 1 });
     }
-    const multipart = node.mimeType.toLowerCase().startsWith("multipart/");
+    const multipart = normalizeMime(node.mimeType).startsWith("multipart/");
     if (
       multipart
         ? node.bytes !== undefined || !node.children?.length
@@ -98,10 +197,7 @@ function validate(
   return null;
 }
 function readableHtml(part: MimePart): boolean {
-  if (
-    part.mimeType.toLowerCase().split(";")[0]?.trim() !== "text/html" ||
-    !part.bytes?.length
-  )
+  if (normalizeMime(part.mimeType) !== "text/html" || !part.bytes?.length)
     return false;
   try {
     const text = new TextDecoder(part.charset ?? "utf-8", {
@@ -123,7 +219,7 @@ function select(
     body: MimePart[];
     attachments: MimePart[];
   } {
-    const mime = node.mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+    const mime = normalizeMime(node.mimeType);
     if (node.children) {
       const results = node.children.map(visit);
       const attachments = results.flatMap((result) => result.attachments);
@@ -133,7 +229,7 @@ function select(
           (!legacyPlain ? bodies.find(readableHtml) : undefined) ??
           bodies.find(
             (part) =>
-              part.mimeType.toLowerCase().startsWith("text/plain") &&
+              normalizeMime(part.mimeType).startsWith("text/plain") &&
               part.bytes?.length,
           ) ??
           bodies.find((part) => part.bytes?.length);
@@ -150,17 +246,43 @@ function select(
       ignored.push(node.partId);
       return { body: [], attachments: [] };
     }
-    if (
-      (mime === "text/plain" || mime === "text/html") &&
-      node.disposition !== "attachment" &&
-      !node.filename
-    )
-      return { body: [node], attachments: [] };
+    if (partRole(node) === "body") return { body: [node], attachments: [] };
     return { body: [], attachments: [node] };
   }
   const result = visit(root);
   return [...result.body, ...result.attachments];
 }
+
+/** Length-framed bytes preserve each exact original byte sequence (direct mode). */
+function framedGroupBytes(group: readonly MimePart[]): Uint8Array {
+  const framed = group.map((part) => ({
+    part,
+    header: new TextEncoder().encode(
+      JSON.stringify([part.partId, part.mimeType, part.bytes?.length ?? 0]),
+    ),
+  }));
+  const hashBytes = new Uint8Array(
+    framed.reduce(
+      (size, item) =>
+        size + 4 + item.header.length + (item.part.bytes?.length ?? 0),
+      0,
+    ),
+  );
+  let offset = 0;
+  const view = new DataView(hashBytes.buffer);
+  for (const item of framed) {
+    view.setUint32(offset, item.header.length);
+    offset += 4;
+    hashBytes.set(item.header, offset);
+    offset += item.header.length;
+    if (item.part.bytes) {
+      hashBytes.set(item.part.bytes, offset);
+      offset += item.part.bytes.length;
+    }
+  }
+  return hashBytes;
+}
+
 async function directModelInput(
   input: DocumentInput,
   limits: Readonly<DocumentLimits>,
@@ -175,7 +297,7 @@ async function directModelInput(
       for (const child of node.children) visit(child);
       return;
     }
-    const mime = node.mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+    const mime = normalizeMime(node.mimeType);
     if (
       mime.startsWith("image/") &&
       node.disposition !== "attachment" &&
@@ -184,12 +306,7 @@ async function directModelInput(
       ignoredPartIds.push(node.partId);
       return;
     }
-    if (
-      (mime === "text/plain" || mime === "text/html") &&
-      !node.filename &&
-      node.disposition !== "attachment"
-    )
-      bodies.push(node);
+    if (partRole(node) === "body") bodies.push(node);
     else attachments.push(node);
   }
   visit(input.root);
@@ -219,60 +336,18 @@ async function directModelInput(
       };
     const grouped = group.length > 1;
     const identityPart = grouped ? input.root : first;
-    let hashBytes: Uint8Array;
-    if (!grouped) hashBytes = first.bytes;
-    else {
-      // Length framing preserves each exact original byte sequence and its provider part identity.
-      const framed = group.map((part) => ({
-        part,
-        header: new TextEncoder().encode(
-          JSON.stringify([part.partId, part.mimeType, part.bytes?.length ?? 0]),
-        ),
-      }));
-      hashBytes = new Uint8Array(
-        framed.reduce(
-          (size, item) =>
-            size + 4 + item.header.length + (item.part.bytes?.length ?? 0),
-          0,
-        ),
-      );
-      let offset = 0;
-      const view = new DataView(hashBytes.buffer);
-      for (const item of framed) {
-        view.setUint32(offset, item.header.length);
-        offset += 4;
-        hashBytes.set(item.header, offset);
-        offset += item.header.length;
-        if (item.part.bytes) {
-          hashBytes.set(item.part.bytes, offset);
-          offset += item.part.bytes.length;
-        }
-      }
-    }
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new Uint8Array(hashBytes),
-    );
-    const mimeType =
-      identityPart.mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
+    const hashBytes = grouped ? framedGroupBytes(group) : first.bytes;
+    const contentHash = await hashHex(hashBytes);
+    const mimeType = normalizeMime(identityPart.mimeType);
     const base = {
       identity: {
         connectionId: input.connectionId,
         providerMessageId: input.providerMessageId,
         partId: identityPart.partId,
       },
-      role:
-        !first.filename &&
-        first.disposition !== "attachment" &&
-        ["text/plain", "text/html"].includes(
-          first.mimeType.toLowerCase().split(";")[0]?.trim() ?? "",
-        )
-          ? ("body" as const)
-          : ("attachment" as const),
+      role: partRole(first),
       mimeType,
-      contentHash: [...new Uint8Array(digest)]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join(""),
+      contentHash,
       parserVersion: "documents-direct-v1",
     };
     if (mimeType === "application/pdf") {
@@ -287,55 +362,25 @@ async function directModelInput(
         partialCode ??= exhausted;
         continue;
       }
-      let converted: PdfTextResult;
-      try {
-        converted = pdf
-          ? await pdf.extract(
-              first.bytes,
-              {
-                ...limits,
-                pages: limits.pages - pageCount,
-                textCharacters: limits.textCharacters - characters,
-              },
-              context.signal,
-            )
-          : {
-              status: "needs_review",
-              code: "converter_unavailable",
-              parserVersion: "disabled",
-            };
-      } catch {
-        converted = {
-          status: "needs_review",
-          code: "converter_unavailable",
-          parserVersion: "unavailable",
-        };
-      }
+      const converted = await convertPdf(
+        pdf,
+        first.bytes,
+        {
+          ...limits,
+          pages: limits.pages - pageCount,
+          textCharacters: limits.textCharacters - characters,
+        },
+        context.signal,
+      );
       const parserVersion = `documents-direct-pdf-v2/${converted.parserVersion}`;
-      if (converted.status === "incomplete") {
-        documents.push({ ...base, ...converted, parserVersion });
-        partialCode ??= converted.code;
+      if (converted.status !== "ready" || textlessPdf(converted)) {
+        documents.push(pdfDocument(base, parserVersion, converted));
+        if (converted.status === "incomplete") partialCode ??= converted.code;
         continue;
       }
-      if (converted.status !== "ready") {
-        documents.push({ ...base, ...converted, parserVersion });
-        continue;
-      }
-      if (
-        !Array.isArray(converted.pages) ||
-        !converted.pages.length ||
-        converted.pages.some((page) => typeof page !== "string" || !page.trim())
-      ) {
-        documents.push({
-          ...base,
-          status: "needs_review",
-          code: "textless_pdf",
-          parserVersion,
-        });
-        continue;
-      }
-      pageCount += converted.pages.length;
-      characters += converted.pages.reduce((sum, page) => sum + page.length, 0);
+      const pages = converted.pages;
+      pageCount += pages.length;
+      characters += pages.reduce((sum, page) => sum + page.length, 0);
       const code =
         pageCount > limits.pages
           ? "page_limit"
@@ -347,24 +392,13 @@ async function directModelInput(
         partialCode ??= code;
         continue;
       }
-      documents.push({
-        ...base,
-        status: "ready",
-        parserVersion,
-        textParts: converted.pages.map((text, index) => ({
-          page: index + 1,
-          text,
-        })),
-        pageCount: converted.pages.length,
-      });
+      documents.push(pdfDocument(base, parserVersion, converted));
       continue;
     }
     if (
       group.some(
         (part) =>
-          !["text/plain", "text/html"].includes(
-            part.mimeType.toLowerCase().split(";")[0]?.trim() ?? "",
-          ),
+          !["text/plain", "text/html"].includes(normalizeMime(part.mimeType)),
       )
     ) {
       documents.push({
@@ -394,7 +428,7 @@ async function directModelInput(
           fatal: true,
           ignoreBOM: false,
         }).decode(part.bytes);
-        const mimeType = part.mimeType.toLowerCase().split(";")[0]?.trim();
+        const mimeType = normalizeMime(part.mimeType);
         if (mimeType !== "text/plain" && mimeType !== "text/html")
           throw new Error("INVALID_TEXT_MIME");
         decoded.push({ part, text, mimeType });
@@ -529,32 +563,21 @@ export function createDocumentTextExtractor(
         if (context.signal?.aborted) return failure("needs_review", "canceled");
         const bytes = node.bytes;
         if (!bytes) return failure("unreadable", "invalid_mime");
-        const mimeType =
-          node.mimeType.toLowerCase().split(";")[0]?.trim() ?? "";
-        const digest = await crypto.subtle.digest(
-          "SHA-256",
-          new Uint8Array(bytes),
-        );
+        const mimeType = normalizeMime(node.mimeType);
+        const contentHash = await hashHex(bytes);
         const base = {
           identity: {
             connectionId: input.connectionId,
             providerMessageId: input.providerMessageId,
             partId: node.partId,
           },
-          role: ((mimeType === "text/plain" || mimeType === "text/html") &&
-          !node.filename &&
-          node.disposition !== "attachment"
-            ? "body"
-            : "attachment") as "body" | "attachment",
+          role: partRole(node),
           mimeType,
-          contentHash: [...new Uint8Array(digest)]
-            .map((byte) => byte.toString(16).padStart(2, "0"))
-            .join(""),
+          contentHash,
           parserVersion:
             mimeType === "text/html" &&
             context.bodyAlternative !== "legacy-plain" &&
-            !node.filename &&
-            node.disposition !== "attachment"
+            partRole(node) === "body"
               ? "documents-v2"
               : "documents-v1",
         };
@@ -594,68 +617,28 @@ export function createDocumentTextExtractor(
             return failure("incomplete", "page_limit");
           if (characters >= limits.textCharacters)
             return failure("incomplete", "text_limit");
-          let result: PdfTextResult;
-          try {
-            result = options.pdf
-              ? await options.pdf.extract(
-                  bytes,
-                  {
-                    ...limits,
-                    pages: limits.pages - pageCount,
-                    textCharacters: limits.textCharacters - characters,
-                  },
-                  context.signal,
-                )
-              : {
-                  status: "needs_review",
-                  code: "converter_unavailable",
-                  parserVersion: "disabled",
-                };
-          } catch {
-            result = {
-              status: "needs_review",
-              code: "converter_unavailable",
-              parserVersion: "unavailable",
-            };
-          }
+          const result = await convertPdf(
+            options.pdf,
+            bytes,
+            {
+              ...limits,
+              pages: limits.pages - pageCount,
+              textCharacters: limits.textCharacters - characters,
+            },
+            context.signal,
+          );
           if (result.status === "incomplete")
             return failure("incomplete", result.code);
-          if (result.status === "ready") {
-            if (
-              !Array.isArray(result.pages) ||
-              result.pages.length === 0 ||
-              result.pages.some(
-                (text) => typeof text !== "string" || text.trim().length === 0,
-              )
-            ) {
-              documents.push({
-                ...base,
-                status: "needs_review",
-                code: "textless_pdf",
-                parserVersion: result.parserVersion,
-              });
-              continue;
-            }
-            pageCount += result.pages.length;
+          if (result.status === "ready" && !textlessPdf(result)) {
+            const pages = result.pages;
+            pageCount += pages.length;
             if (pageCount > limits.pages)
               return failure("incomplete", "page_limit");
-            characters += result.pages.reduce(
-              (sum, text) => sum + text.length,
-              0,
-            );
+            characters += pages.reduce((sum, text) => sum + text.length, 0);
             if (characters > limits.textCharacters)
               return failure("incomplete", "text_limit");
-            documents.push({
-              ...base,
-              parserVersion: result.parserVersion,
-              status: "ready",
-              textParts: result.pages.map((text, index) => ({
-                page: index + 1,
-                text,
-              })),
-              pageCount: result.pages.length,
-            });
-          } else documents.push({ ...base, ...result });
+          }
+          documents.push(pdfDocument(base, result.parserVersion, result));
         } else
           documents.push({
             ...base,

@@ -6,9 +6,13 @@ import type {
 } from "@invoxim/core";
 import { type getDocumentProxy, getResolvedPDFJS } from "unpdf";
 
-import { LOCAL_PDF_PARSER_VERSION, preflightPdf } from "./pdf-preflight";
+import {
+  LOCAL_PDF_PARSER_VERSION,
+  PDF_TIMEOUT_MS,
+  preflightPdf,
+} from "./pdf-preflight";
 
-export { LOCAL_PDF_PARSER_VERSION } from "./pdf-preflight";
+export { LOCAL_PDF_PARSER_VERSION, PDF_TIMEOUT_MS } from "./pdf-preflight";
 
 const parserVersion = LOCAL_PDF_PARSER_VERSION;
 function unsupported(code: DocumentCode): PdfTextResult {
@@ -30,7 +34,7 @@ async function extractPdf(
   if (signal?.aborted) return unsupported("canceled");
   const rejected = await preflightPdf(bytes, limits, signal);
   if (rejected) return unsupported(rejected);
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + PDF_TIMEOUT_MS;
   let pdf: Awaited<ReturnType<typeof getDocumentProxy>> | undefined;
   let loadingTask: { destroy(): Promise<void> } | undefined;
   let reader: ReadableStreamDefaultReader<unknown> | undefined;
@@ -124,7 +128,7 @@ export function createLocalPdfTextExtractor(): PdfTextExtractor {
       const cancel = () => controller.abort();
       signal?.addEventListener("abort", cancel, { once: true });
       if (signal?.aborted) controller.abort();
-      const timer = setTimeout(cancel, 10000);
+      const timer = setTimeout(cancel, PDF_TIMEOUT_MS);
       try {
         return await extractPdf(bytes, limits, controller.signal);
       } finally {

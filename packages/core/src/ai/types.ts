@@ -1,6 +1,15 @@
 import type { Extraction } from "@invoxim/contracts";
 import type { TenantContext } from "../tenant-context";
 
+/** Document types that cannot carry cash payment or refund evidence. */
+export const NON_CASH_DOCUMENT_TYPES = [
+  "non-purchase",
+  "cancellation",
+  "statement",
+  "unknown",
+  "credit-note",
+] as const;
+
 export interface AiTextPart {
   readonly id: string;
   readonly text: string;
