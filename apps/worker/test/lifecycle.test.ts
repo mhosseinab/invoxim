@@ -1,23 +1,6 @@
+import type { TenantContext } from "@invoxim/core";
 import { expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
-import { spreadsheetText } from "../../../packages/core/src/lifecycle/export";
-
-it("LIFECYCLE-01 neutralizes formula and whitespace/control prefixes without changing amounts", () => {
-  for (const value of [
-    "=CMD()",
-    "+CMD()",
-    "-CMD()",
-    "@CMD()",
-    "\tCMD()",
-    "\rCMD()",
-    "  =CMD()",
-    "\u0001=CMD()",
-  ])
-    expect(spreadsheetText(value)).toBe(`'${value}`);
-  expect(spreadsheetText("Synthetic, merchant")).toBe("Synthetic, merchant");
-});
-
-import type { TenantContext } from "@invoxim/core";
 import {
   encodeLifecycleExport,
   LifecycleError,

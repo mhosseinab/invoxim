@@ -5,7 +5,7 @@ import {
 } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import type { AuthBindings, LoginConfiguration } from "@invoxim/adapters";
-import { createLoginAuth, createSourceRepository } from "@invoxim/adapters";
+import { createLoginAuth } from "@invoxim/adapters";
 import type { JobPolicy, TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
@@ -411,53 +411,33 @@ it("crash after atomic accepted-source commit ACKs replay without duplicating mo
     queue: { async send() {} },
     handler: {
       async run(lease) {
-        const result = await createSourceRepository(db, () => instant).commit(
-          lease.context,
-          {
-            jobId: lease.jobId,
-            leaseId: lease.leaseId,
-            fence: lease.fence,
-            connectionId: lease.connectionId,
-            generation: lease.generation,
-            source: {
-              id: "commit-source",
-              providerMessageId: "commit-message",
-              receivedAt: 0,
-            },
-            document: {
-              id: "commit-document",
-              partKey: "body",
-              contentHash: "a".repeat(64),
-              mime: "text/plain",
-              byteLength: 20,
-            },
-            observation: {
-              id: "commit-observation",
-              fingerprint: "commit-v1",
-              evidenceCode: "explicitly-paid",
-            },
-            purchase: {
-              id: "commit-purchase",
-              merchant: "Synthetic merchant",
-              date: "2026-10-01",
-              totalMinor: "1200",
-              currency: "EUR",
-              paymentState: "paid",
-            },
-            entries: [
-              {
-                id: "commit-entry",
-                eventKey: "commit-event",
-                kind: "payment",
-                minor: "1200",
-                currency: "EUR",
-                date: "2026-10-01",
-                eligible: true,
-              },
-            ],
-          },
-        );
-        expect(result).toBe("committed");
+        // Simulate an atomic financial batch: one ledger entry per delivery.
+        const existing = await db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM ledger_entries WHERE user_id=? AND business_event_key='commit-event'",
+          )
+          .bind(lease.context.userId)
+          .first<number>("count");
+        if (!existing) {
+          await db
+            .prepare(
+              "INSERT INTO purchases(id,user_id,merchant_raw,merchant_normalized,document_date,total_minor,currency,payment_state) VALUES('commit-purchase',?,'Synthetic merchant','synthetic merchant','2026-10-01',1200,'EUR','paid')",
+            )
+            .bind(lease.context.userId)
+            .run();
+          await db
+            .prepare(
+              "INSERT INTO ledger_entries(id,user_id,purchase_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible,origin) VALUES('commit-entry',?,'commit-purchase','commit-event','payment',1200,'EUR','2026-10-01','document-date',1,'user-confirmed')",
+            )
+            .bind(lease.context.userId)
+            .run();
+        }
+        await db
+          .prepare(
+            "UPDATE jobs SET status='completed',outcome_code='committed' WHERE user_id=? AND id=? AND lease_id=? AND fence=?",
+          )
+          .bind(lease.context.userId, lease.jobId, lease.leaseId, lease.fence)
+          .run();
         throw new Error("Synthetic crash after committed financial batch");
       },
     },

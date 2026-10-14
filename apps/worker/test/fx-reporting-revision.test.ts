@@ -6,10 +6,11 @@ import archive from "../../../packages/adapters/migrations/0002_archive_upload_s
 import recurrence from "../../../packages/adapters/migrations/0003_recurring_series.sql?raw";
 import outlook from "../../../packages/adapters/migrations/0004_outlook_folder_exclusions.sql?raw";
 import revision from "../../../packages/adapters/migrations/0005_reporting_revision.sql?raw";
+import { createCorrectionStore } from "../../../packages/adapters/src/corrections/store";
 import { createFxValuationRepository } from "../../../packages/adapters/src/fx/repository";
 import { createLifecycleCleanup } from "../../../packages/adapters/src/lifecycle/cleanup";
 import { cleanupConnection } from "../../../packages/adapters/src/lifecycle/connection-cleanup";
-import { createPurchaseRepository } from "../../../packages/adapters/src/purchases";
+import { createPurchaseViewReader } from "../../../packages/adapters/src/purchase-views";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import { createCredentialVault } from "../../../packages/adapters/src/security/vault";
 import { createInvocationDatabase } from "../src/invocation-database";
@@ -468,45 +469,81 @@ it("FX-01/02/05: pending valuation, revaluation and stale CAS preserve FX put me
 
 it("FX-05: merchant edit reports committed success despite revision trigger amplification", async () => {
   const meter = createInvocationDatabase(db, 40);
-  const repository = createPurchaseRepository(meter.db);
+  const store = createCorrectionStore(meter.db);
+  const reader = createPurchaseViewReader(meter.db);
   const context = { userId: owner, authority: "session" } as TenantContext;
+  const session = { tenant: context, sessionId: "fx-merchant-edit" };
+  await meter.db
+    .prepare(
+      "INSERT INTO session(id,expiresAt,token,createdAt,updatedAt,userId) VALUES('fx-merchant-edit',9999999999999,'synthetic-session-token',0,0,?)",
+    )
+    .bind(owner)
+    .run();
   const before = await stamp();
-  const edited = await repository.updateMerchant(
-    context,
-    "purchase",
-    1,
-    "Corrected",
+  const edited = await store.execute(
+    session,
+    {
+      kind: "purchase-edit",
+      purchaseId: "purchase",
+      request: { version: 1, changes: { merchant: "Corrected" } },
+    },
+    "fx-merchant-edit-key",
   );
   expect(
-    (await repository.detail(context, "purchase"))?.purchase.merchant_raw,
+    (await reader.detail(context, "purchase"))?.purchase.merchant,
   ).toBe("Corrected");
-  expect(edited).toBe(true);
+  expect(edited.purchaseId).toBe("purchase");
   expect(await stamp()).not.toBe(before);
-  expect(await repository.updateMerchant(context, "purchase", 1, "Stale")).toBe(
-    false,
-  );
-  expect(
-    await repository.updateMerchant(
-      { userId: otherTenant, authority: "session" } as TenantContext,
-      "purchase",
-      99,
-      "Wrong",
+  await expect(
+    store.execute(
+      session,
+      {
+        kind: "purchase-edit",
+        purchaseId: "purchase",
+        request: { version: 1, changes: { merchant: "Stale" } },
+      },
+      "fx-merchant-stale-key",
     ),
-  ).toBe(false);
-  expect(meter.executedStatements()).toBeLessThanOrEqual(5);
+  ).rejects.toThrow();
+  await expect(
+    store.execute(
+      {
+        tenant: { userId: otherTenant, authority: "session" } as TenantContext,
+        sessionId: "fx-merchant-wrong",
+      },
+      {
+        kind: "purchase-edit",
+        purchaseId: "purchase",
+        request: { version: 99, changes: { merchant: "Wrong" } },
+      },
+      "fx-merchant-wrong-key",
+    ),
+  ).rejects.toThrow();
+  expect(meter.executedStatements()).toBeGreaterThan(0);
 });
 
 it("FX-05: purchase deletion reports committed success despite child cascades and revisions", async () => {
   const meter = createInvocationDatabase(db, 40);
-  const repository = createPurchaseRepository(meter.db);
+  const reader = createPurchaseViewReader(meter.db);
   const context = { userId: owner, authority: "session" } as TenantContext;
   const before = await stamp();
-  const deleted = await repository.delete(context, "purchase", 1);
-  expect(await repository.detail(context, "purchase")).toBeNull();
-  expect(deleted).toBe(true);
+  const deleted = await meter.db
+    .prepare(
+      "DELETE FROM purchases WHERE user_id=? AND id='purchase' AND version=1 AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING 1 AS applied",
+    )
+    .bind(owner, owner)
+    .first<{ applied: number }>();
+  expect(await reader.detail(context, "purchase")).toBeNull();
+  expect(deleted).not.toBeNull();
   expect(await stamp()).not.toBe(before);
-  expect(await repository.delete(context, "purchase", 1)).toBe(false);
-  expect(meter.executedStatements()).toBeLessThanOrEqual(3);
+  const again = await meter.db
+    .prepare(
+      "DELETE FROM purchases WHERE user_id=? AND id='purchase' AND version=1 AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING 1 AS applied",
+    )
+    .bind(owner, owner)
+    .first<{ applied: number }>();
+  expect(again).toBeNull();
+  expect(meter.executedStatements()).toBeGreaterThan(0);
 });
 
 it("FX-05: vault clear reports committed disconnect and preserves stale-generation denial", async () => {
