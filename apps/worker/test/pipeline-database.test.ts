@@ -1086,3 +1086,75 @@ it("manual false-positive decision fences future checkpoints and stale financial
   expect(await tableCount("purchases")).toBe(0);
   expect(await tableCount("ledger_entries")).toBe(0);
 });
+
+// P0.5 / P3: source_messages.processing_status must follow one rule on both
+// terminal write paths. A document whose parse_state is outside
+// {ready, extracted} is unresolved content: it keeps the source at 'review'
+// whether the current document was committed or classified as a non-purchase.
+// Open review items also force 'review'. Otherwise a remaining 'ready'
+// document yields 'discovered', a completed extraction yields 'processed',
+// and nothing usable yields 'unsupported'.
+it("P0.5 commit and skipDocument share one source status rule for an unresolved sibling document", async () => {
+  for (const user of ["pipeline-a", "pipeline-b"]) {
+    await db
+      .prepare(
+        "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length,pipeline_index,parser_version,parse_state,parse_code) VALUES('zip',?,'s','zip',?,'application/zip',20,1,'parser-v1','unsupported','unsupported-format')",
+      )
+      .bind(user, "e".repeat(64))
+      .run();
+  }
+  const commitRepo = createPipelineRepository(db, { clock: () => now });
+  const commitLease = lease("pipeline-a");
+  const candidate = input();
+  const snapshot = await commitRepo.loadSnapshot(commitLease, candidate);
+  expect(snapshot).not.toBeNull();
+  if (!snapshot) throw new Error("missing synthetic snapshot");
+  expect(
+    await commitRepo.commit(commitLease, {
+      input: candidate,
+      plan: planLedgerIngestion(candidate, snapshot),
+      nextDocumentIndex: null,
+    }),
+  ).toBe("committed");
+  const commitStatus = await db
+    .prepare(
+      "SELECT processing_status FROM source_messages WHERE user_id='pipeline-a' AND id='s'",
+    )
+    .first<string>("processing_status");
+
+  await db
+    .prepare(
+      "UPDATE discovery_source_jobs SET pipeline_stage='infer',extraction_fingerprint=NULL WHERE user_id='pipeline-b'",
+    )
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO ai_extractions(user_id,run_key,purpose,document_id,content_hash,extraction_version,config_fingerprint,mode,destination_id,model_id,config_version,settings_revision,generation,credential_version,reservation_nonce,result_json,completed_at,created_at) VALUES(?,?,'extraction','d',?,'email-classification-v1',?,'hosted','processor','model','config',1,1,0,'nonce',?,?,?)",
+    )
+    .bind(
+      "pipeline-b",
+      "e".repeat(64),
+      "a".repeat(64),
+      "f".repeat(64),
+      JSON.stringify({ status: "classified", isReceipt: 0 }),
+      now,
+      now,
+    )
+    .run();
+  const skipRepo = createPipelineRepository(db, { clock: () => now });
+  expect(
+    await skipRepo.skipDocument?.(lease("pipeline-b"), {
+      documentId: "d",
+      classificationFingerprint: "e".repeat(64),
+      nextDocumentIndex: null,
+    }),
+  ).toBe("committed");
+  const skipStatus = await db
+    .prepare(
+      "SELECT processing_status FROM source_messages WHERE user_id='pipeline-b' AND id='s'",
+    )
+    .first<string>("processing_status");
+
+  expect(commitStatus).toBe(skipStatus);
+  expect(commitStatus).toBe("review");
+});
