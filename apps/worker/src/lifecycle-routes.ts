@@ -24,12 +24,17 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import {
   apiError,
+  InvalidQueryError,
   issueMutationToken,
+  json,
   mapFailure,
   requireTenantContext,
+  uniqueQuery,
 } from "./http/guard";
 
 function failure(cause: unknown) {
+  if (cause instanceof InvalidQueryError)
+    return apiError(400, "invalid_request");
   if (cause instanceof PurchaseViewError && cause.code === "read_limit")
     return apiError(413, "narrow_export_range");
   if (cause instanceof LifecycleError) {
@@ -44,27 +49,8 @@ function failure(cause: unknown) {
   }
   return mapFailure(cause);
 }
-function query(request: Request) {
-  const values: Record<string, string> = {};
-  for (const [key, value] of new URL(request.url).searchParams) {
-    if (Object.hasOwn(values, key)) throw new LifecycleError("INVALID_REQUEST");
-    values[key] = value;
-  }
-  return values;
-}
 export function createLifecycleRoutes() {
   const app = new Hono<{ Bindings: LifecycleBindings }>();
-  for (const path of [
-    "/api/lifecycle/capabilities",
-    "/api/export",
-    "/api/account/delete",
-    "/api/connections/*",
-  ])
-    app.use(path, async (c, next) => {
-      await next();
-      c.res.headers.set("Cache-Control", "no-store");
-      c.res.headers.set("X-Content-Type-Options", "nosniff");
-    });
   async function authorized(c: Context<{ Bindings: LifecycleBindings }>) {
     const request = c.req.raw;
     const bindings = c.env ?? {};
@@ -101,7 +87,7 @@ export function createLifecycleRoutes() {
       const ready = await authorized(c);
       if ("response" in ready) return ready.response;
       if (new URL(c.req.url).search) return apiError(400, "invalid_request");
-      return c.json(
+      return json(
         lifecycleCapabilitiesSchema.parse({
           accountDeletionAvailable: ready.dependencies.journal !== null,
           providerRevocation: {
@@ -123,7 +109,9 @@ export function createLifecycleRoutes() {
     try {
       const ready = await authorized(c);
       if ("response" in ready) return ready.response;
-      const input = lifecycleExportRequestSchema.safeParse(query(c.req.raw));
+      const input = lifecycleExportRequestSchema.safeParse(
+        uniqueQuery(c.req.raw),
+      );
       if (!input.success) return apiError(400, "invalid_request");
       const { format, ...filters } = input.data;
       const snapshot = await ready.reader.exportSnapshot(
@@ -164,7 +152,7 @@ export function createLifecycleRoutes() {
         await readAuthJson(c.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      return c.json(
+      return json(
         await ready.service.deleteAccount(
           ready.session,
           input.data,
@@ -191,7 +179,7 @@ export function createLifecycleRoutes() {
         Object.keys(body).length !== 0
       )
         return apiError(400, "invalid_request");
-      return c.json(await ready.service.preview(ready.current.tenant, id.data));
+      return json(await ready.service.preview(ready.current.tenant, id.data));
     } catch (cause) {
       return failure(cause);
     }
@@ -206,7 +194,7 @@ export function createLifecycleRoutes() {
       );
       if (!id.success || !input.success)
         return apiError(400, "invalid_request");
-      return c.json(
+      return json(
         await ready.service.deleteData(
           ready.session,
           id.data,
@@ -233,7 +221,7 @@ export function createLifecycleRoutes() {
       );
       if (!id.success || !input.success)
         return apiError(400, "invalid_request");
-      return c.json(
+      return json(
         await ready.service.disconnect(
           ready.session,
           id.data,

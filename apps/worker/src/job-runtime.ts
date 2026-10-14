@@ -5,6 +5,7 @@ import type {
   JobStore,
 } from "@invoxim/core";
 import { createJobEngine } from "@invoxim/core";
+import { queueMessageSchema } from "@invoxim/contracts";
 export function createJobRuntime(options: {
   store: JobStore;
   queue: JobQueue;
@@ -26,21 +27,16 @@ export function createJobRuntime(options: {
       const message = batch.messages[0];
       if (message) {
         try {
-          const body = message.body;
-          const dispatchWakeup =
-            typeof body === "object" &&
-            body !== null &&
-            !Array.isArray(body) &&
-            Object.keys(body).length === 2 &&
-            "schemaVersion" in body &&
-            body.schemaVersion === 1 &&
-            "dispatch" in body &&
-            body.dispatch === true;
+          const parsed = queueMessageSchema.safeParse(message.body);
           let outcome: "ack" | "retry";
-          if (dispatchWakeup) {
+          if (parsed.success && "dispatch" in parsed.data) {
             await engine.dispatchReady();
             outcome = "ack";
-          } else outcome = await engine.consume(body);
+          } else {
+            outcome = await engine.consume(
+              parsed.success ? parsed.data : message.body,
+            );
+          }
           if (outcome === "ack") {
             message.ack();
             acknowledgedCount++;

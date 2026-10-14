@@ -15,38 +15,16 @@ import {
 } from "@invoxim/contracts";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { apiError, mapFailure, requireTenantContext } from "./http/guard";
-
-function json(value: unknown) {
-  const body = JSON.stringify(value);
-  if (new TextEncoder().encode(body).byteLength > 128 * 1024)
-    return apiError(413, "response_too_large");
-  return new Response(body, {
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
-}
-function query(request: Request) {
-  const values: Record<string, string> = {};
-  for (const [key, value] of new URL(request.url).searchParams) {
-    if (Object.hasOwn(values, key))
-      throw new PurchaseViewError("invalid_request");
-    values[key] = value;
-  }
-  return values;
-}
+import {
+  apiError,
+  InvalidQueryError,
+  json,
+  mapFailure,
+  requireTenantContext,
+  uniqueQuery,
+} from "./http/guard";
 export function createPurchaseRoutes() {
   const app = new Hono<{ Bindings: GmailBindings & OutlookBindings }>();
-  app.use("/api/purchases/*", async (c, next) => {
-    await next();
-    c.res.headers.set("Cache-Control", "no-store");
-  });
-  app.use("/api/purchases", async (c, next) => {
-    await next();
-    c.res.headers.set("Cache-Control", "no-store");
-  });
   async function authorized(
     c: Context<{ Bindings: GmailBindings & OutlookBindings }>,
   ) {
@@ -95,7 +73,9 @@ export function createPurchaseRoutes() {
     try {
       const current = await authorized(c);
       if ("response" in current) return current.response;
-      const input = purchaseReviewRequestSchema.safeParse(query(c.req.raw));
+      const input = purchaseReviewRequestSchema.safeParse(
+        uniqueQuery(c.req.raw),
+      );
       if (!input.success) return apiError(400, "invalid_request");
       return json(
         await current.reader.reviews(current.tenant, input.data.limit),
@@ -108,7 +88,7 @@ export function createPurchaseRoutes() {
     try {
       const current = await authorized(c);
       if ("response" in current) return current.response;
-      const input = purchaseListRequestSchema.safeParse(query(c.req.raw));
+      const input = purchaseListRequestSchema.safeParse(uniqueQuery(c.req.raw));
       if (!input.success) return apiError(400, "invalid_request");
       return json(await current.reader.list(current.tenant, input.data));
     } catch (cause) {
@@ -121,7 +101,7 @@ export function createPurchaseRoutes() {
     try {
       const current = await authorized(c);
       if ("response" in current) return current.response;
-      const input = purchaseFiltersSchema.safeParse(query(c.req.raw));
+      const input = purchaseFiltersSchema.safeParse(uniqueQuery(c.req.raw));
       if (!input.success) return apiError(400, "invalid_request");
       return json(await current.reader.summary(current.tenant, input.data));
     } catch (cause) {
@@ -144,7 +124,7 @@ export function createPurchaseRoutes() {
     try {
       const current = await authorized(c);
       if ("response" in current) return current.response;
-      const input = purchaseFiltersSchema.safeParse(query(c.req.raw));
+      const input = purchaseFiltersSchema.safeParse(uniqueQuery(c.req.raw));
       if (!input.success) return apiError(400, "invalid_request");
       const detail = await current.reader.detail(
         current.tenant,
@@ -159,6 +139,8 @@ export function createPurchaseRoutes() {
   return app;
 }
 function failure(cause: unknown) {
+  if (cause instanceof InvalidQueryError)
+    return apiError(400, "invalid_request");
   return cause instanceof PurchaseViewError && cause.code === "invalid_request"
     ? apiError(400, cause.code)
     : mapFailure(cause);

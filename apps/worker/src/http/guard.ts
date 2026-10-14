@@ -1,6 +1,8 @@
 import {
   type AuthBindings,
   AuthRequestError,
+  BoundedJsonError,
+  boundedJsonResponse,
   createLoginAuth,
   createProfileService,
   issueWorkspaceMutationToken,
@@ -63,6 +65,35 @@ export function apiError(
   );
 }
 
+/** W8: shared JSON response under the 128 KiB cap (SEC-4's boundedJsonResponse). */
+export function json(value: unknown, status = 200): Response {
+  try {
+    return boundedJsonResponse(value, { status });
+  } catch (cause) {
+    if (cause instanceof BoundedJsonError && cause.reason === "too-large")
+      return apiError(413, "response_too_large");
+    throw cause;
+  }
+}
+
+/** Thrown by `uniqueQuery` when a query key appears more than once. */
+export class InvalidQueryError extends Error {
+  constructor() {
+    super("INVALID_QUERY");
+    this.name = "InvalidQueryError";
+  }
+}
+
+/** W8: one duplicate-query-key parser for all route query strings. */
+export function uniqueQuery(request: Request): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const [key, value] of new URL(request.url).searchParams) {
+    if (Object.hasOwn(values, key)) throw new InvalidQueryError();
+    values[key] = value;
+  }
+  return values;
+}
+
 /** One AuthRequestError → failure mapping, with a shared 503 fallback. */
 export function mapFailure(
   cause: unknown,
@@ -71,6 +102,8 @@ export function mapFailure(
 ): Response {
   if (cause instanceof AuthRequestError)
     return apiError(cause.status, cause.code, options);
+  if (cause instanceof InvalidQueryError)
+    return apiError(400, "invalid_request", options);
   return apiError(503, fallbackCode, options);
 }
 

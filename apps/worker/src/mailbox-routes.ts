@@ -16,15 +16,11 @@ import { MailboxError } from "@invoxim/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { createMailboxManagement } from "../../../packages/adapters/src/mailbox/service";
-import { apiError, mapFailure, requireTenantContext } from "./http/guard";
+import { apiError, json, mapFailure, requireTenantContext } from "./http/guard";
 
 type MailboxBindings = GmailBindings & OutlookBindings;
 export function createMailboxRoutes() {
   const app = new Hono<{ Bindings: MailboxBindings }>();
-  app.use("/api/*", async (context, next) => {
-    await next();
-    context.res.headers.set("Cache-Control", "no-store");
-  });
   function failure(cause: unknown) {
     if (!(cause instanceof MailboxError))
       return mapFailure(cause, "mailbox_unavailable");
@@ -128,7 +124,7 @@ export function createMailboxRoutes() {
         );
         if (!input.success) return apiError(400, "invalid_request");
         if (ready.kind !== "oauth") throw new MailboxError("UNAVAILABLE");
-        return c.json(
+        return json(
           mailboxStartResponseSchema.parse(
             await ready.service.start(ready.session, input.data.connectionId),
           ),

@@ -9,7 +9,7 @@ import {
   recurringPreviewResponseSchema,
   recurringWriteResponseSchema,
 } from "@invoxim/contracts";
-import type { Context, MiddlewareHandler } from "hono";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import type {
   createRecurringService,
@@ -18,9 +18,12 @@ import type {
 } from "../../../packages/adapters/src/recurring/service";
 import {
   apiError,
+  InvalidQueryError,
   issueMutationToken,
+  json,
   mapFailure,
   requireTenantContext,
+  uniqueQuery,
 } from "./http/guard";
 
 export interface RecurringRouteOptions {
@@ -30,30 +33,17 @@ export interface RecurringRouteOptions {
   ): ReturnType<typeof createRecurringService> | null;
 }
 function failure(cause: unknown) {
+  if (cause instanceof InvalidQueryError)
+    return apiError(400, "invalid_request");
   if (cause instanceof Error && cause.message === "INVALID_RECURRING_INPUT")
     return apiError(400, "invalid_request");
   return mapFailure(cause, "recurring_unavailable");
 }
-function json(value: unknown, status = 200) {
-  const body = JSON.stringify(value);
-  if (new TextEncoder().encode(body).byteLength > 128 * 1024)
-    return apiError(413, "response_too_large");
-  return new Response(body, {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
-}
 function listInput(request: Request): RecurringListInput {
+  const params = uniqueQuery(request);
   let limit = recurringPageLimit;
   let after: string | undefined;
-  const seen = new Set<string>();
-  for (const [key, value] of new URL(request.url).searchParams) {
-    if (seen.has(key)) throw new Error("INVALID_RECURRING_INPUT");
-    seen.add(key);
+  for (const [key, value] of Object.entries(params)) {
     if (
       key === "limit" &&
       /^[1-9][0-9]?$/.test(value) &&
@@ -78,16 +68,6 @@ function stored(result: RecurringWriteResult, status = 200) {
 /** All forecasts remain estimates; these routes cannot create ledger events or contact providers. */
 export function createRecurringRoutes(options: RecurringRouteOptions) {
   const app = new Hono<{ Bindings: AuthBindings }>();
-  const headers: MiddlewareHandler<{ Bindings: AuthBindings }> = async (
-    c,
-    next,
-  ) => {
-    await next();
-    c.res.headers.set("Cache-Control", "no-store");
-    c.res.headers.set("X-Content-Type-Options", "nosniff");
-  };
-  app.use("/api/recurring", headers);
-  app.use("/api/recurring/*", headers);
   async function authorized(
     c: Context<{ Bindings: AuthBindings }>,
     mutation: boolean,

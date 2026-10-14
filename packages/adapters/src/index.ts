@@ -25,6 +25,16 @@ export * from "./auth/configuration";
 export * from "./auth/http";
 export * from "./auth/login";
 export * from "./auth/profile";
+export {
+  BoundedJsonError,
+  type BoundedJsonFailure,
+  boundedJsonResponse,
+  MAX_JSON_RESPONSE_BYTES,
+  parseRetryAfter,
+  readBoundedJson,
+  readJsonRequestBody,
+  readJsonResponseBody,
+} from "./http";
 export { createConnectionsViewRepository } from "./connection-views";
 export { createCorrectionStore } from "./corrections/store";
 export {
@@ -59,7 +69,7 @@ export * from "./fx/configuration";
 export { createPublicReferenceRateReader } from "./fx/reference";
 export { createFxValuationRepository } from "./fx/repository";
 export * from "./fx/service";
-export { createJobStore } from "./jobs/store";
+export { classifyManualSync, createJobStore } from "./jobs/store";
 export { createLifecycleCleanup } from "./lifecycle/cleanup";
 export * from "./lifecycle/configuration";
 export { createDeletionJournal } from "./lifecycle/journal";
