@@ -1344,6 +1344,36 @@
         "evidence/implementation/langchain-ai-refactor-20261014.md"
       ],
       "blockedBy": []
+    },
+    {
+      "id": "MAIL-PERF-01",
+      "title": "Batch bounded Gmail attachment fetching and process messages concurrently",
+      "milestone": "Runtime performance",
+      "status": "in_progress",
+      "dependsOn": [
+        "AI-LANGCHAIN-01"
+      ],
+      "ownerRole": "cloudflare",
+      "reviewerRole": "principal-reviewer",
+      "read": [
+        "docs/09-operations-and-costs.md",
+        "docs/06-security-and-privacy.md"
+      ],
+      "scope": "Fix native attachment headroom retry defect; true within-email Gmail multipart fetching and two independent message invocations with unchanged shared query and cost limits. No raw persistence, cohort orchestrator or model batching.",
+      "acceptanceCaseIds": [
+        "PERF-01",
+        "PERF-02",
+        "PERF-03",
+        "PERF-04",
+        "PERF-05",
+        "PERF-06"
+      ],
+      "redFirst": "Port real-engine zero/two/eight-attachment regression before runtime fixes; prove bounded stage progress and one financial result.",
+      "deliverableEvidence": "Native query/request counters, multipart/admission/cooldown adversarial tests, independent review and clean full gate.",
+      "completionEvidence": [
+        "evidence/implementation/bounded-mail-processing-plan-20261014.md"
+      ],
+      "blockedBy": []
     }
   ]
 }
