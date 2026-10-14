@@ -101,6 +101,7 @@ export function createReceiptClassifierFactory(
       };
       return {
         config,
+        uncertainAction: configuration.uncertainAction ?? "review",
         classifier: createClefEmailClassifier(options.binding, configuration),
         pricing: new Map([[fingerprint, price]]),
         authorization: { config: selected.config, price: authorityPrice },

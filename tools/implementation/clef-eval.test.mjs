@@ -129,6 +129,12 @@ test("CLEF-ACCURACY-02 live runner uses production protocol, one attempt and red
         result: {
           model: "clef",
           answers: {
+            documentType: {
+              type: "choice",
+              choice: "invoice",
+              probabilities: { invoice: 1 },
+              confidence: 1,
+            },
             receipt: { type: "noul", noul: 0.97 },
             category: {
               type: "choice",
@@ -184,6 +190,12 @@ test("CLEF-ACCURACY-02 missing usage retains reservation without discarding vali
         result: {
           model: "clef",
           answers: {
+            documentType: {
+              type: "choice",
+              choice: "delivery",
+              probabilities: { delivery: 1 },
+              confidence: 1,
+            },
             receipt: { type: "noul", noul: 0.02 },
             category: {
               type: "choice",
@@ -214,6 +226,12 @@ test("CLEF-ACCURACY-02 malformed category distribution is rejected by shared pro
         result: {
           model: "clef",
           answers: {
+            documentType: {
+              type: "choice",
+              choice: "invoice",
+              probabilities: { invoice: 1 },
+              confidence: 1,
+            },
             receipt: { type: "noul", noul: 0.99 },
             category: {
               type: "choice",
@@ -288,12 +306,24 @@ test("CLEF-ACCURACY-02 threshold analysis uses development scores only and retai
       expected: "candidate",
       outcome: "uncertain",
       receiptProbability: 0.75,
+      documentType: {
+        type: "choice",
+        choice: "invoice",
+        probabilities: { invoice: 1 },
+        confidence: 1,
+      },
     },
     {
       partition: "development",
       expected: "non-document",
       outcome: "non-document",
       receiptProbability: 0.01,
+      documentType: {
+        type: "choice",
+        choice: "delivery",
+        probabilities: { delivery: 1 },
+        confidence: 1,
+      },
     },
     {
       partition: "holdout",
@@ -325,6 +355,12 @@ test("CLEF-ACCURACY-02 held-out run matches a frozen development artifact and re
       result: {
         model: "clef",
         answers: {
+          documentType: {
+            type: "choice",
+            choice: "invoice",
+            probabilities: { invoice: 1 },
+            confidence: 1,
+          },
           receipt: { type: "noul", noul: 0.97 },
           category: {
             type: "choice",
@@ -405,6 +441,12 @@ test("CLEF-ACCURACY-02 matching recorded development sweep freezes threshold-onl
       result: {
         model: "clef",
         answers: {
+          documentType: {
+            type: "choice",
+            choice: "invoice",
+            probabilities: { invoice: 1 },
+            confidence: 1,
+          },
           receipt: { type: "noul", noul: 0.97 },
           category: {
             type: "choice",
@@ -474,4 +516,37 @@ test("CLEF-ACCURACY-02 matching recorded development sweep freezes threshold-onl
     /FROZEN_DEVELOPMENT/,
   );
   assert.equal(auth, 0);
+});
+
+test("CLEF-TYPE offline threshold sweep preserves explicit document type routing", () => {
+  const table = analyzeDevelopmentThresholds([
+    {
+      partition: "development",
+      expected: "non-document",
+      outcome: "uncertain",
+      receiptProbability: 0.97,
+      documentType: {
+        type: "choice",
+        choice: "delivery",
+        probabilities: { delivery: 1 },
+        confidence: 1,
+      },
+    },
+    {
+      partition: "development",
+      expected: "non-document",
+      outcome: "non-document",
+      receiptProbability: 0.45,
+      documentType: {
+        type: "choice",
+        choice: "delivery",
+        probabilities: { delivery: 1 },
+        confidence: 1,
+      },
+    },
+  ]);
+  const metrics = table.find((row) => row.positiveThreshold === 0.9).metrics;
+  assert.equal(metrics.falsePositives, 0);
+  assert.equal(metrics.trueNegatives, 1);
+  assert.equal(metrics.negativeReviews, 1);
 });

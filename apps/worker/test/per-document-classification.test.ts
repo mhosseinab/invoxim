@@ -209,6 +209,14 @@ function flow(
       return {
         model: "clef",
         answers: {
+          documentType: {
+            type: "choice",
+            choice: text.includes("RECEIPT-") ? "invoice" : "delivery",
+            probabilities: {
+              [text.includes("RECEIPT-") ? "invoice" : "delivery"]: 1,
+            },
+            confidence: 1,
+          },
           receipt: {
             type: "noul",
             noul: text.includes("RECEIPT-") ? 0.99 : 0.01,

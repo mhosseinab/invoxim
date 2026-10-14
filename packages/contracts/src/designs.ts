@@ -156,13 +156,14 @@ export const inferenceExtractionSchema = extractionSchema.extend({
     )
     .max(10),
 });
-export const EXTRACTION_PROMPT_VERSION = "invoice-extraction-v5";
+export const EXTRACTION_PROMPT_VERSION = "invoice-extraction-v6";
 export function supportedExtractionPrompt(version: string): boolean {
   return (
     version === "invoice-extraction-v1" ||
     version === "invoice-extraction-v2" ||
     version === "invoice-extraction-v3" ||
     version === "invoice-extraction-v4" ||
+    version === "invoice-extraction-v5" ||
     version === EXTRACTION_PROMPT_VERSION
   );
 }

@@ -12,6 +12,7 @@ import {
   createInferenceEngine,
   EMAIL_CLASSIFICATION_VERSION,
   planLedgerIngestion,
+  verifyFinancialDocumentResult,
 } from "@invoxim/core";
 import {
   createAiUsageStore,
@@ -32,6 +33,7 @@ const stale: JobOutcome = { kind: "paused", code: "auth" };
 function usesDirectModelInput(parserVersion: string | undefined): boolean {
   return (
     parserVersion === "documents-direct-v1" ||
+    parserVersion === "documents-direct-selected-v2" ||
     parserVersion?.startsWith("documents-direct-pdf-v2/") === true
   );
 }
@@ -95,6 +97,13 @@ export function createPipelineService(
           fingerprint: string,
           result: PersistableAiResult,
         ) => {
+          if (
+            options.classification &&
+            verifyFinancialDocumentResult(result) !== result
+          )
+            return failCurrentDocument
+              ? await failCurrentDocument("classification-verification")
+              : await finishFailure("review", "classification-verification");
           const input = {
             identity: {
               documentId: document.id,
@@ -252,11 +261,20 @@ export function createPipelineService(
               mime: document.mimeType,
               byteLength:
                 directModelInput && document.status === "ready"
-                  ? document.textParts.reduce(
-                      (sum, part) =>
-                        sum +
-                        (lengths.get(part.partId ?? document.identity.partId) ??
-                          0),
+                  ? [
+                      ...new Set(
+                        document.textParts.map((part) =>
+                          document.parserVersion ===
+                          "documents-direct-selected-v2"
+                            ? (part.partId ?? document.identity.partId).replace(
+                                /@\d+:\d+$/,
+                                "",
+                              )
+                            : (part.partId ?? document.identity.partId),
+                        ),
+                      ),
+                    ].reduce(
+                      (sum, partId) => sum + (lengths.get(partId) ?? 0),
                       0,
                     )
                   : (lengths.get(document.identity.partId) ?? 0),
@@ -287,6 +305,10 @@ export function createPipelineService(
           return failCurrentDocument
             ? await failCurrentDocument(document.code)
             : await finishFailure("review", document.code);
+        if (document.truncated)
+          return failCurrentDocument
+            ? await failCurrentDocument("text_limit")
+            : await finishFailure("review", "text_limit");
         const parts: AiTextPart[] = document.textParts.map((part, index) => ({
           id: `part-${index}`,
           text: part.text,
@@ -301,6 +323,7 @@ export function createPipelineService(
         // lease and accepted selection immediately before model authorization.
         const selected = await options.inference.open(lease, work, parts);
         let classifiedCategory: ReceiptCategory | undefined;
+        let verifyFinancialDocument = false;
         if (options.classification) {
           if (
             parsed.documents.length !== work.documents.length ||
@@ -357,24 +380,41 @@ export function createPipelineService(
             classifier.config,
             control.signal,
           );
-          if (classification.status !== "classified") {
+          verifyFinancialDocument =
+            classification.status === "needs-review" &&
+            classification.reason === "uncertain" &&
+            classifier.uncertainAction === "extract";
+          if (
+            classification.status !== "classified" &&
+            !verifyFinancialDocument
+          ) {
             if (
               ["budget", "in-progress", "rate-limit"].includes(
-                classification.reason,
+                classification.status === "needs-review"
+                  ? classification.reason
+                  : "schema",
               )
             )
               return { kind: "paused", code: "budget" };
-            if (classification.reason === "settings-changed") return stale;
+            if (
+              classification.status === "needs-review" &&
+              classification.reason === "settings-changed"
+            )
+              return stale;
             return failCurrentDocument
               ? await failCurrentDocument(
-                  `classification-${classification.reason}`,
+                  `classification-${classification.status === "needs-review" ? classification.reason : "schema"}`,
                 )
               : await finishFailure(
                   "review",
-                  `classification-${classification.reason}`,
+                  `classification-${classification.status === "needs-review" ? classification.reason : "schema"}`,
                 );
           }
-          if (!classification.isReceipt && work.documents.length === 1) {
+          if (
+            classification.status === "classified" &&
+            !classification.isReceipt &&
+            work.documents.length === 1
+          ) {
             if (!options.repository.skipSource)
               return await finishFailure(
                 "review",
@@ -387,7 +427,10 @@ export function createPipelineService(
               ? completed
               : stale;
           }
-          if (!classification.isReceipt) {
+          if (
+            classification.status === "classified" &&
+            !classification.isReceipt
+          ) {
             if (!repository.skipDocument)
               return failCurrentDocument
                 ? await failCurrentDocument(
@@ -408,7 +451,9 @@ export function createPipelineService(
               ? completed
               : stale;
           }
+          verifyFinancialDocument = true;
           classifiedCategory =
+            classification.status !== "classified" ||
             classification.category === "uncategorized"
               ? undefined
               : classification.category;
@@ -436,6 +481,7 @@ export function createPipelineService(
           extractionVersion: selected.config.promptVersion,
         };
         const engine = createInferenceEngine({
+          financialDocumentsOnly: verifyFinancialDocument,
           extractor:
             classifiedCategory === undefined
               ? selected.extractor
@@ -499,6 +545,14 @@ export function createPipelineService(
           return stale;
         if (result.status === "needs-review" && result.reason === "rate-limit")
           return { kind: "paused", code: "budget" };
+        if (
+          verifyFinancialDocument &&
+          result.status === "needs-review" &&
+          result.reason === "semantics"
+        )
+          return failCurrentDocument
+            ? await failCurrentDocument("classification-verification")
+            : await finishFailure("review", "classification-verification");
         const fingerprint = await aiRunIdentityKey({
           tenant: lease.context,
           identity,

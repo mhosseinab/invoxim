@@ -30,12 +30,23 @@ export function validateExtraction(
   try {
     raw = JSON.parse(output);
   } catch {
+    console.warn("ai_extraction_validation", { code: "invalid-json" });
     return { status: "needs-review", reason: "schema" };
   }
-  if (!boundedExtractionShape(raw))
+  if (!boundedExtractionShape(raw)) {
+    console.warn("ai_extraction_validation", { code: "invalid-shape" });
     return { status: "needs-review", reason: "schema" };
+  }
   const parsed = extractionSchema.safeParse(raw);
-  if (!parsed.success) return { status: "needs-review", reason: "schema" };
+  if (!parsed.success) {
+    console.warn("ai_extraction_validation", {
+      code: "invalid-schema",
+      issues: [
+        ...new Set(parsed.error.issues.map((issue) => issue.code)),
+      ].slice(0, 8),
+    });
+    return { status: "needs-review", reason: "schema" };
+  }
   const candidate = parsed.data;
   const missingFields = (
     ["merchant", "currency", "total", "documentDate"] as const
@@ -777,12 +788,23 @@ export function validateModelExtraction(
   try {
     raw = JSON.parse(output);
   } catch {
+    console.warn("ai_extraction_validation", { code: "invalid-json" });
     return { status: "needs-review", reason: "schema" };
   }
-  if (!boundedExtractionShape(raw))
+  if (!boundedExtractionShape(raw)) {
+    console.warn("ai_extraction_validation", { code: "invalid-shape" });
     return { status: "needs-review", reason: "schema" };
+  }
   const parsed = extractionSchema.safeParse(raw);
-  if (!parsed.success) return { status: "needs-review", reason: "schema" };
+  if (!parsed.success) {
+    console.warn("ai_extraction_validation", {
+      code: "invalid-schema",
+      issues: [
+        ...new Set(parsed.error.issues.map((issue) => issue.code)),
+      ].slice(0, 8),
+    });
+    return { status: "needs-review", reason: "schema" };
+  }
   const candidate = parsed.data;
   const missingFields = (
     ["merchant", "currency", "total", "documentDate"] as const

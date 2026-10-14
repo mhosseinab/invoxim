@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import initial from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import type { ReceiptClassificationConfiguration } from "../../../packages/adapters/src/ai/clef";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { generateTextPdf } from "./fixtures/synthetic-pdf";
 
 const db = env.DB;
 const policy = {
@@ -102,9 +103,14 @@ beforeEach(async () => {
     .run();
 });
 
-it.each([0, 2, 8])(
-  "direct-model real job engine with %i attachments reaches one paid purchase within forty shared statements",
-  async (attachmentCount) => {
+it.each([
+  { attachmentCount: 0, truncated: false },
+  { attachmentCount: 2, truncated: false },
+  { attachmentCount: 8, truncated: false },
+  { attachmentCount: 1, truncated: true },
+])(
+  "direct-model real job engine %j reaches one paid purchase within forty shared statements",
+  async ({ attachmentCount, truncated }) => {
     const { aiConfiguration } =
       await import("../../../packages/adapters/src/ai/configuration");
     const { gmailConfiguration } =
@@ -124,6 +130,12 @@ it.each([0, 2, 8])(
       run: vi.fn(async () => ({
         model: "clef",
         answers: {
+          documentType: {
+            type: "choice",
+            choice: "invoice",
+            probabilities: { invoice: 1 },
+            confidence: 1,
+          },
           receipt: { type: "noul", noul: 0.9 },
           category: {
             type: "choice",
@@ -248,9 +260,16 @@ it.each([0, 2, 8])(
         quote: "2026-10-01",
       });
     }
-    const attachmentBytes = new TextEncoder().encode(
-      "%PDF-1.4\nSynthetic unsupported PDF only",
-    );
+    const attachmentBytes = truncated
+      ? generateTextPdf([
+          [
+            "North Market",
+            "Receipt 2026-10-01",
+            "Total EUR 24.90",
+            "Paid by card. Card payment EUR 24.90",
+          ],
+        ])
+      : new TextEncoder().encode("%PDF-1.4\nSynthetic unsupported PDF only");
     const htmlBytes = new TextEncoder().encode(
       "<p>North Market</p><p>Receipt 2026-10-01</p><p>Total EUR 24.90</p><p>Paid by card. Card payment EUR 24.90</p>",
     );
@@ -270,25 +289,39 @@ it.each([0, 2, 8])(
             parts: [
               {
                 partId: "body",
-                mimeType: "multipart/alternative",
-                parts: [
-                  {
-                    partId: "plain",
-                    mimeType: "text/plain",
-                    body: {
-                      size: input.root.bytes.length,
-                      data: encodeBase64url(input.root.bytes),
-                    },
-                  },
-                  {
-                    partId: "html",
-                    mimeType: "text/html",
-                    body: {
-                      size: htmlBytes.length,
-                      data: encodeBase64url(htmlBytes),
-                    },
-                  },
-                ],
+                ...(truncated
+                  ? {
+                      mimeType: "text/plain",
+                      body: {
+                        size: 60000,
+                        data: encodeBase64url(
+                          new TextEncoder().encode(
+                            "Covering email ".repeat(4000),
+                          ),
+                        ),
+                      },
+                    }
+                  : {
+                      mimeType: "multipart/alternative",
+                      parts: [
+                        {
+                          partId: "plain",
+                          mimeType: "text/plain",
+                          body: {
+                            size: input.root.bytes.length,
+                            data: encodeBase64url(input.root.bytes),
+                          },
+                        },
+                        {
+                          partId: "html",
+                          mimeType: "text/html",
+                          body: {
+                            size: htmlBytes.length,
+                            data: encodeBase64url(htmlBytes),
+                          },
+                        },
+                      ],
+                    }),
               },
               ...Array.from({ length: attachmentCount }, (_, index) => ({
                 partId: `pdf-${index}`,
@@ -413,6 +446,24 @@ it.each([0, 2, 8])(
         expect(meter.executedStatements()).toBeLessThanOrEqual(40);
         expect(result, JSON.stringify(trace)).toBe("ack");
         expect(row?.status, JSON.stringify(trace)).toBe("completed");
+      }
+      if (truncated) {
+        const statuses = await db
+          .prepare(
+            "SELECT part_key,parse_code,parse_state FROM documents WHERE user_id=? ORDER BY pipeline_index",
+          )
+          .bind(tenant.userId)
+          .all();
+        expect(statuses.results).toMatchObject([
+          { parse_code: "text_limit", parse_state: "needs_review" },
+          { part_key: "pdf-0", parse_state: "extracted" },
+        ]);
+        expect(
+          await db
+            .prepare("SELECT COUNT(*) n FROM usage_events WHERE user_id=?")
+            .bind(tenant.userId)
+            .first("n"),
+        ).toBe(2);
       }
       expect(financialCalls, JSON.stringify(trace)).toBe(1);
       expect(binding.run).toHaveBeenCalledTimes(1);

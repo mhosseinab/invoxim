@@ -181,6 +181,7 @@ function service(
   budget = policy,
   contentInput: DocumentInput = input,
   override?: () => unknown,
+  uncertainAction: "review" | "extract" = "review",
 ) {
   const run = vi.fn(async () =>
     override
@@ -188,6 +189,14 @@ function service(
       : {
           model: "clef",
           answers: {
+            documentType: {
+              type: "choice",
+              choice: probability <= 0.1 ? "delivery" : "invoice",
+              probabilities: {
+                [probability <= 0.1 ? "delivery" : "invoice"]: 1,
+              },
+              confidence: 1,
+            },
             receipt: { type: "noul", noul: probability },
             category: {
               type: "choice",
@@ -231,7 +240,7 @@ function service(
         },
         classification: createReceiptClassifierFactory(
           meter.db,
-          classification,
+          { ...classification, uncertainAction },
           { binding: { run } },
         ),
         budget,
@@ -345,6 +354,12 @@ it("CLEF-01 native missing usage retains the conservative reservation and accept
     const { pipeline, run } = service(0.01, policy, input, () => ({
       model: "clef",
       answers: {
+        documentType: {
+          type: "choice",
+          choice: "delivery",
+          probabilities: { delivery: 1 },
+          confidence: 1,
+        },
         receipt: { type: "noul", noul: 0.01 },
         category: {
           type: "choice",
@@ -402,55 +417,64 @@ it("CLEF-01 native changed settings, revoked consent and stolen lease prevent ei
       .run();
   }
 });
-it("CLEF-01 native BYOK extraction destination remains selected while the classifier is operator funded", async () => {
-  await db
-    .prepare(
-      "UPDATE ai_settings SET mode='byok',encrypted_key='synthetic',key_version=1 WHERE user_id=?",
-    )
-    .bind(tenant.userId)
-    .run();
-  config = {
-    ...config,
-    mode: "byok",
-    fingerprint: await computeAiFingerprint({
+it.each([0.9, 0.45])(
+  "CLEF-01 native BYOK score %s extraction destination remains selected while the classifier is operator funded",
+  async (probability) => {
+    await db
+      .prepare(
+        "UPDATE ai_settings SET mode='byok',encrypted_key='synthetic',key_version=1 WHERE user_id=?",
+      )
+      .bind(tenant.userId)
+      .run();
+    config = {
+      ...config,
       mode: "byok",
-      configurationDigest: price.configurationDigest,
-      settingsRevision: 1,
-      generation: 1,
-      credentialVersion: 0,
-      policyVersion: 1,
-      consentId: "consent",
-    }),
-  };
-  const { pipeline, run, extract } = service(0.9);
-  expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
-  const next = await db
-    .prepare("SELECT id FROM jobs WHERE user_id=? AND status='ready'")
-    .bind(tenant.userId)
-    .first<string>("id");
-  if (!next) throw new Error("continuation missing");
-  await db
-    .prepare(
-      "UPDATE jobs SET status='leased',lease_id='next',lease_expires_at=?,fence=1 WHERE user_id=? AND id=?",
-    )
-    .bind(lease.expiresAt, tenant.userId, next)
-    .run();
-  expect(
-    await pipeline.run({ ...lease, jobId: next, leaseId: "next" }, control),
-  ).toEqual({ kind: "completed" });
-  expect(run).toHaveBeenCalledTimes(1);
-  expect(extract).toHaveBeenCalledTimes(1);
-  const events = await db
-    .prepare(
-      "SELECT destination_id,mode FROM usage_events WHERE user_id=? ORDER BY destination_id",
-    )
-    .bind(tenant.userId)
-    .all();
-  expect(events.results).toEqual([
-    { destination_id: "abacus", mode: "byok" },
-    { destination_id: "cloudflare-clef", mode: "hosted" },
-  ]);
-});
+      fingerprint: await computeAiFingerprint({
+        mode: "byok",
+        configurationDigest: price.configurationDigest,
+        settingsRevision: 1,
+        generation: 1,
+        credentialVersion: 0,
+        policyVersion: 1,
+        consentId: "consent",
+      }),
+    };
+    const { pipeline, run, extract } = service(
+      probability,
+      policy,
+      input,
+      undefined,
+      "extract",
+    );
+    expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
+    const next = await db
+      .prepare("SELECT id FROM jobs WHERE user_id=? AND status='ready'")
+      .bind(tenant.userId)
+      .first<string>("id");
+    if (!next) throw new Error("continuation missing");
+    await db
+      .prepare(
+        "UPDATE jobs SET status='leased',lease_id='next',lease_expires_at=?,fence=CASE WHEN fence=0 THEN 1 ELSE fence END WHERE user_id=? AND id=?",
+      )
+      .bind(lease.expiresAt, tenant.userId, next)
+      .run();
+    expect(
+      await pipeline.run({ ...lease, jobId: next, leaseId: "next" }, control),
+    ).toEqual({ kind: "completed" });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(extract).toHaveBeenCalledTimes(1);
+    const events = await db
+      .prepare(
+        "SELECT destination_id,mode FROM usage_events WHERE user_id=? ORDER BY destination_id",
+      )
+      .bind(tenant.userId)
+      .all();
+    expect(events.results).toEqual([
+      { destination_id: "abacus", mode: "byok" },
+      { destination_id: "cloudflare-clef", mode: "hosted" },
+    ]);
+  },
+);
 it("CLEF-01 actual runtime with encrypted Gmail credential and consent digest completes classifier and extraction within forty statements", async () => {
   const { aiConfiguration } =
     await import("../../../packages/adapters/src/ai/configuration");
@@ -470,6 +494,12 @@ it("CLEF-01 actual runtime with encrypted Gmail credential and consent digest co
     run: vi.fn(async () => ({
       model: "clef",
       answers: {
+        documentType: {
+          type: "choice",
+          choice: "invoice",
+          probabilities: { invoice: 1 },
+          confidence: 1,
+        },
         receipt: { type: "noul", noul: 0.9 },
         category: {
           type: "choice",
@@ -621,7 +651,7 @@ it("CLEF-01 actual runtime with encrypted Gmail credential and consent digest co
     if (!next) throw new Error("runtime continuation missing");
     await db
       .prepare(
-        "UPDATE jobs SET status='leased',lease_id='next',lease_expires_at=?,fence=1 WHERE user_id=? AND id=?",
+        "UPDATE jobs SET status='leased',lease_id='next',lease_expires_at=?,fence=CASE WHEN fence=0 THEN 1 ELSE fence END WHERE user_id=? AND id=?",
       )
       .bind(lease.expiresAt, tenant.userId, next)
       .run();
@@ -1613,4 +1643,233 @@ it("AI-CLEF-PRECISION-01 policy identity invalidates custom configuration cache 
   expect(currentPrice?.configurationDigest).toBe(currentDigest);
   expect(currentPrice?.configurationDigest).not.toBe(previousDigest);
   expect(classifier.config.promptVersion).toBe("email-classification-v1");
+});
+
+async function resumeSynthetic(
+  pipeline: ReturnType<typeof service>["pipeline"],
+) {
+  const next = await db
+    .prepare("SELECT id FROM jobs WHERE user_id=? AND status='ready'")
+    .bind(tenant.userId)
+    .first<string>("id");
+  if (!next) throw new Error("continuation missing");
+  await db
+    .prepare(
+      "UPDATE jobs SET status='leased',lease_id='next',lease_expires_at=?,fence=CASE WHEN fence=0 THEN 1 ELSE fence END WHERE user_id=? AND id=?",
+    )
+    .bind(lease.expiresAt, tenant.userId, next)
+    .run();
+  return pipeline.run({ ...lease, jobId: next, leaseId: "next" }, control);
+}
+it("CLEF-UNCERTAIN valid uncertainty uses one normal metered selected extraction after durable continuation", async () => {
+  const { pipeline, run, extract, counts } = service(
+    0.45,
+    policy,
+    input,
+    undefined,
+    "extract",
+  );
+  expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
+  expect(extract).not.toHaveBeenCalled();
+  expect(await resumeSynthetic(pipeline)).toEqual({ kind: "completed" });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(counts.every((count) => count <= 40)).toBe(true);
+  const events = await db
+    .prepare(
+      "SELECT destination_id,state FROM usage_events WHERE user_id=? ORDER BY destination_id",
+    )
+    .bind(tenant.userId)
+    .all();
+  expect(events.results).toEqual([
+    { destination_id: "abacus", state: "known" },
+    { destination_id: "cloudflare-clef", state: "known" },
+  ]);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) n FROM purchases WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(0);
+});
+it.each(["schema", "outage"])(
+  "CLEF-UNCERTAIN %s never escalates even when enabled",
+  async (reason) => {
+    const override = () => {
+      if (reason === "outage") throw new Error("synthetic outage");
+      return {};
+    };
+    const { pipeline, extract } = service(
+      0.45,
+      policy,
+      input,
+      override,
+      "extract",
+    );
+    expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
+    expect(extract).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  { probability: 0.45, stage: "infer" },
+  { probability: 0.99, stage: "infer" },
+  { probability: 0.45, stage: "reconcile" },
+])(
+  "CLEF-VERIFY %j cached accepted order cannot bypass financial verification or charge again",
+  async ({ probability, stage }) => {
+    const { aiRunIdentityKey } = await import("@invoxim/core");
+    const { pipeline, run, extract } = service(
+      probability,
+      policy,
+      input,
+      undefined,
+      "extract",
+    );
+    expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
+    const document = await db
+      .prepare("SELECT content_hash FROM documents WHERE user_id=? AND id='d'")
+      .bind(tenant.userId)
+      .first<{ content_hash: string }>();
+    if (!document) throw new Error("document missing");
+    const key = await aiRunIdentityKey({
+      tenant,
+      identity: {
+        documentId: "d",
+        contentHash: document.content_hash,
+        extractionVersion: config.promptVersion,
+      },
+      config,
+    });
+    const cached = {
+      status: "accepted",
+      documentType: "order-confirmation",
+      warnings: [],
+      records: [
+        {
+          merchant: "Synthetic Store",
+          documentDate: "2026-10-13",
+          eventDate: null,
+          currency: "EUR",
+          total: "15.00",
+          tax: null,
+          invoiceNumber: null,
+          orderReference: "ORDER-SYN",
+          paymentReference: null,
+          refundReference: null,
+          category: "shopping",
+          paymentEvidence: "unknown",
+          refundEvidence: "none",
+          paymentMethodHint: "unknown",
+          recurringCadence: "unknown",
+          paymentAmount: null,
+          refundAmount: null,
+          storeCreditAmount: null,
+          provenance: [],
+        },
+      ],
+    };
+    await db
+      .prepare(
+        "INSERT INTO ai_extractions(user_id,run_key,purpose,document_id,content_hash,extraction_version,config_fingerprint,mode,destination_id,model_id,config_version,settings_revision,generation,credential_version,reservation_nonce,result_json,completed_at,created_at) VALUES(?,?,'extraction','d',?,?,?,'hosted','abacus','financial','v1',1,1,0,'synthetic-cache',?,1,0)",
+      )
+      .bind(
+        tenant.userId,
+        key,
+        document.content_hash,
+        config.promptVersion,
+        config.fingerprint,
+        JSON.stringify(cached),
+      )
+      .run();
+    if (stage === "reconcile")
+      await db
+        .prepare(
+          "UPDATE discovery_source_jobs SET pipeline_stage='reconcile',extraction_fingerprint=? WHERE user_id=? AND job_id IN (SELECT id FROM jobs WHERE user_id=? AND status='ready')",
+        )
+        .bind(key, tenant.userId, tenant.userId)
+        .run();
+    expect(await resumeSynthetic(pipeline)).toEqual({ kind: "completed" });
+    expect(extract).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) n FROM purchases WHERE user_id=?")
+        .bind(tenant.userId)
+        .first("n"),
+    ).toBe(0);
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) n FROM ledger_entries WHERE user_id=?")
+        .bind(tenant.userId)
+        .first("n"),
+    ).toBe(0);
+    expect(
+      await db
+        .prepare("SELECT parse_code FROM documents WHERE user_id=? AND id='d'")
+        .bind(tenant.userId)
+        .first("parse_code"),
+    ).toBe("classification-verification");
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) n FROM usage_events WHERE user_id=?")
+        .bind(tenant.userId)
+        .first("n"),
+    ).toBe(1);
+  },
+);
+it.each(["consent", "lease", "settings"])(
+  "CLEF-UNCERTAIN %s fencing blocks selected financial request after classification",
+  async (fence) => {
+    const { pipeline, run, extract } = service(
+      0.45,
+      policy,
+      input,
+      undefined,
+      "extract",
+    );
+    expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
+    if (fence === "consent")
+      await db
+        .prepare("UPDATE processing_consents SET revoked_at=1 WHERE user_id=?")
+        .bind(tenant.userId)
+        .run();
+    if (fence === "settings")
+      await db
+        .prepare("UPDATE ai_settings SET status='deleted' WHERE user_id=?")
+        .bind(tenant.userId)
+        .run();
+    if (fence === "lease")
+      await db
+        .prepare("UPDATE jobs SET fence=9 WHERE user_id=?")
+        .bind(tenant.userId)
+        .run();
+    expect(await resumeSynthetic(pipeline)).toEqual({
+      kind: "paused",
+      code: "auth",
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(extract).not.toHaveBeenCalled();
+  },
+);
+it("CLEF-UNCERTAIN exhausted shared allowance after classification prevents financial call", async () => {
+  const { pipeline, extract } = service(
+    0.45,
+    policy,
+    input,
+    undefined,
+    "extract",
+  );
+  expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
+  await db
+    .prepare(
+      "UPDATE usage_buckets SET blocked=1 WHERE scope='tenant' AND user_id=?",
+    )
+    .bind(tenant.userId)
+    .run();
+  expect(await resumeSynthetic(pipeline)).toEqual({
+    kind: "paused",
+    code: "budget",
+  });
+  expect(extract).not.toHaveBeenCalled();
 });

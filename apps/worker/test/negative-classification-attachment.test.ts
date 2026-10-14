@@ -190,6 +190,12 @@ function flow(
   const classify = vi.fn(async () => ({
     model: "clef",
     answers: {
+      documentType: {
+        type: "choice",
+        choice: probability <= 0.1 ? "delivery" : "invoice",
+        probabilities: { [probability <= 0.1 ? "delivery" : "invoice"]: 1 },
+        confidence: 1,
+      },
       receipt: { type: "noul", noul: probability },
       category: {
         type: "choice",

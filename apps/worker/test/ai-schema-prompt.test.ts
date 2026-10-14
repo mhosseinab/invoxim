@@ -26,6 +26,7 @@ async function request(
   jsonSchema: boolean,
   jsonObject: boolean,
   inputParts: readonly AiTextPart[] = parts,
+  messageExtra: Record<string, unknown> = {},
 ) {
   const preset = JSON.parse(presetText);
   const destination = aiDestinationSchema.parse({
@@ -80,6 +81,7 @@ async function request(
           finish_reason: "stop",
           message: {
             role: "assistant",
+            ...messageExtra,
             content: JSON.stringify({
               schemaVersion: 1,
               documentType: "non-purchase",
@@ -183,4 +185,17 @@ it("MODEL-14 actual request retains raw foreign-language HTML and gives model in
     "Do not infer payment from an invoice",
   );
   expect(body).not.toHaveProperty("tools");
+});
+
+it("AI-ENVELOPE inert null function/tool fields are not rejected as tool calls", async () => {
+  await request(false, true, parts, { tool_calls: null, function_call: null });
+});
+it("AI-PROMPT explicit root fields and financial verification guidance accompany schema", async () => {
+  const { body } = await request(false, true);
+  expect(body.messages[0].content).toContain(
+    "schemaVersion, documentType, records, warnings",
+  );
+  expect(body.messages[0].content).toContain("order-confirmation");
+  expect(body.messages[0].content).toContain("non-purchase");
+  expect(body.messages[0].content).toContain("not strings containing JSON");
 });

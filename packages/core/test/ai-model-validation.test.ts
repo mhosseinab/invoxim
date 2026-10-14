@@ -1,7 +1,11 @@
 import type { Extraction } from "@invoxim/contracts";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createInferenceEngine } from "../src/ai/engine";
-import type { AiUsageStore, ApprovedAiConfig } from "../src/ai/types";
+import type {
+  AiUsageStore,
+  ApprovedAiConfig,
+  PersistableAiResult,
+} from "../src/ai/types";
 import { validateModelExtraction } from "../src/ai/validation";
 import type { TenantContext } from "../src/tenant-context";
 
@@ -240,4 +244,94 @@ it("MODEL-13 rejects unsupported currency", () => {
   const output = candidate();
   recordOf(output).currency = "ZZZ";
   expect(result(output)).toEqual({ status: "needs-review", reason: "money" });
+});
+
+it("AI-SCHEMA validation diagnostics contain fixed codes without response content", () => {
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    expect(
+      validateModelExtraction("private synthetic prose", parts, 10000),
+    ).toEqual({ status: "needs-review", reason: "schema" });
+    expect(
+      validateModelExtraction(
+        '{"records":[],"warnings":[],"private":"synthetic secret"}',
+        parts,
+        10000,
+      ),
+    ).toEqual({ status: "needs-review", reason: "schema" });
+    expect(warning.mock.calls).toEqual([
+      ["ai_extraction_validation", { code: "invalid-json" }],
+      [
+        "ai_extraction_validation",
+        {
+          code: "invalid-schema",
+          issues: expect.arrayContaining([expect.any(String)]),
+        },
+      ],
+    ]);
+    expect(JSON.stringify(warning.mock.calls)).not.toContain("private");
+  } finally {
+    warning.mockRestore();
+  }
+});
+
+it("CLEF-VERIFY fresh selected-model order facts remain review and replay has no new charge", async () => {
+  const output = candidate();
+  output.documentType = "order-confirmation";
+  expect(result(output).status).toBe("accepted");
+  let cached: PersistableAiResult | undefined;
+  const extract = vi.fn(async () => ({
+    status: "ok" as const,
+    output: JSON.stringify(output),
+    finish: "complete" as const,
+    usage: { input: 10, output: 10, other: 0, source: "reported" as const },
+  }));
+  const reserve = vi.fn(async () => "reserved" as const);
+  const store: AiUsageStore = {
+    checkpoint: async () =>
+      cached ? { status: "completed", result: cached } : { status: "ready" },
+    reserve,
+    authorize: async () => true,
+    settle: async () => {},
+    complete: async (_input, value) => {
+      cached = value;
+      return true;
+    },
+  };
+  const engine = createInferenceEngine({
+    extractor: { extract },
+    store,
+    financialDocumentsOnly: true,
+  });
+  const config: ApprovedAiConfig = {
+    destinationId: "selected",
+    modelId: "financial",
+    mode: "byok",
+    settingsRevision: 1,
+    consentId: "c",
+    fingerprint: "synthetic",
+    promptVersion: "invoice-extraction-v6",
+    schemaVersion: 1,
+    maxInputBytes: 10000,
+    maxOutputBytes: 10000,
+    maxOutputTokens: 100,
+    maxAttempts: 1,
+    reservationUnits: 20000,
+  };
+  const run = () =>
+    engine.extract(
+      { userId: "synthetic", authority: "job" } as TenantContext,
+      {
+        documentId: "d",
+        contentHash: "h",
+        extractionVersion: config.promptVersion,
+      },
+      parts,
+      config,
+    );
+  expect(await run()).toEqual({ status: "needs-review", reason: "semantics" });
+  expect(cached).toEqual({ status: "needs-review", reason: "semantics" });
+  expect(await run()).toEqual({ status: "needs-review", reason: "semantics" });
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(reserve).toHaveBeenCalledTimes(1);
 });
