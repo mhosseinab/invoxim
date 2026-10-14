@@ -27,12 +27,12 @@ import { z } from "zod";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 import {
   cachedGuard as baseCachedGuard,
-  currentDocumentGuard,
   liveGuard as baseLiveGuard,
   liveWhere as baseLiveWhere,
-  nextDocumentGuard,
+  currentDocumentGuard,
   executeBatch,
   LIVE_FROM,
+  nextDocumentGuard,
   PipelinePersistenceError,
   type Predicate,
   processingSelectionSchema,
