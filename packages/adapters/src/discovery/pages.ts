@@ -117,6 +117,7 @@ export function createDiscoveryPages(
       if (control.signal.aborted || !(await control.checkpoint()))
         throw new DiscoveryError("UNAUTHORIZED");
     };
+    let diagnosticStage = "state";
     try {
       await checkpoint();
       guards.charge();
@@ -141,6 +142,7 @@ export function createDiscoveryPages(
         throw new DiscoveryError("CONFLICT");
       if (state.stage.startsWith("paused"))
         return { kind: "paused", code: "budget" };
+      diagnosticStage = "consent";
       const accepted = await guards.consent(lease.context, {
         connectionId: lease.connectionId,
         generation: lease.generation,
@@ -188,11 +190,13 @@ export function createDiscoveryPages(
       if (state.retry_at !== null && state.retry_at > clock())
         throw new DiscoveryError("CONFLICT");
       await checkpoint();
+      diagnosticStage = "provider";
       const provider = await options.providers.open(
         lease.context,
         { connectionId: lease.connectionId, generation: lease.generation },
         control.signal,
       );
+      diagnosticStage = "list";
       let page: DiscoveryPage;
       if (state.pending_ids !== null) {
         page = pageSchema.parse({
@@ -286,6 +290,7 @@ export function createDiscoveryPages(
         excluded: true,
         candidate: "unknown",
       }));
+      diagnosticStage = "metadata";
       for (const id of chosenIds) {
         await checkpoint();
         const reference = metadataSchema.parse(
@@ -342,6 +347,7 @@ export function createDiscoveryPages(
         consentId: lease.consentId,
         queryMode: state.query_mode,
       });
+      diagnosticStage = "commit";
       await commit(
         lease,
         state,
@@ -365,6 +371,21 @@ export function createDiscoveryPages(
           return { kind: "completed" };
         }
       }
+      console.warn("gmail_discovery_retry", {
+        stage: diagnosticStage,
+        reason:
+          cause instanceof DiscoveryError
+            ? cause.code
+            : cause instanceof z.ZodError
+              ? "INVALID_RESPONSE"
+              : cause instanceof Error &&
+                  cause.message === "DATABASE_QUERY_BUDGET"
+                ? "QUERY_BUDGET"
+                : cause instanceof Error &&
+                    cause.message.startsWith("D1_ERROR:")
+                  ? "DATABASE"
+                  : "UNEXPECTED",
+      });
       return {
         kind: "retry",
         code: control.signal.aborted ? "timeout" : "transient",
