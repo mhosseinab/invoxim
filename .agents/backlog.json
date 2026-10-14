@@ -1540,6 +1540,43 @@
         "evidence/implementation/meaningful-lists-review-20261014.md",
         "evidence/implementation/clef-precision-audit-20261014.md"
       ]
+    },
+    {
+      "id": "PDF-PROCESSING-01",
+      "title": "Process bounded text PDF attachments through the direct model path",
+      "milestone": "M0",
+      "status": "in_progress",
+      "dependsOn": [
+        "AI-CLEF-PRECISION-01"
+      ],
+      "ownerRole": "integrations",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Existing local unpdf converter plus bounded Flate PDF support and direct-model text integration; original hashes/versioned provenance; noOCR, storage or provider PDF capability assumptions.",
+      "acceptanceCaseIds": [
+        "PDF-TEXT",
+        "PDF-COMPRESSION-BOUNDS",
+        "PDF-MODEL-PIPELINE",
+        "PDF-CACHE-FENCES"
+      ],
+      "completionEvidence": []
+    },
+    {
+      "id": "CLEF-ACCURACY-02",
+      "title": "Evaluate and improve document classification with a fixed held-out set",
+      "milestone": "M0",
+      "status": "in_progress",
+      "dependsOn": [
+        "AI-CLEF-PRECISION-01"
+      ],
+      "ownerRole": "ai",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Labeled development/held-out corpus, exact production protocol reuse, bounded dry-run-by-default real-model evaluation after separate cost approval; attachment-aware routing; no invented quality benchmark.",
+      "acceptanceCaseIds": [
+        "CLEF-EVAL",
+        "CLEF-HOLDOUT",
+        "CLEF-DOCUMENT-ROUTING"
+      ],
+      "completionEvidence": []
     }
   ]
 }
