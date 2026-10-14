@@ -292,7 +292,7 @@ describe("T12 ledger reconciliation", () => {
           totalMinor: 12345,
           category: "other" as const,
           version: 4,
-          overriddenFields: ["totalMinor", "category"],
+          overriddenFields: ["totalMinor", "category"] as const,
         },
       ],
     };
@@ -472,7 +472,7 @@ describe("T12 ledger reconciliation", () => {
           ...purchase,
           merchant: "My renamed shop",
           version: 7,
-          overriddenFields: ["merchant"],
+          overriddenFields: ["merchant"] as const,
         },
       ],
     };
@@ -509,7 +509,7 @@ describe("T12 ledger reconciliation", () => {
         {
           ...purchase,
           totalMinor: 12345,
-          overriddenFields: ["totalMinor"],
+          overriddenFields: ["totalMinor"] as const,
           version: 4,
         },
       ],
@@ -529,6 +529,73 @@ describe("T12 ledger reconciliation", () => {
     );
     expect(edited.purchases[0]?.totalMinor).toBe(12345);
     expect(plan.purchases).toEqual([]);
+  });
+  it("legacy currency override is a financial correction like a total override", () => {
+    const state = sequence([input("legacy")]).state;
+    const purchase = state.purchases[0];
+    if (!purchase) throw new Error("Missing purchase");
+    const edited = {
+      ...state,
+      observations: [],
+      purchases: [
+        {
+          ...purchase,
+          overriddenFields: ["currency"] as const,
+          version: 4,
+        },
+      ],
+    };
+    const duplicate = planLedgerIngestion(
+      input("reissue", {
+        total: "120.00",
+        paymentAmount: "120.00",
+        paymentReference: "P2",
+      }),
+      edited,
+    );
+    expect(duplicate.reviews.map((item) => item.reason)).not.toContain(
+      "invoice-conflict",
+    );
+    const plan = planLedgerIngestion(
+      input("new-cash", { paymentReference: "P2" }),
+      edited,
+    );
+    expect(plan.events).toEqual([]);
+    expect(plan.reviews.map((item) => item.reason)).toContain(
+      "ambiguous-event",
+    );
+  });
+  it("currency override suppresses order-confirmation gross conflict", () => {
+    const state = sequence([
+      input("installment", { total: "50.00", paymentAmount: "50.00" }),
+    ]).state;
+    const purchase = state.purchases[0];
+    if (!purchase) throw new Error("Missing purchase");
+    const edited = {
+      ...state,
+      purchases: [
+        {
+          ...purchase,
+          overriddenFields: ["currency"] as const,
+          version: 2,
+        },
+      ],
+    };
+    const plan = planLedgerIngestion(
+      input(
+        "late-order",
+        {
+          invoiceNumber: null,
+          paymentEvidence: "explicitly-unpaid",
+          paymentAmount: null,
+        },
+        "order-confirmation",
+      ),
+      edited,
+    );
+    expect(plan.reviews.map((item) => item.reason)).not.toContain(
+      "purchase-conflict",
+    );
   });
   it("legacy unknown event identities cannot be supplemented with a possibly duplicate new reference", () => {
     const state = sequence([input("legacy")]).state;
@@ -681,7 +748,7 @@ describe("T12 ledger reconciliation", () => {
         {
           ...purchase,
           paymentState: "unpaid" as const,
-          overriddenFields: ["paymentState"],
+          overriddenFields: ["paymentState"] as const,
           version: 4,
         },
       ],
@@ -775,7 +842,7 @@ it("T14 EDIT-01 user-cleared document fields remain unknown during reprocessing 
         currency: "EUR",
         totalMinor: null,
         paymentState: "unknown" as const,
-        overriddenFields: ["totalMinor"],
+        overriddenFields: ["totalMinor"] as const,
       }),
     ),
   };
@@ -843,7 +910,7 @@ it("T14 a manually completed source record is reused after extraction becomes co
           "totalMinor",
           "documentDate",
           "currency",
-        ],
+        ] as const,
         paymentState: "unknown",
       },
     ],
