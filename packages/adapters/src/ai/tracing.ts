@@ -8,6 +8,7 @@ export interface AiTracingBindings {
   AI_TRACING_INCLUDE_CONTENT?: string;
   LANGSMITH_API_KEY?: string;
   LANGSMITH_PROJECT?: string;
+  LANGSMITH_HOST?: string;
 }
 const configurationSchema = z.strictObject({
   apiKey: z
@@ -16,6 +17,23 @@ const configurationSchema = z.strictObject({
     .max(4096)
     .refine((value) => !hasControlCharacters(value)),
   project: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/),
+  host: z
+    .string()
+    .max(2048)
+    .refine((value) => {
+      if (!URL.canParse(value)) return false;
+      const url = new URL(value);
+      return (
+        !hasControlCharacters(value) &&
+        url.protocol === "https:" &&
+        !url.username &&
+        !url.password &&
+        url.pathname === "/" &&
+        !url.search &&
+        !url.hash
+      );
+    })
+    .transform((value) => new URL(value).origin),
   includeContent: z.boolean(),
 });
 type TracingConfiguration = z.infer<typeof configurationSchema>;
@@ -33,6 +51,7 @@ export function langsmithConfiguration(
   const parsed = configurationSchema.safeParse({
     apiKey: bindings.LANGSMITH_API_KEY,
     project: bindings.LANGSMITH_PROJECT ?? "invoxim-ai",
+    host: bindings.LANGSMITH_HOST ?? "https://api.smith.langchain.com",
     includeContent: bindings.AI_TRACING_INCLUDE_CONTENT === "true",
   });
   if (!parsed.success) {
@@ -42,7 +61,6 @@ export function langsmithConfiguration(
   return parsed.data;
 }
 
-const TRACE_URL = "https://api.smith.langchain.com/runs";
 const TRACE_TIMEOUT_MS = 1000;
 
 /** One completed run, no SDK background queue/retries, no request/credential serialization. */
@@ -52,6 +70,7 @@ export function traceChatExtractor(
   options: { syntheticProbe: boolean; providerKey?: string },
 ): InvoiceExtractor {
   if (!configuration) return extractor;
+  const traceUrl = `${configuration.host}/runs`;
   const includeContent = configuration.includeContent && options.syntheticProbe;
   const scrub = (text: string) => {
     let safe = text;
@@ -74,7 +93,7 @@ export function traceChatExtractor(
         const controller = new AbortController();
         try {
           const client = new Client({
-            apiUrl: "https://api.smith.langchain.com",
+            apiUrl: configuration.host,
             apiKey: configuration.apiKey,
             autoBatchTracing: false,
             omitTracedRuntimeInfo: true,
@@ -86,9 +105,9 @@ export function traceChatExtractor(
             debug: false,
             tracingMode: "langsmith",
             fetchImplementation: async (url, init) => {
-              if (String(url) !== TRACE_URL)
+              if (String(url) !== traceUrl)
                 throw new Error("Trace destination unavailable");
-              const response = await fetch(TRACE_URL, {
+              const response = await fetch(traceUrl, {
                 ...init,
                 headers: {
                   "Content-Type": "application/json",

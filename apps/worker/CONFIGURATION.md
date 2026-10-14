@@ -112,7 +112,8 @@ Set these **Worker-only** Wrangler variables to enable metadata tracing:
 {
   "AI_TRACING_ENABLED": "true",
   "AI_TRACING_INCLUDE_CONTENT": "false",
-  "LANGSMITH_PROJECT": "invoxim-ai"
+  "LANGSMITH_PROJECT": "invoxim-ai",
+  "LANGSMITH_HOST": "https://api.smith.langchain.com"
 }
 ```
 
@@ -122,7 +123,7 @@ Store the credential interactively, never in JSON or frontend configuration:
 pnpm --filter @invoxim/worker exec wrangler secret put LANGSMITH_API_KEY
 ```
 
-The fixed export destination is `https://api.smith.langchain.com/runs` (US endpoint); custom endpoints/redirects are not accepted. Use a key authorized for the selected project; organization-scoped keys requiring an additional workspace selector are not supported by this initial configuration. `LANGSMITH_PROJECT` allows 1–80 ASCII letters, digits, dots, underscores and hyphens, beginning with a letter/digit. Exact `true` enables tracing; invalid optional tracing configuration disables only telemetry, leaving inference available. Set `AI_TRACING_ENABLED=false` to stop new exports.
+Set `LANGSMITH_HOST` to the approved LangSmith HTTPS API origin (default `https://api.smith.langchain.com`; for example `https://eu.api.smith.langchain.com` for EU). A trailing slash is accepted; credentials, paths, query strings, fragments and control characters are rejected. Exports go only to that origin’s `/runs` endpoint; redirects are blocked and there is no fallback host. This is an operator-controlled Worker variable, never a client-supplied destination. The application maps `LANGSMITH_HOST` to the SDK’s explicit `apiUrl`; ambient `LANGSMITH_ENDPOINT` does not select a destination. Use a key authorized for the selected project; organization-scoped keys requiring an additional workspace selector are not supported by this initial configuration. `LANGSMITH_PROJECT` allows 1–80 ASCII letters, digits, dots, underscores and hyphens, beginning with a letter/digit. Exact `true` enables tracing; invalid optional tracing configuration disables only telemetry, leaving inference available. Set `AI_TRACING_ENABLED=false` to stop new exports.
 
 Import traces contain only provider/model identifiers, prompt/schema versions, hosted/BYOK mode, elapsed time, generic status/reason, completion state and available usage counters. Missing usage is recorded as unavailable. No user/session/consent/source/attempt identifiers, email headers, receipt values, prompts, model output, provider credentials or exception text are exported. Each completed call gets an unrelated random trace ID. Metadata is allowlisted and runtime/environment enrichment is disabled.
 

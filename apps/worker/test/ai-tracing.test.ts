@@ -1,6 +1,7 @@
 import type { AiResponse, InvoiceExtractor } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  type AiTracingBindings,
   langsmithConfiguration,
   traceChatExtractor,
 } from "../../../packages/adapters/src/ai/tracing";
@@ -32,7 +33,7 @@ const enabled = {
   LANGSMITH_API_KEY: "synthetic-tracing-key",
 };
 afterEach(() => vi.restoreAllMocks());
-function setup(bindings = enabled, syntheticProbe = false) {
+function setup(bindings: AiTracingBindings = enabled, syntheticProbe = false) {
   const extract = vi
     .fn<InvoiceExtractor["extract"]>()
     .mockResolvedValue(response);
@@ -51,7 +52,7 @@ it("is disabled by default and invalid config cannot enable uploads", async () =
     { AI_TRACING_ENABLED: "true" },
     { ...enabled, LANGSMITH_PROJECT: "bad\nproject" },
   ]) {
-    const { traced } = setup(bindings as typeof enabled);
+    const { traced } = setup(bindings);
     expect(
       await traced.extract(parts, config, {
         id: "PRIVATE ATTEMPT",
@@ -189,3 +190,46 @@ it("scrubs credentials even from synthetic content", async () => {
   expect(body).not.toContain("synthetic-provider-key");
   expect(body).toContain("[redacted]");
 });
+
+it.each([
+  "https://eu.api.smith.langchain.com",
+  "https://traces.example.invalid/",
+])(
+  "exports only to the explicitly configured LangSmith host %s",
+  async (host) => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}"));
+    const { traced } = setup({ ...enabled, LANGSMITH_HOST: host });
+    expect(
+      await traced.extract(parts, config, { id: "id", repair: false }),
+    ).toBe(response);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      `${new URL(host).origin}/runs`,
+    );
+    expect(fetch.mock.calls[0]?.[1]?.redirect).toBe("error");
+  },
+);
+
+it.each([
+  "http://traces.example.invalid",
+  "https://user:secret@traces.example.invalid",
+  "https://traces.example.invalid/runs",
+  "https://traces.example.invalid?key=secret",
+  "https://traces.example.invalid#fragment",
+  "https://traces.example.invalid/\n",
+  "",
+  "not-a-url",
+])(
+  "invalid tracing host disables telemetry without blocking inference: %s",
+  async (host) => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const fetch = vi.spyOn(globalThis, "fetch");
+    const { traced } = setup({ ...enabled, LANGSMITH_HOST: host });
+    expect(
+      await traced.extract(parts, config, { id: "id", repair: false }),
+    ).toBe(response);
+    expect(fetch).not.toHaveBeenCalled();
+  },
+);
