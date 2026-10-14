@@ -159,19 +159,24 @@ test("ONBOARD-04/06 actual login and mailbox identities, processors and full fro
     page.getByText("mailbox-b@example.test", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("synthetic-hosted-processor", { exact: true }),
+    page.getByText("Synthetic processor policy", { exact: true }).first(),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Processing and privacy details" })
+    .click();
   await expect(
     page.getByText("Synthetic policy text for this browser fixture only.", {
       exact: true,
     }),
   ).toBeVisible();
+  await page.getByText("Technical details", { exact: true }).click();
   await expect(
     page.getByText("2025-10-11T22:00:00.000Z", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("2026-10-12T12:00:00.000Z", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Close details" }).click();
   expect(starts).toHaveLength(0);
   await page
     .getByLabel(
@@ -332,7 +337,7 @@ test("ACCESS-02 360px review is keyboard reachable with no horizontal overflow",
   await fixtures(page);
   await page.goto("/onboarding/review");
   await expect(
-    page.getByText("2026-10-12T12:00:00.000Z", { exact: true }),
+    page.getByText("12 Oct 2025 – 12 Oct 2026", { exact: true }),
   ).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(
@@ -775,7 +780,7 @@ test("ONBOARD-14 resolved processing disclosure explains service configuration w
   );
   await page.goto("/onboarding/review");
   await expect(
-    page.getByText("synthetic-hosted-processor", { exact: true }),
+    page.getByText("Synthetic processor policy", { exact: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByText(
@@ -923,4 +928,129 @@ test("ONBOARD-08 reviewable sources are distinct from failed receipt coverage", 
       "Some source messages could not be processed. This is not complete receipt coverage.",
     ),
   ).toBeVisible();
+});
+
+test("UX-REVIEW-01 compact review keeps consent visible and opens keyboard-accessible details", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await fixtures(page);
+  await page.route("**/api/processing-disclosure*", (route) =>
+    route.fulfill({
+      json: {
+        ...disclosure,
+        classification: {
+          ...disclosure.inference,
+          providerId: "synthetic-clef",
+          model: "synthetic-decision-model",
+          notices: [
+            {
+              ...disclosure.inference.notices[0],
+              id: "synthetic-classification-policy",
+              displayName: "Synthetic email classification",
+              dataUseSummary:
+                "Synthetic classification data use for this fixture.",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.goto("/onboarding/review");
+  const start = page.getByRole("button", { name: "Start import", exact: true });
+  await expect(start).toBeVisible();
+  await page.screenshot({ path: "/tmp/ux-review-desktop.png", fullPage: true });
+  await expect(start).toBeInViewport({ ratio: 1 });
+  console.log("UX-REVIEW desktop Start bounds", await start.boundingBox());
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await expect(start).toBeDisabled();
+  await expect(
+    page.getByText(disclosure.cutoffAt, { exact: true }),
+  ).not.toBeVisible();
+  const details = page.getByRole("button", {
+    name: "Processing and privacy details",
+    exact: true,
+  });
+  await details.click();
+  const dialog = page.getByRole("dialog", {
+    name: "Processing and privacy details",
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByText(disclosure.cutoffAt, { exact: true }),
+  ).not.toBeVisible();
+  await expect(
+    dialog.getByText("Synthetic policy text for this browser fixture only.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await expect(
+    dialog.getByRole("button", { name: "Close details" }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  expect(
+    await dialog.evaluate((node) => node.contains(document.activeElement)),
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(details).toBeFocused();
+  await page
+    .getByLabel(
+      "I authorize the displayed processing and hourly receipt checks.",
+      { exact: true },
+    )
+    .check();
+  await expect(start).toBeEnabled();
+  await page.screenshot({
+    path: "/tmp/ux-review-desktop-authorized.png",
+    fullPage: true,
+  });
+});
+
+test("UX-REVIEW-01 mobile details are a scrollable bottom sheet without implicit consent", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await fixtures(page);
+  await page.goto("/onboarding/review");
+  const checkbox = page.getByLabel(
+    "I authorize the displayed processing and hourly receipt checks.",
+    { exact: true },
+  );
+  await expect(checkbox).not.toBeChecked();
+  await page.screenshot({ path: "/tmp/ux-review-mobile.png", fullPage: true });
+  await page
+    .getByRole("button", { name: "Processing and privacy details" })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Processing and privacy details",
+  });
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(Math.abs((bounds?.y ?? 0) + (bounds?.height ?? 0) - 800)).toBeLessThan(
+    2,
+  );
+  expect(
+    await dialog.evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await dialog.evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Close details" }),
+  ).toBeInViewport({ ratio: 1 });
+  await dialog.evaluate((node) => {
+    node.scrollTop = 0;
+  });
+  await page.screenshot({ path: "/tmp/ux-review-mobile-details.png" });
+  await page.getByRole("button", { name: "Close details" }).click();
+  await expect(checkbox).not.toBeChecked();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
 });

@@ -166,6 +166,9 @@ test("ONBOARD-06/09 readable policy refresh clears old consent while retaining t
 }) => {
   const { state } = await workspace(page);
   await page.goto("/onboarding/review");
+  await page
+    .getByRole("button", { name: "Processing and privacy details" })
+    .click();
   await expect(
     page.getByText("Synthetic retention A", { exact: true }),
   ).toBeVisible();
@@ -175,26 +178,36 @@ test("ONBOARD-06/09 readable policy refresh clears old consent while retaining t
   await expect(
     page.getByRole("region", { name: "Processing allowance" }),
   ).toContainText("2 documents remaining today");
+  await page.getByRole("button", { name: "Close details" }).click();
   await page.getByLabel(authorization, { exact: true }).check();
   state.policy = "B";
   await page
     .getByRole("button", { name: "Refresh review", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Processing and privacy details" })
+    .click();
   await expect(
     page.getByText("Synthetic retention B", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Close details" }).click();
   await expect(
     page.getByLabel(authorization, { exact: true }),
   ).not.toBeChecked();
   await expect(
     page.getByRole("button", { name: "Start import", exact: true }),
   ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Processing and privacy details" })
+    .click();
+  await page.getByText("Technical details", { exact: true }).click();
   await expect(
     page.getByText("2025-01-01T00:00:00Z", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("2026-01-01T00:00:00Z", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Close details" }).click();
   expect(state.writes).toEqual([]);
   await page.getByLabel(authorization, { exact: true }).check();
   await page.getByRole("button", { name: "Start import", exact: true }).click();

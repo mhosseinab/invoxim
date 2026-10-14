@@ -19,6 +19,21 @@ import {
 } from "./api";
 import { onboardingCopy as text } from "./copy";
 import { AdvancedAi } from "./settings";
+import "./review.css";
+
+function readableDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T12:00:00Z`));
+}
+function readableReset(value: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: timezone,
+  }).format(new Date(value));
+}
 
 type Draft = {
   startDate: string;
@@ -57,6 +72,8 @@ export function ReviewImport({
   const [message, setMessage] = useState("");
   const [processingNotConfigured, setProcessingNotConfigured] = useState(false);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
+  const detailsDialog = useRef<HTMLDialogElement>(null);
+  const detailsTrigger = useRef<HTMLButtonElement>(null);
   const controller = useRef<AbortController | null>(null);
   const inFlight = useRef(false);
   const actor = profile.user.id;
@@ -257,7 +274,10 @@ export function ReviewImport({
     void sendStart({ body: result.data, key: crypto.randomUUID() });
   }
   return (
-    <section className="private-panel" aria-label={text.reviewImportReview}>
+    <section
+      className="private-panel import-review"
+      aria-label={text.reviewImportReview}
+    >
       <h1>{text.reviewTitle}</h1>
       <p>
         {data.progress
@@ -280,98 +300,99 @@ export function ReviewImport({
       )}
       {disclosure && draft && (
         <>
-          <dl className="onboarding-definition">
-            <dt>{text.reviewSelectedMailbox}</dt>
-            <dd>{disclosure.mailboxAddress}</dd>
-            <dt>{text.reviewSelectedDates}</dt>
-            <dd>
-              {disclosure.startDate}
-              {text.rangeTo}
-              {disclosure.endDate}
-              {text.inclusiveSelection}
-            </dd>
-            <dt>{text.reviewFrozenStart}</dt>
-            <dd>{disclosure.startAt}</dd>
-            <dt>{text.reviewFrozenCutoffExclusive}</dt>
-            <dd>{disclosure.cutoffAt}</dd>
-            <dt>{text.reviewTimeZone}</dt>
-            <dd>{disclosure.timezone}</dd>
-            <dt>{text.reviewReportingCurrency}</dt>
-            <dd>{disclosure.reportingCurrency}</dd>
-            <dt>{text.reviewReceiptProcessing}</dt>
-            <dd>
-              <span>{disclosure.inference.providerId}</span>{" "}
-              {text.reviewSeparatorBeforeValue} {disclosure.inference.model}{" "}
-              {text.reviewSeparatorBeforeValue}{" "}
-              {disclosure.inference.mode === "hosted"
-                ? text.reviewOperatorFundedInference
-                : text.reviewYourAIKey}
-            </dd>
-            {disclosure.classification && (
-              <>
-                <dt>{text.reviewReceiptClassification}</dt>
-                <dd>
-                  {disclosure.classification.providerId} ·{" "}
-                  {disclosure.classification.model}
-                </dd>
-              </>
-            )}
-            <dt>{text.reviewDocumentConversion}</dt>
-            <dd>
-              {disclosure.documentConversion.providerId}{" "}
-              {text.reviewSeparatorBeforeValue}{" "}
-              {disclosure.documentConversion.version}
-            </dd>
-          </dl>
-          <p>{text.reviewRecent30DaysInThisInterval}</p>
-          <section aria-label={text.reviewProcessingPolicies}>
-            <h2>{text.reviewWhereReceiptDataGoes}</h2>
-            <p>{text.reviewSupportedTextConversionHappensTransientlyInside}</p>
-            {[
-              ...disclosure.inference.notices,
-              ...(disclosure.classification?.notices ?? []),
-            ].map((notice) => (
-              <article className="onboarding-notice" key={notice.id}>
-                <h3>{notice.displayName}</h3>
-                <p>{notice.dataUseSummary}</p>
-                <p>{notice.retentionSummary}</p>
-                <a
-                  href={notice.privacyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {text.readPrefix}
-                  {notice.displayName}
-                </a>
-              </article>
-            ))}
-          </section>
-          <p>
-            {text["import.review.originals"]}{" "}
-            {text.reviewStartingImportDoesNotCreateA}
-          </p>
-          {disclosure.allowance && (
-            <section aria-label={text.reviewProcessingAllowance}>
-              <h2>{text.reviewProcessingAllowance}</h2>
+          <div className="review-summary">
+            <div className="review-mailbox">
+              <span className="review-caption">
+                {text.reviewSelectedMailbox}
+              </span>
+              <strong>{disclosure.mailboxAddress}</strong>
+            </div>
+            <div className="review-range">
+              <span className="review-caption">{text.reviewSelectedDates}</span>
+              <strong>
+                {readableDate(disclosure.startDate)} –{" "}
+                {readableDate(disclosure.endDate)}
+              </strong>
+              <span className="review-caption">
+                {disclosure.timezone} · {disclosure.reportingCurrency}
+              </span>
+            </div>
+          </div>
+          <p className="review-recent">{text.reviewRecentSummary}</p>
+          <section
+            className="review-processors"
+            aria-label={text.reviewProcessingPolicies}
+          >
+            <div>
+              <span className="review-caption">
+                {text.reviewReceiptProcessing}
+              </span>
               <p>
-                {disclosure.allowance.dailyDocumentsRemaining}{" "}
+                <strong>
+                  {disclosure.inference.notices[0]?.displayName ??
+                    disclosure.inference.providerId}
+                </strong>{" "}
+                · {disclosure.inference.model}
+              </p>
+              <span className="review-caption">
+                {disclosure.inference.mode === "hosted"
+                  ? text.reviewOperatorFundedInference
+                  : text.reviewYourAIKey}
+              </span>
+            </div>
+            {disclosure.classification && (
+              <div>
+                <span className="review-caption">
+                  {text.reviewReceiptClassification}
+                </span>
+                <p>
+                  {disclosure.classification.notices[0]?.displayName ??
+                    disclosure.classification.providerId}{" "}
+                  · {disclosure.classification.model}
+                </p>
+              </div>
+            )}
+            <div>
+              <span className="review-caption">
+                {text.reviewDocumentConversion}
+              </span>
+              <p>{text.reviewLocalConversion}</p>
+            </div>
+            <p className="review-data-summary">{text.reviewDataSummary}</p>
+            <button
+              className="review-text-action"
+              type="button"
+              ref={detailsTrigger}
+              onClick={() => detailsDialog.current?.showModal()}
+            >
+              {text.reviewDetailsTitle}
+            </button>
+          </section>
+          {disclosure.allowance && (
+            <section
+              className="review-allowance"
+              aria-label={text.reviewProcessingAllowance}
+            >
+              <p>
+                <strong>
+                  {disclosure.allowance.dailyDocumentsRemaining.toLocaleString(
+                    "en-GB",
+                  )}
+                </strong>
                 {text.reviewDocumentsRemainingToday}{" "}
-                {disclosure.allowance.monthlyDocumentsRemaining}{" "}
+                {disclosure.allowance.monthlyDocumentsRemaining.toLocaleString(
+                  "en-GB",
+                )}
                 {text.reviewThisMonth}
               </p>
-              <p>
-                {disclosure.allowance.dailyUnitsRemaining}{" "}
-                {text.reviewProcessingUnitsRemainingToday}
-                {disclosure.allowance.monthlyUnitsRemaining}{" "}
-                {text.reviewThisMonth2}
-              </p>
-              <p>
+              <span className="review-caption">
                 {text.reviewDailyReset}
-                {disclosure.allowance.dailyResetAt}
-                {text.reviewMonthlyReset} {disclosure.allowance.monthlyResetAt}
-                {text.period}
-              </p>
-              <p>{text.reviewHistoryImportsUseThisSameAllowance}</p>
+                {readableReset(
+                  disclosure.allowance.dailyResetAt,
+                  disclosure.timezone,
+                )}{" "}
+                · {disclosure.timezone}
+              </span>
               {disclosure.allowance.cooldownActive && (
                 <p className="notice">
                   {text.reviewProcessingIsTemporarilyPausedByThe}
@@ -379,6 +400,140 @@ export function ReviewImport({
               )}
             </section>
           )}
+          <dialog
+            className="review-dialog"
+            ref={detailsDialog}
+            aria-labelledby="review-details-title"
+            onClose={() => detailsTrigger.current?.focus()}
+          >
+            <header className="review-dialog-header">
+              <h2 id="review-details-title">{text.reviewDetailsTitle}</h2>
+              <button
+                type="button"
+                onClick={() => detailsDialog.current?.close()}
+              >
+                {text.reviewCloseDetails}
+              </button>
+            </header>
+            <div className="review-dialog-content">
+              <section>
+                <h2>{text.reviewWhereReceiptDataGoes}</h2>
+                <p>
+                  {text.reviewSupportedTextConversionHappensTransientlyInside}
+                </p>
+                {[
+                  ...disclosure.inference.notices,
+                  ...(disclosure.classification?.notices ?? []),
+                ].map((notice) => (
+                  <article className="onboarding-notice" key={notice.id}>
+                    <h3>{notice.displayName}</h3>
+                    <p>{notice.dataUseSummary}</p>
+                    <p>{notice.retentionSummary}</p>
+                    <a
+                      href={notice.privacyUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {text.readPrefix}
+                      {notice.displayName}
+                    </a>
+                  </article>
+                ))}
+              </section>
+              <p>
+                {text["import.review.originals"]}{" "}
+                {text.reviewStartingImportDoesNotCreateA}
+              </p>
+              {disclosure.allowance && (
+                <section>
+                  <h2>{text.reviewProcessingAllowance}</h2>
+                  <p>
+                    {disclosure.allowance.dailyDocumentsRemaining}{" "}
+                    {text.reviewDocumentsRemainingToday}{" "}
+                    {disclosure.allowance.monthlyDocumentsRemaining}{" "}
+                    {text.reviewThisMonth}
+                  </p>
+                  <p>
+                    {text.reviewDailyReset}
+                    {readableReset(
+                      disclosure.allowance.dailyResetAt,
+                      disclosure.timezone,
+                    )}{" "}
+                    · {disclosure.timezone}
+                    <br />
+                    {text.reviewMonthlyResetLabel}{" "}
+                    {readableReset(
+                      disclosure.allowance.monthlyResetAt,
+                      disclosure.timezone,
+                    )}
+                  </p>
+                  <p>{text.reviewHistoryImportsUseThisSameAllowance}</p>
+                  {disclosure.allowance.cooldownActive && (
+                    <p className="notice">
+                      {text.reviewProcessingIsTemporarilyPausedByThe}
+                    </p>
+                  )}
+                </section>
+              )}
+              <details className="review-technical">
+                <summary>{text.reviewTechnicalDetails}</summary>
+                <dl className="onboarding-definition">
+                  <dt>{text.reviewFrozenStart}</dt>
+                  <dd>{disclosure.startAt}</dd>
+                  <dt>{text.reviewFrozenCutoffExclusive}</dt>
+                  <dd>{disclosure.cutoffAt}</dd>
+                  <dt>{text.reviewTimeZone}</dt>
+                  <dd>{disclosure.timezone}</dd>
+                  <dt>{text.reviewReportingCurrency}</dt>
+                  <dd>{disclosure.reportingCurrency}</dd>
+                  <dt>{text.reviewReceiptProcessing}</dt>
+                  <dd>
+                    <span>{disclosure.inference.providerId}</span>{" "}
+                    {text.reviewSeparatorBeforeValue}{" "}
+                    {disclosure.inference.model}{" "}
+                    {text.reviewSeparatorBeforeValue}{" "}
+                    {disclosure.inference.mode === "hosted"
+                      ? text.reviewOperatorFundedInference
+                      : text.reviewYourAIKey}
+                  </dd>
+                  {disclosure.classification && (
+                    <>
+                      <dt>{text.reviewReceiptClassification}</dt>
+                      <dd>
+                        {disclosure.classification.providerId} ·{" "}
+                        {disclosure.classification.model}
+                      </dd>
+                    </>
+                  )}
+                  <dt>{text.reviewDocumentConversion}</dt>
+                  <dd>
+                    {disclosure.documentConversion.providerId}{" "}
+                    {text.reviewSeparatorBeforeValue}{" "}
+                    {disclosure.documentConversion.version}
+                  </dd>
+                </dl>
+                <p>{text.reviewRecent30DaysInThisInterval}</p>
+                {disclosure.allowance && (
+                  <section>
+                    <h3>{text.reviewProcessingAllowance}</h3>{" "}
+                    <p>
+                      {disclosure.allowance.dailyUnitsRemaining}{" "}
+                      {text.reviewProcessingUnitsRemainingToday}
+                      {disclosure.allowance.monthlyUnitsRemaining}{" "}
+                      {text.reviewThisMonth2}
+                    </p>
+                    <p>
+                      {text.reviewDailyReset}
+                      {disclosure.allowance.dailyResetAt}
+                      {text.reviewMonthlyReset}{" "}
+                      {disclosure.allowance.monthlyResetAt}
+                      {text.period}
+                    </p>
+                  </section>
+                )}
+              </details>
+            </div>
+          </dialog>
           {!disclosure.canStartImport && (
             <p className="notice">
               {disclosure.availability === "budget"
@@ -394,6 +549,56 @@ export function ReviewImport({
                         : text.policyUnavailable}
             </p>
           )}
+          {dirty && <p role="status">{text.needsReview}</p>}
+          <p className="review-consent-note">{text.reviewConsentSummary}</p>
+          <label className="review-consent">
+            <input
+              type="checkbox"
+              checked={accepted}
+              disabled={
+                busy ||
+                attempt !== null ||
+                stale ||
+                dirty ||
+                !disclosure.canStartImport
+              }
+              onChange={(event) => setAccepted(event.target.checked)}
+            />
+            {text.authorization}
+          </label>
+          <div className="onboarding-actions">
+            <button
+              className="primary"
+              type="button"
+              disabled={
+                !accepted ||
+                busy ||
+                stale ||
+                dirty ||
+                !!attempt ||
+                !disclosure.canStartImport
+              }
+              onClick={start}
+            >
+              {data.progress && data.progress.connectionId === connectionId
+                ? text.reviewResumeImport
+                : text.reviewStartImport}
+            </button>
+            <button
+              type="button"
+              disabled={busy || !!attempt}
+              onClick={() => void loadReview()}
+            >
+              {text.reviewRefreshReview}
+            </button>
+            <button
+              type="button"
+              disabled={busy || !!attempt}
+              onClick={onChooseMailbox}
+            >
+              {text.reviewChangeMailbox}
+            </button>
+          </div>
           <details>
             <summary>{text.reviewChangeDatesTimeZoneOrCurrency}</summary>
             <form
@@ -466,56 +671,6 @@ export function ReviewImport({
               </fieldset>
             </form>
           </details>
-          {dirty && <p role="status">{text.needsReview}</p>}
-          <p>{text.reviewStartImportAuthorizesTheProcessingShown}</p>
-          <label>
-            <input
-              type="checkbox"
-              checked={accepted}
-              disabled={
-                busy ||
-                attempt !== null ||
-                stale ||
-                dirty ||
-                !disclosure.canStartImport
-              }
-              onChange={(event) => setAccepted(event.target.checked)}
-            />
-            {text.authorization}
-          </label>
-          <div className="onboarding-actions">
-            <button
-              className="primary"
-              type="button"
-              disabled={
-                !accepted ||
-                busy ||
-                stale ||
-                dirty ||
-                !!attempt ||
-                !disclosure.canStartImport
-              }
-              onClick={start}
-            >
-              {data.progress && data.progress.connectionId === connectionId
-                ? text.reviewResumeImport
-                : text.reviewStartImport}
-            </button>
-            <button
-              type="button"
-              disabled={busy || !!attempt}
-              onClick={() => void loadReview()}
-            >
-              {text.reviewRefreshReview}
-            </button>
-            <button
-              type="button"
-              disabled={busy || !!attempt}
-              onClick={onChooseMailbox}
-            >
-              {text.reviewChangeMailbox}
-            </button>
-          </div>
           {attempt && (
             <div className="onboarding-actions">
               <button

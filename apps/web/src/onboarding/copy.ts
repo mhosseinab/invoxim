@@ -15,6 +15,17 @@ export const onboardingCopy = {
   loginTitle: "Sign in to your private workspace",
   connectTitle: "Connect the inbox where you receive receipts.",
   reviewTitle: "Review and start",
+  reviewDetailsTitle: "Processing and privacy details",
+  reviewMonthlyResetLabel: "Monthly reset:",
+  reviewTechnicalDetails: "Technical details",
+  reviewLocalConversion: "Transient conversion inside this app",
+  reviewCloseDetails: "Close details",
+  reviewRecentSummary:
+    "Recent 30 days first, then the rest of your selected history.",
+  reviewDataSummary:
+    "Email text is sent to the named AI services to find receipts and extract purchase details. Originals stay in your email; no Drive archive is created.",
+  reviewConsentSummary:
+    "Start imports this history and enables hourly checks for new receipts.",
   noProvider:
     "Mailbox connection is not configured. You can still view existing records or explore the example.",
   authorization:
@@ -91,7 +102,7 @@ export const onboardingCopy = {
   reviewFrozenCutoffExclusive: "Frozen cutoff (exclusive)",
   reviewTimeZone: "Time zone",
   reviewReportingCurrency: "Reporting currency",
-  reviewReceiptClassification: "Email receipt detection and category",
+  reviewReceiptClassification: "Receipt detection",
   reviewReceiptProcessing: "Receipt processing",
   reviewSeparatorBeforeValue: " ·",
   reviewOperatorFundedInference: "Operator-funded inference",
