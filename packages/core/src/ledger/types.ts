@@ -24,6 +24,16 @@ export interface LedgerObservation {
   readonly record: PersistedAiRecord;
   readonly purchaseId: string | null;
 }
+/** Purchase fields a user can correct; extraction never overwrites them. */
+export type OverriddenField =
+  | "merchant"
+  | "category"
+  | "documentDate"
+  | "totalMinor"
+  | "currency"
+  | "invoiceNumber"
+  | "orderReference"
+  | "paymentState";
 export interface LedgerPurchase {
   readonly id: string;
   readonly merchant: string;
@@ -37,7 +47,7 @@ export interface LedgerPurchase {
   readonly recordStatus?: "active" | "excluded" | "merged";
   readonly version: number;
   /** Persisted manual decisions; extraction never overwrites these fields. */
-  readonly overriddenFields: readonly string[];
+  readonly overriddenFields: readonly OverriddenField[];
 }
 export interface LedgerEvent {
   readonly id: string;

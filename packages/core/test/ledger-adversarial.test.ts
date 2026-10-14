@@ -177,7 +177,7 @@ it("LEDGER-04 changed invoice preserves the previous value and manual category",
     purchases: base.purchases.map((p) => ({
       ...p,
       category: "groceries" as const,
-      overriddenFields: ["category"],
+      overriddenFields: ["category"] as const,
     })),
   };
   const before = JSON.stringify(state);

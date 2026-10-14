@@ -40,6 +40,12 @@ function minor(amount: string | null, currency: string): number | null {
   const value = parseMoney(amount, currency);
   return value === null ? null : Number(value);
 }
+/** User-corrected financial facts; settlement and conflict checks defer to them. */
+function hasFinancialOverride(purchase: LedgerPurchase) {
+  return purchase.overriddenFields.some(
+    (field) => field === "totalMinor" || field === "currency",
+  );
+}
 function review(
   plan: MutablePlan,
   input: LedgerInput,
@@ -204,8 +210,7 @@ function invoiceConflict(
   if (invoiceObservations.length === 0) {
     return (
       purchase.invoiceNumber === record.invoiceNumber &&
-      !purchase.overriddenFields.includes("totalMinor") &&
-      !purchase.overriddenFields.includes("total") &&
+      !hasFinancialOverride(purchase) &&
       (purchase.currency !== currency ||
         purchase.totalMinor !== minor(record.total, currency))
     );
@@ -283,8 +288,7 @@ function cashEvent(
     purchase &&
     purchase.invoiceNumber !== null &&
     purchase.invoiceNumber === record.invoiceNumber &&
-    (purchase.overriddenFields.includes("totalMinor") ||
-      purchase.overriddenFields.includes("total")) &&
+    hasFinancialOverride(purchase) &&
     ![...snapshot.observations, ...plan.observations].some(
       (item) =>
         item.id !== observation.id &&
@@ -426,9 +430,7 @@ function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
     const { currency, totalMinor } = purchase;
     if (currency === null || totalMinor === null) continue;
     const correctedSettlement =
-      purchase.overriddenFields.some((field) =>
-        ["totalMinor", "currency"].includes(field),
-      ) ||
+      hasFinancialOverride(purchase) ||
       events.some(
         (event) =>
           event.purchaseId === purchase.id &&
@@ -708,7 +710,7 @@ export function planLedgerIngestion(
         if (
           result.documentType === "order-confirmation" &&
           purchase.totalMinor !== totalMinor &&
-          !purchase.overriddenFields.includes("totalMinor")
+          !hasFinancialOverride(purchase)
         ) {
           review(plan, input, "purchase-conflict", observation);
           continue;
