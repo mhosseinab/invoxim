@@ -433,7 +433,7 @@ test("HOME-05 only validated missing fields become exact questions including unl
   await page
     .getByRole("article")
     .nth(1)
-    .getByRole("button", { name: "Review email", exact: true })
+    .getByRole("button", { name: /^Review email/ })
     .click();
   await expect(
     page.getByRole("link", { name: "View supported purchase history →" }),
@@ -515,18 +515,20 @@ test("HOME-05 review identifies original email before asking for corrections", a
   await page.goto("/needs-attention");
   await expect(
     page
-      .locator(".workspace-review-source")
+      .locator(".review-list-inbox")
       .getByText("receipts@example.test", { exact: false }),
   ).toBeVisible();
-  expect(sourceRequests).toBe(0);
+  await expect.poll(() => sourceRequests).toBe(1);
   await page
     .getByRole("article")
     .first()
-    .getByRole("button", { name: "Review email", exact: true })
+    .getByRole("button", { name: /^Review email/ })
     .click();
   await expect.poll(() => sourceRequests).toBe(1);
   await expect(
-    page.getByText("Synthetic receipt from October", { exact: true }),
+    page
+      .getByRole("dialog")
+      .getByText("Synthetic receipt from October", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Source email" }),
@@ -582,7 +584,7 @@ test("HOME-05 deleted review source stays identifiable without offering a broken
   await page
     .getByRole("article")
     .first()
-    .getByRole("button", { name: "Review email", exact: true })
+    .getByRole("button", { name: /^Review email/ })
     .click();
   await expect(
     page.getByRole("region", { name: "Source email" }),
@@ -688,6 +690,15 @@ test("UX-PURCHASES-01 three unconfirmed records fit desktop without exposing que
     ),
   ).toBe(true);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  const mobileRow = await first.boundingBox();
+  const mobileAmount = await first
+    .locator(".compact-purchase-amount")
+    .boundingBox();
+  const mobileMerchant = await first.locator("h3").boundingBox();
+  expect(mobileRow?.height).toBeLessThanOrEqual(165);
+  expect(
+    mobileAmount && mobileMerchant && mobileAmount.y < mobileMerchant.y + 35,
+  ).toBe(true);
   await page.screenshot({
     path: "/tmp/ux-purchases-mobile.png",
     fullPage: true,
@@ -714,7 +725,7 @@ async function captureWorkspace(page: Page, name: string) {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
-test("UX-WORKSPACE-01 review inbox is compact and source content stays explicitly requested", async ({
+test("UX-WORKSPACE-01 review inbox bounds identifying metadata and keeps actions explicit", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -748,12 +759,14 @@ test("UX-WORKSPACE-01 review inbox is compact and source content stays explicitl
   await expect(
     page.getByRole("button", { name: "Show source email" }),
   ).toHaveCount(0);
-  expect(requests).toEqual([]);
+  await expect
+    .poll(() => requests.filter((url) => url.endsWith("/source")).length)
+    .toBe(8);
   await captureWorkspace(page, "reviews");
   await page
     .getByRole("article")
     .first()
-    .getByRole("button", { name: "Review email", exact: true })
+    .getByRole("button", { name: /^Review email/ })
     .focus();
   await page.keyboard.press("Enter");
   await expect(
@@ -761,7 +774,7 @@ test("UX-WORKSPACE-01 review inbox is compact and source content stays explicitl
   ).toBeVisible();
   await expect
     .poll(() => requests.filter((url) => url.endsWith("/source")).length)
-    .toBe(1);
+    .toBe(9);
 });
 
 test("UX-WORKSPACE-01 paused inbox never claims its pending import is active", async ({
@@ -943,14 +956,12 @@ test("UX-REVIEW-DISCARD-01 groups only actual source identity and shows metadata
   );
   await page.goto("/needs-attention");
   await expect(page.locator(".private-review")).toHaveCount(2);
-  expect(metadataReads).toEqual([]);
+  await expect.poll(() => metadataReads.length).toBe(2);
   await page.screenshot({
     path: "/tmp/ux-discard-list-desktop.png",
     fullPage: true,
   });
-  const trigger = page
-    .getByRole("button", { name: "Review email", exact: true })
-    .first();
+  const trigger = page.getByRole("button", { name: /^Review email/ }).first();
   await trigger.focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", {
@@ -982,7 +993,10 @@ test("UX-REVIEW-DISCARD-01 groups only actual source identity and shows metadata
     dialog.getByRole("button", { name: "Not a purchase", exact: true }),
   ).toBeVisible();
   await expect(dialog.getByRole("textbox")).toHaveCount(0);
-  expect(metadataReads).toEqual(["/api/review/related-warning/source"]);
+  expect(metadataReads).toEqual([
+    "/api/review/related-warning/source",
+    "/api/review/same-time-other-email/source",
+  ]);
   expect(writes).toEqual([]);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await page.screenshot({ path: "/tmp/ux-discard-dialog-desktop.png" });
@@ -996,7 +1010,7 @@ test("UX-REVIEW-DISCARD-01 groups only actual source identity and shows metadata
   await expect(dialog.getByLabel("Merchant", { exact: true })).toHaveValue(
     "Synthetic seller",
   );
-  expect(metadataReads).toHaveLength(1);
+  expect(metadataReads).toHaveLength(2);
   await page.setViewportSize({ width: 360, height: 800 });
   expect(
     await page.evaluate(
@@ -1064,7 +1078,7 @@ test("UX-REVIEW-DISCARD-01 linked sibling never promises a withheld false-positi
   );
   await page.goto("/needs-attention");
   await expect(page.locator(".private-review")).toHaveCount(1);
-  await page.getByRole("button", { name: "Review email", exact: true }).click();
+  await page.getByRole("button", { name: /^Review email/ }).click();
   const dialog = page.getByRole("dialog", {
     name: "Review email",
     exact: true,
@@ -1083,4 +1097,424 @@ test("UX-REVIEW-DISCARD-01 linked sibling never promises a withheld false-positi
     ),
   ).toBeVisible();
   await expect(dialog.getByRole("textbox")).toHaveCount(0);
+});
+
+test("UX-PRIVATE-LISTS-01 mobile review list identifies bounded visible emails before selection", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await fixtures(page);
+  const reads: string[] = [];
+  let active = 0;
+  let maximumActive = 0;
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: Array.from({ length: 12 }, (_, index) => ({
+          id: `identity-${index}`,
+          documentId: `document-${index}`,
+          sourceMessageId: `source-${index}`,
+          purchaseId: null,
+          reason:
+            index % 4 === 3 ? "document-review" : "incomplete-financial-facts",
+          missingFields:
+            index % 4 === 0
+              ? ["documentDate"]
+              : index % 4 === 1
+                ? ["merchant", "total"]
+                : index % 4 === 2
+                  ? ["currency"]
+                  : [],
+          sourceContext: {
+            mailboxAddress: "receipts@example.test",
+            receivedAt: Date.parse("2026-10-12T10:30:00Z") - index * 86400000,
+            provider: "gmail",
+            available: true,
+          },
+        })),
+        hasMore: true,
+      },
+    }),
+  );
+  await page.route("**/api/review/*/source", async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-2) ?? "";
+    reads.push(id);
+    active += 1;
+    maximumActive = Math.max(active, maximumActive);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    active -= 1;
+    return route.fulfill({
+      json: {
+        mailboxAddress: "receipts@example.test",
+        receivedAt: Date.parse("2026-10-12T10:30:00Z"),
+        subject: [
+          "Your monthly transit receipt",
+          "Invoice 2048 from Cloud Studio",
+          "Your order from North Books",
+          "Document from Office Supply",
+        ][Number(id.split("-").at(-1)) % 4],
+        sender: [
+          "Transit Tickets <tickets@transit.example.test>",
+          "Cloud Studio <billing@studio.example.test>",
+          "North Books <orders@books.example.test>",
+          "Office Supply <office@example.test>",
+        ][Number(id.split("-").at(-1)) % 4],
+        attachments: [
+          { filename: "receipt.pdf", mimeType: "application/pdf", size: 1200 },
+        ],
+        originalUrl: null,
+      },
+    });
+  });
+  await page.goto("/needs-attention");
+  await expect(page.locator(".private-review")).toHaveCount(8);
+  await expect.poll(() => reads.length).toBe(8);
+  const first = page.locator(".private-review").first();
+  await expect(first).toContainText("Your monthly transit receipt");
+  await expect(first).toContainText("Transit Tickets");
+  await expect(first).toContainText("receipt.pdf");
+  await expect(first).toContainText("Receipt date needed");
+  await expect(
+    page
+      .getByText("receipts@example.test", { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText("Email needs review", { exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: "/tmp/ux-private-lists-interim.png",
+    fullPage: true,
+  });
+  await expect(page.locator(".private-review").nth(3)).toBeInViewport({
+    ratio: 1,
+  });
+  expect(maximumActive).toBeLessThanOrEqual(3);
+  await page.screenshot({
+    path: "/tmp/ux-private-lists-reviews-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({
+    path: "/tmp/ux-private-lists-reviews-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await first.getByRole("button").click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Your monthly transit receipt",
+  );
+  expect(reads).toHaveLength(8);
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Show more emails", exact: true })
+    .click();
+  await expect(page.locator(".private-review")).toHaveCount(12);
+  await expect.poll(() => reads.length).toBe(12);
+  expect(new Set(reads).size).toBe(12);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("UX-PRIVATE-LISTS-01 failed metadata remains distinct and dialog retry repairs the row", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: [
+          {
+            id: "retry-source",
+            documentId: "retry-document",
+            purchaseId: null,
+            sourceMessageId: "retry-message",
+            reason: "document-review",
+            missingFields: [],
+            sourceContext: {
+              mailboxAddress: "receipts@example.test",
+              receivedAt: 1,
+              provider: "gmail",
+              available: true,
+            },
+          },
+        ],
+        hasMore: false,
+      },
+    }),
+  );
+  let attempts = 0;
+  await page.route("**/api/review/retry-source/source", (route) => {
+    attempts += 1;
+    return attempts === 1
+      ? route.fulfill({
+          status: 503,
+          json: {
+            error: {
+              code: "unavailable",
+              message: "Request unavailable",
+              requestId: "synthetic",
+              retryable: true,
+            },
+          },
+        })
+      : route.fulfill({
+          json: {
+            mailboxAddress: "receipts@example.test",
+            receivedAt: 1,
+            subject: "Recovered synthetic receipt",
+            sender: null,
+            attachments: [],
+            originalUrl: null,
+          },
+        });
+  });
+  await page.goto("/needs-attention");
+  const row = page.locator(".private-review");
+  await expect(
+    row.getByText("Email details unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    row.getByText("Email without a subject", { exact: true }),
+  ).toHaveCount(0);
+  await row.getByRole("button", { name: "Review email", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Recovered synthetic receipt",
+  );
+  await page.keyboard.press("Escape");
+  await expect(
+    row.getByRole("button", {
+      name: "Review email: Recovered synthetic receipt",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    row
+      .getByText("Sender unavailable", { exact: true })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
+test("UX-PRIVATE-LISTS-01 actor change while identifying email never publishes old metadata", async ({
+  page,
+}) => {
+  await fixtures(page);
+  let changed = false;
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/me", (route) =>
+    route.fulfill({
+      json: changed
+        ? {
+            ...profile,
+            user: {
+              ...profile.user,
+              id: "new-reader",
+              email: "new@example.test",
+            },
+          }
+        : profile,
+    }),
+  );
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: changed
+          ? []
+          : [
+              {
+                id: "held-source",
+                documentId: "held-document",
+                purchaseId: null,
+                sourceMessageId: "held-message",
+                reason: "document-review",
+                missingFields: [],
+                sourceContext: {
+                  mailboxAddress: "receipts@example.test",
+                  receivedAt: 1,
+                  provider: "gmail",
+                  available: true,
+                },
+              },
+            ],
+        hasMore: false,
+      },
+    }),
+  );
+  let reads = 0;
+  await page.route("**/api/review/held-source/source", async (route) => {
+    reads += 1;
+    await held;
+    await route.fulfill({
+      json: {
+        mailboxAddress: "receipts@example.test",
+        receivedAt: 1,
+        subject: "Old actor confidential subject",
+        sender: "Old sender",
+        originalUrl: null,
+      },
+    });
+  });
+  await page.goto("/needs-attention");
+  await expect.poll(() => reads).toBe(1);
+  changed = true;
+  release?.();
+  await expect(
+    page.getByText("new@example.test", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".private-review")).toHaveCount(0);
+  await expect(
+    page.getByText("Old actor confidential subject", { exact: true }),
+  ).toHaveCount(0);
+  expect(reads).toBe(1);
+});
+
+test("UX-PRIVATE-LISTS-01 opening a queued email joins its bounded metadata request", async ({
+  page,
+}) => {
+  await fixtures(page);
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reads: string[] = [];
+  let active = 0;
+  let peak = 0;
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: Array.from({ length: 4 }, (_, index) => ({
+          id: `queued-${index}`,
+          documentId: `queued-document-${index}`,
+          sourceMessageId: `queued-source-${index}`,
+          purchaseId: null,
+          reason: "document-review",
+          missingFields: [],
+          sourceContext: {
+            mailboxAddress: "receipts@example.test",
+            receivedAt: 1,
+            provider: "gmail",
+            available: true,
+          },
+        })),
+        hasMore: false,
+      },
+    }),
+  );
+  await page.route("**/api/review/*/source", async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-2) ?? "";
+    reads.push(id);
+    active += 1;
+    peak = Math.max(peak, active);
+    await held;
+    active -= 1;
+    await route.fulfill({
+      json: {
+        mailboxAddress: "receipts@example.test",
+        receivedAt: 1,
+        subject: `Email ${id}`,
+        sender: null,
+        originalUrl: null,
+      },
+    });
+  });
+  await page.goto("/needs-attention");
+  await expect.poll(() => reads.length).toBe(3);
+  await page.locator(".private-review").nth(3).getByRole("button").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.screenshot({ path: "/tmp/ux-private-lists-pending-dialog.png" });
+  release?.();
+  await expect(page.getByRole("dialog")).toContainText("Email queued-3");
+  await expect.poll(() => reads.length).toBe(4);
+  expect(reads.filter((id) => id === "queued-3")).toHaveLength(1);
+  expect(peak).toBeLessThanOrEqual(3);
+});
+
+test("UX-PRIVATE-LISTS-01 deliberate metadata retry shares capacity with other visible emails", async ({
+  page,
+}) => {
+  await fixtures(page);
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reads: string[] = [];
+  let active = 0;
+  let peak = 0;
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: Array.from({ length: 4 }, (_, index) => ({
+          id: `capacity-${index}`,
+          documentId: `capacity-document-${index}`,
+          sourceMessageId: `capacity-source-${index}`,
+          purchaseId: null,
+          reason: "document-review",
+          missingFields: [],
+          sourceContext: {
+            mailboxAddress: "receipts@example.test",
+            receivedAt: 1,
+            provider: "gmail",
+            available: true,
+          },
+        })),
+        hasMore: false,
+      },
+    }),
+  );
+  await page.route("**/api/review/*/source", async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-2) ?? "";
+    reads.push(id);
+    if (
+      id === "capacity-0" &&
+      reads.filter((value) => value === id).length === 1
+    ) {
+      await route.fulfill({
+        status: 503,
+        json: {
+          error: {
+            code: "unavailable",
+            message: "Request unavailable",
+            requestId: "synthetic",
+            retryable: true,
+          },
+        },
+      });
+      return;
+    }
+    active += 1;
+    peak = Math.max(peak, active);
+    await held;
+    active -= 1;
+    await route.fulfill({
+      json: {
+        mailboxAddress: "receipts@example.test",
+        receivedAt: 1,
+        subject: `Recovered ${id}`,
+        sender: null,
+        originalUrl: null,
+      },
+    });
+  });
+  await page.goto("/needs-attention");
+  await expect.poll(() => reads.length).toBe(4);
+  const first = page.locator(".private-review").first();
+  await expect(
+    first.getByText("Email details unavailable", { exact: true }),
+  ).toBeVisible();
+  await first.getByRole("button").click();
+  await page.screenshot({ path: "/tmp/ux-private-lists-retry-capacity.png" });
+  release?.();
+  await expect(page.getByRole("dialog")).toContainText("Recovered capacity-0");
+  await page.keyboard.press("Escape");
+  await expect(
+    first.getByRole("button", {
+      name: "Review email: Recovered capacity-0",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(reads).toHaveLength(5);
+  expect(peak).toBeLessThanOrEqual(3);
 });

@@ -11,7 +11,7 @@ export const privateCopy = {
   whatNeedsChecking: "What needs checking?",
   otherChecks: "Other checks for this email",
   reviewEmailIntroduction:
-    "Check the email first. Keep real receipts or dismiss false positives without entering purchase details.",
+    "Review flagged emails. Your original inbox stays unchanged.",
   reviewItems: "items to review",
   moreReviewItems:
     "More items are available; this view includes up to 25 checks",

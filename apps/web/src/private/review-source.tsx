@@ -8,18 +8,25 @@ export function ReviewSource({
   expectedUserId,
   onReload,
   autoLoad = false,
+  initialSource,
+  loadSource,
 }: {
   autoLoad?: boolean;
+  initialSource?: Source | undefined;
+  loadSource?: () => Promise<Source>;
   review: PurchaseReview;
   expectedUserId: string;
   onReload: () => void;
 }) {
-  const [source, setSource] = useState<Source | null>(null);
+  const [source, setSource] = useState<Source | null>(initialSource ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
   const autoRequested = useRef(false);
   useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => {
+    if (initialSource) setSource(initialSource);
+  }, [initialSource]);
   const context = review.sourceContext;
   const load = useCallback(async () => {
     const request = new AbortController();
@@ -28,15 +35,20 @@ export function ReviewSource({
     setLoading(true);
     setError("");
     try {
-      const result = await readPrivateForIdentity(
-        `/api/review/${encodeURIComponent(review.id)}/source`,
-        reviewSourceSchema,
-        expectedUserId,
-        request.signal,
-      );
-      if (!request.signal.aborted) setSource(result);
+      const result = loadSource
+        ? await loadSource()
+        : await readPrivateForIdentity(
+            `/api/review/${encodeURIComponent(review.id)}/source`,
+            reviewSourceSchema,
+            expectedUserId,
+            request.signal,
+          );
+      if (!request.signal.aborted) {
+        setSource(result);
+      }
     } catch (failure) {
       if (
+        !loadSource &&
         failure instanceof PrivateLoadError &&
         (failure.status === 401 || failure.status === 403)
       ) {
@@ -50,13 +62,13 @@ export function ReviewSource({
     } finally {
       if (!request.signal.aborted) setLoading(false);
     }
-  }, [expectedUserId, onReload, review.id]);
+  }, [expectedUserId, onReload, review.id, loadSource]);
   useEffect(() => {
-    if (autoLoad && context?.available && !autoRequested.current) {
+    if (autoLoad && !source && context?.available && !autoRequested.current) {
       autoRequested.current = true;
       void load();
     }
-  }, [autoLoad, context?.available, load]);
+  }, [autoLoad, context?.available, load, source]);
   if (!context)
     return review.documentId !== null ? (
       <p className="muted">

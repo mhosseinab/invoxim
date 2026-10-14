@@ -111,8 +111,11 @@ export function PurchaseCard({ purchase }: { purchase: PurchaseView }) {
             ? text.supportingDocument
             : text.supportingDocuments}
         </span>
-        <a href={historyUrl}>
-          View purchase history <span aria-hidden="true">→</span>
+        <a
+          href={historyUrl}
+          aria-label={`View ${purchase.merchant} purchase history`}
+        >
+          History <span aria-hidden="true">→</span>
         </a>
         <details className="compact-purchase-details">
           <summary>
@@ -269,14 +272,14 @@ export function Coverage({
               <p>{text["import.paused.auth"]}</p>
             )}
             <div className="workspace-job-counts">
-              <span>{connection.pendingJobs} pending jobs</span>
-              <span
-                className={
-                  connection.failedJobs > 0 ? "workspace-warning" : undefined
-                }
-              >
-                {connection.failedJobs} failed jobs
-              </span>
+              {connection.pendingJobs > 0 && (
+                <span>{connection.pendingJobs} pending jobs</span>
+              )}
+              {connection.failedJobs > 0 && (
+                <span className="workspace-warning">
+                  {connection.failedJobs} failed jobs
+                </span>
+              )}
               {connection.pausedJobs > 0 && (
                 <span>{connection.pausedJobs} paused jobs</span>
               )}
@@ -310,6 +313,10 @@ export function Coverage({
             </div>
             <details className="workspace-technical">
               <summary>{text.importDetails}</summary>
+              <p>
+                {connection.pendingJobs} pending jobs · {connection.failedJobs}{" "}
+                failed jobs · {connection.pausedJobs} paused jobs
+              </p>
               <p>
                 Schedule setting:{" "}
                 {connection.schedulingState.replaceAll("_", " ")}

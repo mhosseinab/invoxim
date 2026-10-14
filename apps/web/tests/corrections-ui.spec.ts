@@ -603,7 +603,7 @@ test("EDIT-05 unlinked source completion collects explicit user values without g
   await page
     .getByRole("article")
     .first()
-    .getByRole("button", { name: "Review email", exact: true })
+    .getByRole("button", { name: /^Review email/ })
     .click();
 
   await page
@@ -620,7 +620,7 @@ test("EDIT-05 unlinked source completion collects explicit user values without g
   await page
     .getByRole("article")
     .first()
-    .getByRole("button", { name: "Review email", exact: true })
+    .getByRole("button", { name: /^Review email/ })
     .click();
   await expect(page.getByLabel("Merchant", { exact: true })).toHaveValue(
     "User supplied cafe",
@@ -1029,7 +1029,7 @@ test("UX-REVIEW-DISCARD-01 false positive action is explicit and retry survives 
   await page
     .getByRole("article")
     .first()
-    .getByRole("button", { name: "Review email", exact: true })
+    .getByRole("button", { name: /^Review email/ })
     .click();
 
   await page
@@ -1037,7 +1037,7 @@ test("UX-REVIEW-DISCARD-01 false positive action is explicit and retry survives 
     .click();
   await expect.poll(() => writes.length).toBe(1);
   await page.getByRole("button", { name: "Close review", exact: true }).click();
-  await page.getByRole("button", { name: "Review email", exact: true }).click();
+  await page.getByRole("button", { name: /^Review email/ }).click();
   await page
     .getByRole("button", { name: "Retry the same request", exact: true })
     .click();

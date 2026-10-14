@@ -195,3 +195,31 @@
     white-space: nowrap;
   }
 }
+@media (max-width: 640px) {
+  .compact-purchase-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+  }
+  .compact-purchase-main > .merchant-mark {
+    display: none;
+  }
+  .compact-purchase-main > .compact-purchase-identity {
+    grid-column: 1;
+  }
+  .compact-purchase-main > .compact-purchase-amount {
+    grid-column: 2;
+    grid-row: 1;
+    max-width: 112px;
+    text-align: right;
+  }
+  .compact-purchase-footer {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.4rem;
+  }
+  .compact-purchase-footer > a {
+    grid-column: 2;
+  }
+  .compact-purchase-footer > .compact-purchase-details {
+    grid-column: 1 / -1;
+  }
+}

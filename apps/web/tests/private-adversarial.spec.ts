@@ -288,7 +288,7 @@ test("HOME-05 unlinked document review asks only its known missing currency and 
 }) => {
   await mockPrivateWorkspace(page);
   await page.goto("/needs-attention");
-  await page.getByRole("button", { name: "Review email", exact: true }).click();
+  await page.getByRole("button", { name: /^Review email/ }).click();
   await page.getByText("What needs checking?", { exact: true }).click();
   await expect(
     page.getByText("Which currency does this document use?", { exact: true }),
