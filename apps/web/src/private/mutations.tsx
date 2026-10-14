@@ -114,7 +114,6 @@ export function useCorrectionMutation(
   return {
     submit,
     invalid,
-    busy,
     locked: busy || retry !== null || conflict,
     errorId: message ? errorId : undefined,
     notice: (

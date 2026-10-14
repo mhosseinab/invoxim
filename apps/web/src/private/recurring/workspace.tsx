@@ -1,7 +1,7 @@
 import {
   type RecurringCadence,
+  type RecurringDecisionInput,
   recurringCreateSchema,
-  recurringDecisionInputSchema,
   type recurringDetailResponseSchema,
   type recurringListResponseSchema,
   type recurringRecordSchema,
@@ -116,10 +116,10 @@ export function RecurringWorkspace({ userId, list, detail, refresh }: Props) {
             key={record.series.id}
             record={record}
             decide={(state) => {
-              const body = recurringDecisionInputSchema.parse({
+              const body: RecurringDecisionInput = {
                 expectedVersion: record.series.version,
                 state,
-              });
+              };
               void save(
                 `/api/recurring/${encodeURIComponent(record.series.id)}`,
                 "PATCH",

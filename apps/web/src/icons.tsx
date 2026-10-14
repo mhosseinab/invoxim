@@ -3,10 +3,8 @@ export type IconName =
   | "close"
   | "home"
   | "document"
-  | "recurring"
   | "connections"
   | "review"
-  | "settings"
   | "shield"
   | "lock"
   | "chart";
@@ -16,13 +14,9 @@ const paths: Record<IconName, string> = {
   close: "m6 6 12 12M6 18 18 6",
   home: "M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9",
   document: "M6 3h8l4 4v14H6V3Zm8 0v5h4M9 12h6M9 16h6",
-  recurring:
-    "M20 10a8 8 0 0 0-14-4L3 9m0-5v5h5M4 14a8 8 0 0 0 14 4l3-3m0 5v-5h-5",
   connections:
     "m10 14 4-4M9 16l-2 2a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 0 2-2a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0",
   review: "M9 12l2 2 4-4M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
-  settings:
-    "m9 3 6 0 1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3Zm6 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
   shield: "m12 3 9 3v6c0 5-9 9-9 9s-9-4-9-9V6l9-3Zm-4 9 3 3 5-6",
   lock: "M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5V10Zm7 4v3",
   chart: "M5 20v-6M12 20V9M19 20V4",
