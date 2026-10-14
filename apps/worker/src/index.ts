@@ -14,6 +14,7 @@ import {
   createProcessingReviewResolver,
   createPublicReferenceRateReader,
   createRecurringService,
+  driveConfiguration,
   fxReferenceConfiguration,
   lifecycleDependencies,
   loginConfiguration,
@@ -60,6 +61,19 @@ app.use("/api/*", async (context, next) => {
   );
 });
 app.get("/api/health", (context) => context.json({ status: "scaffold" }));
+/** One readiness rule per optional feature; public config and routes share it. */
+function recurringEnabled(bindings: object) {
+  return (
+    "RECURRING_ENABLED" in bindings &&
+    (bindings as { RECURRING_ENABLED?: string }).RECURRING_ENABLED === "true"
+  );
+}
+function tagsEnabled(bindings: object) {
+  return (
+    "TAGS_ENABLED" in bindings &&
+    (bindings as { TAGS_ENABLED?: string }).TAGS_ENABLED === "true"
+  );
+}
 // Public capabilities derive from validated server configuration; never expose settings or keys.
 const publicConfig = publicConfigSchema.parse({
   displayName: "Invoxim",
@@ -84,8 +98,10 @@ app.get("/api/public-config", (context) => {
       loginEnabled: !!loginConfiguration(bindings),
       mailProviders: providers,
       features: {
-        ...publicConfig.features,
         outlook: providers.includes("outlook"),
+        driveArchive: driveConfiguration(bindings) !== null,
+        recurring: recurringEnabled(bindings),
+        useTags: tagsEnabled(bindings),
       },
     }),
   );
@@ -122,10 +138,7 @@ app.route(
   "/",
   createRecurringRoutes({
     service(db, bindings) {
-      return "RECURRING_ENABLED" in bindings &&
-        bindings.RECURRING_ENABLED === "true"
-        ? createRecurringService(db)
-        : null;
+      return recurringEnabled(bindings) ? createRecurringService(db) : null;
     },
   }),
 );
@@ -149,6 +162,7 @@ type WorkerBindings = DriveBindings &
     OUTLOOK_DISCOVERY_ENABLED?: string;
     EXTRACTION_ENABLED?: string;
     RECURRING_ENABLED?: string;
+    TAGS_ENABLED?: string;
   } & LifecycleBindings &
   OperationalBindings &
   FxReferenceBindings;

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { createLoginAuth, loginConfiguration } from "@invoxim/adapters";
 import { expect, it } from "vitest";
-import { createMailboxRoutes } from "../src/mailbox-routes";
+import worker from "../src/index";
 import { requireFixture } from "./fixture-value";
 import { owner } from "./onboarding-qa-fixture";
 
@@ -49,9 +49,12 @@ async function fixture(name: string) {
     name,
     sessionId: created.id,
     request: (body = { generation: 1, credentialVersion: 1 }, id = "outlook") =>
-      createMailboxRoutes().request(
-        `${login.origin}/api/connections/${id}`,
-        { method: "DELETE", headers, body: JSON.stringify(body) },
+      worker.fetch(
+        new Request(`${login.origin}/api/connections/${id}`, {
+          method: "DELETE",
+          headers,
+          body: JSON.stringify(body),
+        }),
         bindings,
       ),
   };
@@ -76,9 +79,10 @@ it("OUTLOOK-01 disconnect remains available without OAuth configuration and is i
   });
   expect(
     (
-      await createMailboxRoutes().request(
-        `${f.bindings.AUTH_ORIGIN}/api/connections`,
-        { headers: f.headers },
+      await worker.fetch(
+        new Request(`${f.bindings.AUTH_ORIGIN}/api/connections`, {
+          headers: f.headers,
+        }),
         f.bindings,
       )
     ).status,
@@ -115,13 +119,12 @@ it("OUTLOOK-01 disconnect uses the owned provider when both providers are config
   };
   const foreign = await owner("disconnect-foreign", "foreign-owned");
   const request = (id: string, origin = f.bindings.AUTH_ORIGIN) =>
-    createMailboxRoutes().request(
-      `${f.bindings.AUTH_ORIGIN}/api/connections/${id}`,
-      {
+    worker.fetch(
+      new Request(`${f.bindings.AUTH_ORIGIN}/api/connections/${id}`, {
         method: "DELETE",
         headers: { ...f.headers, Origin: origin },
         body: JSON.stringify({ generation: 1, credentialVersion: 1 }),
-      },
+      }),
       configured,
     );
   expect((await request("foreign-owned")).status).toBe(404);
