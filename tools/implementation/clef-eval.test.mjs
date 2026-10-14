@@ -318,7 +318,7 @@ test("CLEF-ACCURACY-02 threshold analysis uses development scores only and retai
   );
 });
 
-test("CLEF-ACCURACY-02 held-out run matches a frozen development artifact and rejects changed policy", async () => {
+test("CLEF-ACCURACY-02 held-out run matches a frozen development artifact and rejects invalid or inconsistent freezes", async () => {
   const fetcher = async () =>
     Response.json({
       success: true,
@@ -368,7 +368,11 @@ test("CLEF-ACCURACY-02 held-out run matches a frozen development artifact and re
     { ...development, protocolSha256: "changed" },
     {
       ...development,
-      thresholds: { negativeThreshold: 0.1, positiveThreshold: 0.5 },
+      thresholds: { negativeThreshold: 0.1, positiveThreshold: 0.49 },
+    },
+    {
+      ...development,
+      thresholds: { negativeThreshold: 0.05, positiveThreshold: 0.9 },
     },
     { ...development, complete: false },
     { ...development, metrics: { ...development.metrics, errors: 1 } },
