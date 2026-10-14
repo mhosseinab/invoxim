@@ -72,6 +72,11 @@ export type RecurringListPage =
 const joins =
   "ledger_entries e JOIN purchases p ON p.user_id=e.user_id AND p.id=e.purchase_id JOIN profiles owner ON owner.user_id=e.user_id";
 // Canonical cash eligibility plus active purchase inclusion, never invoice-derived payments.
+// Recurring eligibility (C15): this SQL pre-filters rows for ownership/lifecycle
+// (active profile, active record, no pending delete/recompute) that the pure TS
+// derivation never sees. The `installment` flag below folds in partially_paid and
+// multi-payment; core/recurring/derive.ts re-checks kind/eligible/installment and
+// multi-payment so the pure function stays correct without this pre-filter.
 const eligible =
   "e.eligible=1 AND e.kind='payment' AND owner.status='active' AND p.record_status='active' AND p.lifecycle_delete_connection_id IS NULL AND p.lifecycle_recompute_connection_id IS NULL";
 const installment =
