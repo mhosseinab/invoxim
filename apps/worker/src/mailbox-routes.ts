@@ -12,7 +12,6 @@ import {
   readAuthJson,
 } from "@invoxim/adapters";
 import {
-  mailboxConnectionsResponseSchema,
   mailboxDisconnectRequestSchema,
   mailboxStartRequestSchema,
   mailboxStartResponseSchema,
@@ -80,20 +79,29 @@ export function createMailboxRoutes() {
     const gmail = provider !== "outlook" ? gmailConfiguration(bindings) : null;
     const outlook =
       provider !== "gmail" ? outlookConfiguration(bindings) : null;
-    const configuration = gmail ?? outlook;
-    if (!configuration) throw new MailboxError("UNAVAILABLE");
-    const authorization = gmail
-      ? createGmailAuthorization(gmail)
-      : outlook
-        ? createOutlookAuthorization(outlook)
-        : null;
-    if (!authorization) throw new MailboxError("UNAVAILABLE");
-    return {
-      kind: "oauth" as const,
-      service: createMailboxService(db, configuration, authorization),
-      session,
-      origin: login.origin,
-    };
+    if (gmail)
+      return {
+        kind: "oauth" as const,
+        service: createMailboxService(
+          db,
+          gmail,
+          createGmailAuthorization(gmail),
+        ),
+        session,
+        origin: login.origin,
+      };
+    if (outlook)
+      return {
+        kind: "oauth" as const,
+        service: createMailboxService(
+          db,
+          outlook,
+          createOutlookAuthorization(outlook),
+        ),
+        session,
+        origin: login.origin,
+      };
+    throw new MailboxError("UNAVAILABLE");
   }
   function failure(cause: unknown) {
     if (cause instanceof AuthRequestError)
@@ -116,19 +124,7 @@ export function createMailboxRoutes() {
     } as const;
     return error(statuses[cause.code], cause.code.toLowerCase());
   }
-  app.get("/api/connections", async (c) => {
-    try {
-      const ready = await enabled(c.req.raw, c.env ?? {});
-      if ("denied" in ready) return error(403, "origin_denied");
-      return c.json(
-        mailboxConnectionsResponseSchema.parse(
-          await ready.service.list(ready.session.tenant),
-        ),
-      );
-    } catch (cause) {
-      return failure(cause);
-    }
-  });
+  // GET /api/connections is owned by storage-routes (combined connections view).
   app.delete("/api/connections/:id", async (c) => {
     try {
       const ready = await enabled(c.req.raw, c.env ?? {});
