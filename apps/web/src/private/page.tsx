@@ -23,8 +23,8 @@ import { amount, Coverage, isPaused, PurchaseCard, Totals } from "./components";
 import {
   categoryLabel,
   paymentStateLabel,
-  privateCopy as text,
   sourceReasonLabel,
+  privateCopy as text,
 } from "./copy";
 import { Corrections } from "./corrections";
 import { Reviews } from "./reviews";

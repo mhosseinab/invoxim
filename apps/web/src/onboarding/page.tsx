@@ -21,7 +21,7 @@ import {
   OnboardingRequestError,
   sendOnboarding,
 } from "./api";
-import { onboardingCopy as text, providerInboxLabels } from "./copy";
+import { providerInboxLabels, onboardingCopy as text } from "./copy";
 import { ImportProgress } from "./progress";
 import { ReviewImport } from "./review";
 import "./signin.css";
