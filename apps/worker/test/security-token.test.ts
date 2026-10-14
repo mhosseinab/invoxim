@@ -63,12 +63,12 @@ it("decode is canonical: a non-canonical body is rejected", async () => {
     );
     return `${body}.${encodeBase64url(new Uint8Array(proof))}`;
   }
-  expect(await verifyToken(bodyDomain, await signedOverBody("e30"), secret)).toBe(
-    "{}",
-  );
-  expect(await verifyToken(bodyDomain, await signedOverBody("e31"), secret)).toBe(
-    null,
-  );
+  expect(
+    await verifyToken(bodyDomain, await signedOverBody("e30"), secret),
+  ).toBe("{}");
+  expect(
+    await verifyToken(bodyDomain, await signedOverBody("e31"), secret),
+  ).toBe(null);
 });
 
 it("rejects malformed shapes and non-32-byte signatures", async () => {
