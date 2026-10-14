@@ -8,6 +8,7 @@ import { OnboardingError } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { createOnboardingRoutes } from "../src/onboarding-routes";
 import { owner } from "./onboarding-qa-fixture";
+import { faultingDatabase } from "./support/faults";
 
 const origin = "https://qa-start-diagnostics.example.invalid";
 afterEach(() => vi.restoreAllMocks());
@@ -40,22 +41,16 @@ async function fixture(id: string, cause: unknown) {
     new TextEncoder().encode(session.token),
   );
   const cookie = `__Secure-better-auth.session_token=${encodeURIComponent(`${session.token}.${btoa(String.fromCharCode(...new Uint8Array(signature)))}`)}`;
-  const database = new Proxy(env.DB, {
-    get(target, property) {
-      if (property === "prepare")
-        return (sql: string) => {
-          if (
-            sql.startsWith(
-              "SELECT user_id,timezone,reporting_currency,version,onboarding_completed_at FROM profiles",
-            )
-          )
-            throw cause;
-          return target.prepare(sql);
-        };
-      const value = Reflect.get(target, property);
-      return typeof value === "function" ? value.bind(target) : value;
+  const { db: database } = faultingDatabase(env.DB, [
+    {
+      match:
+        "SELECT user_id,timezone,reporting_currency,version,onboarding_completed_at FROM profiles",
+      on: "prepare",
+      fire: () => {
+        throw cause;
+      },
     },
-  });
+  ]);
   return {
     bindings: { ...bindings, DB: database },
     request(method = "POST") {

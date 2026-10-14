@@ -3,19 +3,19 @@ import type { TenantContext } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { createGmailDiscovery } from "../../../packages/adapters/src/discovery/gmail";
 import { createDiscoveryPages } from "../../../packages/adapters/src/discovery/pages";
+import { faultingDatabase } from "./support/faults";
 
 afterEach(() => vi.restoreAllMocks());
 it("reports a fixed discovery stage without retaining database or mailbox error content", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  const database = new Proxy(env.DB, {
-    get(target, key) {
-      if (key === "prepare")
-        return () => {
-          throw new Error("PRIVATE DATABASE VALUE");
-        };
-      return Reflect.get(target, key);
+  const { db: database } = faultingDatabase(env.DB, [
+    {
+      on: "prepare",
+      fire: () => {
+        throw new Error("PRIVATE DATABASE VALUE");
+      },
     },
-  });
+  ]);
   const pages = createDiscoveryPages(
     database,
     {

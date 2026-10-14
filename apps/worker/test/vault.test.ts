@@ -10,6 +10,7 @@ import auth from "./migrations/historical/0001_auth.sql?raw";
 import records from "./migrations/historical/0002_records.sql?raw";
 import indexes from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
 import security from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
@@ -312,15 +313,15 @@ it("SECRETS-01: credential and OAuth schema reject missing authenticated key ver
 });
 it("SECRETS-01: unexpected database failures expose no credential text in message, stack or serialization", async () => {
   const marker = "synthetic-private-key-do-not-log";
-  const failureDb = new Proxy(db, {
-    get(target, property, receiver) {
-      if (property === "prepare")
-        return () => {
-          throw new Error(marker);
-        };
-      return Reflect.get(target, property, receiver);
+  const { db: failureDb } = faultingDatabase(db, [
+    {
+      on: "prepare",
+      once: false,
+      fire: () => {
+        throw new Error(marker);
+      },
     },
-  });
+  ]);
   const cipher = createCredentialCipher({ activeVersion: 1, keys: { 1: key } });
   const vault = createCredentialVault(failureDb, cipher);
   const states = createOAuthStateStore(failureDb, cipher, {

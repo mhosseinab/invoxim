@@ -11,6 +11,7 @@ import { createOnboardingImportPreparation } from "../../../packages/adapters/sr
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createOnboardingRoutes } from "../src/onboarding-routes";
+import { faultingDatabase } from "./support/faults";
 import { syntheticClassificationBindings } from "./classification-fixture";
 import {
   configuredAi,
@@ -99,43 +100,27 @@ it.each(["none", "credential", "profile", "route"] as const)(
         }
         throw new Error("Unexpected synthetic provider endpoint");
       });
-    function invocation() {
-      const meter = createInvocationDatabase(env.DB, 40);
-      if (race === "profile") {
-        const prepare = meter.db.prepare.bind(meter.db);
-        let pins = 0;
-        function wrapped(
-          statement: D1PreparedStatement,
-          finalPin: boolean,
-        ): D1PreparedStatement {
-          return new Proxy(statement, {
-            get(target, property) {
-              if (property === "bind")
-                return (...values: unknown[]) =>
-                  wrapped(target.bind(...values), finalPin);
-              if (property === "first" && finalPin)
-                return async <T>(column?: string): Promise<T | null> => {
-                  await env.DB.prepare(
-                    "UPDATE profiles SET status='deleting' WHERE user_id=?",
-                  )
+    function invocation(installRace = false) {
+      const base =
+        race === "profile" && installRace
+          ? faultingDatabase(env.DB, [
+              {
+                match: "SELECT credential_version FROM connections",
+                on: "first",
+                skip: 1,
+                fire: async ({ proceed, native }) => {
+                  await native
+                    .prepare(
+                      "UPDATE profiles SET status='deleting' WHERE user_id=?",
+                    )
                     .bind(session.tenant.userId)
                     .run();
-                  return column === undefined
-                    ? target.first<T>()
-                    : target.first<T>(column);
-                };
-              return Reflect.get(target, property);
-            },
-          });
-        }
-        meter.db.prepare = (sql) => {
-          const statement = prepare(sql);
-          return sql.startsWith("SELECT credential_version FROM connections") &&
-            ++pins === 2
-            ? wrapped(statement, true)
-            : statement;
-        };
-      }
+                  return proceed();
+                },
+              },
+            ]).db
+          : env.DB;
+      const meter = createInvocationDatabase(base, 40);
       const repository = createOnboardingRepository(meter.db, {
         ai: configuredAi(),
         ready: true,
@@ -239,12 +224,12 @@ it.each(["none", "credential", "profile", "route"] as const)(
       ).toBe(1);
       return;
     }
-    const disclosure = await invocation().usecases.disclosure(
+    const disclosure = await invocation(false).usecases.disclosure(
       session,
       selection,
     );
     expect(disclosure.canStartImport).toBe(true);
-    const started = invocation();
+    const started = invocation(true);
     if (race === "profile") {
       await expect(
         started.usecases.start(
@@ -325,7 +310,7 @@ it.each(["none", "credential", "profile", "route"] as const)(
         .bind(session.tenant.userId)
         .first("n"),
     ).toBe(1);
-    const replay = invocation();
+    const replay = invocation(false);
     expect(
       await replay.usecases.start(
         session,
