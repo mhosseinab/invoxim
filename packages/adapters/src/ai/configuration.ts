@@ -126,7 +126,7 @@ export const aiDestinationSchema = z.strictObject({
   maxOutputBytes: z.number().int().min(1).max(65536),
   maxOutputTokens: z.number().int().min(1).max(16000),
 });
-export const aiRegistrySchema = z
+const aiRegistrySchema = z
   .array(aiDestinationSchema)
   .max(10)
   .superRefine((entries, ctx) => {
@@ -193,7 +193,7 @@ export function aiConfiguration(bindings: AiBindings) {
     const tracing = langsmithConfiguration(bindings);
     return {
       ...(tracing ? { tracing } : {}),
-      ...(classification?.enabled ? { classification } : {}),
+      ...(classification ? { classification } : {}),
       destinations,
       cipher,
       keyVersions: Object.keys(keyring.keys).map(Number),

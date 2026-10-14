@@ -146,6 +146,33 @@ async function digest(value: unknown): Promise<string> {
     (b) => b.toString(16).padStart(2, "0"),
   ).join("");
 }
+
+/** Run fingerprint recipe (A1). Must stay byte-identical to configuration.ts and classifier-factory.ts. */
+export async function computeRunFingerprint(input: {
+  mode: "hosted" | "byok";
+  configurationDigest: string;
+  settingsRevision: number;
+  generation: number;
+  credentialVersion: number;
+  policyVersion: number;
+  consentId: string;
+  promptVersion: string;
+  classificationAuthorization: boolean;
+}): Promise<string> {
+  return digest([
+    input.mode,
+    input.configurationDigest,
+    input.settingsRevision,
+    input.generation,
+    input.credentialVersion,
+    input.policyVersion,
+    input.classificationAuthorization
+      ? EMAIL_CLASSIFICATION_VERSION
+      : input.consentId,
+    input.promptVersion,
+    1,
+  ]);
+}
 function validatePolicy(policy: AiBudgetPolicy): void {
   for (const value of [
     policy.dailyDocuments,
@@ -364,19 +391,17 @@ function createMeter(
         : null;
     const binding = cache ? row : (saved ?? row);
     if (!binding) return null;
-    const fingerprint = await digest([
-      input.config.mode,
-      price.configurationDigest,
-      input.config.settingsRevision,
-      binding.generation,
-      binding.credential_version,
-      price.policyVersion,
-      options.classificationAuthorization
-        ? EMAIL_CLASSIFICATION_VERSION
-        : input.config.consentId,
-      input.config.promptVersion,
-      1,
-    ]);
+    const fingerprint = await computeRunFingerprint({
+      mode: input.config.mode,
+      configurationDigest: price.configurationDigest,
+      settingsRevision: input.config.settingsRevision,
+      generation: binding.generation,
+      credentialVersion: binding.credential_version,
+      policyVersion: price.policyVersion,
+      consentId: input.config.consentId,
+      promptVersion: input.config.promptVersion,
+      classificationAuthorization: Boolean(options.classificationAuthorization),
+    });
     if (fingerprint !== input.config.fingerprint) return null;
     bindings.set(input.runKey, binding);
     return {
