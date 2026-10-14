@@ -299,10 +299,27 @@ async function leasedSource(
     attempt: 1,
   };
 }
-it.each(["=CMD()", "+CMD()", "-CMD()", "@CMD()", "\tCMD()", "\rCMD()"])(
-  "LIFECYCLE-01 actual CSV neutralizes formula-leading merchant %j while exact cash remains numeric",
-  async (merchant) => {
-    const owner = await seed(`qa-life-csv-${merchant.charCodeAt(0)}`, merchant);
+it.each([
+  ["=CMD()", "'=CMD()"],
+  ["+CMD()", "'+CMD()"],
+  ["-CMD()", "'-CMD()"],
+  ["@CMD()", "'@CMD()"],
+  ["\tCMD()", "'\tCMD()"],
+  ["\rCMD()", "'\rCMD()"],
+  ["  =CMD()", "'  =CMD()"],
+  ["\u0001=CMD()", "'\u0001=CMD()"],
+  ["\u00a0=CMD()", "'\u00a0=CMD()"],
+  ["\ufeff=CMD()", "'\ufeff=CMD()"],
+  ["Synthetic, merchant", "Synthetic, merchant"],
+  ["Synthetic = merchant", "Synthetic = merchant"],
+  ["\u3000=CMD()", "'\u3000=CMD()"],
+])(
+  "LIFECYCLE-01 actual CSV renders merchant %j as %j (formula/whitespace/control prefixes neutralized, plain text passthrough) while exact cash remains numeric",
+  async (merchant, expected) => {
+    const owner = await seed(
+      `qa-life-csv-${merchant.charCodeAt(0)}-${merchant.length}`,
+      merchant,
+    );
     const response = await request(
       owner,
       "/export?format=csv&from=2026-10-01&to=2026-10-31",
@@ -313,8 +330,7 @@ it.each(["=CMD()", "+CMD()", "-CMD()", "@CMD()", "\tCMD()", "\rCMD()"])(
     if (!header) throw new Error("Missing CSV header");
     const merchantColumn = header.indexOf("merchant");
     expect(merchantColumn).toBeGreaterThanOrEqual(0);
-    for (const row of rows.slice(1))
-      expect(row[merchantColumn]).toBe(`'${merchant}`);
+    for (const row of rows.slice(1)) expect(row[merchantColumn]).toBe(expected);
     const cash = rows
       .slice(1)
       .find((row) => row[header.indexOf("entry_id")] === `e-${owner.name}`);
