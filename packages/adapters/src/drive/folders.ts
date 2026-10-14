@@ -8,6 +8,7 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
+import { driveFileScopeSql } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
 
 const identifier = z
@@ -34,8 +35,7 @@ const leaseSchema = authorizationSchema.extend({
 // Repeated at every authorization boundary; a retained folder ID is never consent.
 const eligible = `p.status='active' AND c.kind='storage' AND c.provider='google-drive'
  AND c.state='connected' AND c.credential_ciphertext IS NOT NULL AND c.credential_key_version>0
- AND json_type(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END)='array'
- AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file')
+ AND ${driveFileScopeSql("c")}
  AND a.enabled=1 AND a.connection_id=c.id AND a.connection_generation=c.generation AND a.disclosure_version=1`;
 function current(version: string, generation: string): string {
   return `EXISTS(SELECT 1 FROM profiles p

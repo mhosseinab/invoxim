@@ -10,6 +10,7 @@ import {
 } from "@invoxim/core";
 import { z } from "zod";
 import type { ArchiveCredentialFences } from "../../../core/src/archive/objects";
+import { driveFileScopeSql } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
 import { archiveUploadPlanSchema } from "./plans";
 
@@ -49,8 +50,7 @@ const admission = `EXISTS(
  AND (c.kind='storage' AND c.provider='google-drive' AND c.state='connected'
  AND c.generation=archive_objects.storage_generation AND c.provider_subject=archive_objects.storage_subject
  AND c.credential_ciphertext IS NOT NULL AND c.credential_key_version>0
- AND json_type(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END)='array'
- AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file'))
+ AND ${driveFileScopeSql("c")})
  AND (a.enabled=1 AND a.version=archive_objects.settings_version AND a.connection_id=c.id AND a.connection_generation=c.generation AND a.disclosure_version=1)
 )`;
 // Logical cancellation stops execution immediately, before bounded lease cleanup.
@@ -207,8 +207,7 @@ export function createArchiveObjectStore(
  WHERE p.user_id=? AND p.status='active' AND m.kind='mailbox' AND m.state='connected' AND s.available=1 AND s.generation=m.generation
  AND m.credential_ciphertext IS NOT NULL AND m.credential_key_version>0
  AND c.id=? AND c.kind='storage' AND c.provider='google-drive' AND c.state='connected' AND c.credential_ciphertext IS NOT NULL AND c.credential_key_version>0
- AND json_type(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END)='array'
- AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file')
+ AND ${driveFileScopeSql("c")}
  AND a.enabled=1 AND a.version=? AND a.connection_generation=c.generation AND a.disclosure_version=1
  ON CONFLICT(user_id,document_id,storage_connection_id) DO NOTHING`,
       )

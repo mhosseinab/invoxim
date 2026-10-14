@@ -8,6 +8,7 @@ import type {
   ArchiveDispatchStore,
   ArchiveDispatchWork,
 } from "../../../core/src/archive/queue-types";
+import { mailboxScopeSql } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
 import { archiveObjectEligibilitySql } from "./objects";
 
@@ -17,10 +18,8 @@ const identifier = z
   .max(256)
   .refine((value) => !hasControlCharacters(value));
 const integer = z.number().int().safe().nonnegative();
-export const archiveMailboxPermissionSql = `EXISTS(SELECT 1 FROM connections mp WHERE mp.user_id=archive_objects.user_id AND mp.id=archive_objects.mailbox_connection_id
- AND length(mp.scopes)<=4096 AND json_type(CASE WHEN json_valid(mp.scopes) THEN mp.scopes ELSE '[]' END)='array'
- AND json_array_length(CASE WHEN json_valid(mp.scopes) THEN mp.scopes ELSE '[]' END)<=16
- AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(mp.scopes) THEN mp.scopes ELSE '[]' END) perm WHERE perm.type='text' AND ((mp.provider='gmail' AND perm.value='https://www.googleapis.com/auth/gmail.readonly') OR (mp.provider='outlook' AND perm.value='https://graph.microsoft.com/Mail.Read'))))`;
+/** D5: mailbox permission on the object's mailbox connection. */
+export const archiveMailboxPermissionSql = `EXISTS(SELECT 1 FROM connections mp WHERE mp.user_id=archive_objects.user_id AND mp.id=archive_objects.mailbox_connection_id AND ${mailboxScopeSql("mp")})`;
 const eligible = `${archiveObjectEligibilitySql()} AND ${archiveMailboxPermissionSql}`;
 const fields = `q.user_id,q.object_id,q.queue_id,q.dispatch_fence,q.failure_count,q.dispatch_at,q.dispatched_at,q.status,archive_objects.fence AS object_fence,archive_objects.state AS object_state,archive_objects.lease_expires_at,(${eligible}) AS allowed,
  EXISTS(SELECT 1 FROM source_messages s WHERE s.user_id=archive_objects.user_id AND s.id=archive_objects.source_message_id AND s.available=1) AS source_available`;
