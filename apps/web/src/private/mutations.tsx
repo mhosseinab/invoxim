@@ -149,7 +149,15 @@ export function useRetryableMutation<T>(options: MutationOptions<T>) {
       {(state === "retryable" ||
         state === "conflict" ||
         state === "unavailable") && (
-        <button type="button" disabled={busy} onClick={options.onSuccess}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setState("idle");
+            setMessage("");
+            options.onSuccess();
+          }}
+        >
           {options.actions.reload}
         </button>
       )}

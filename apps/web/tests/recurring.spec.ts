@@ -242,6 +242,62 @@ test("RECUR-05 current series version conflicts require review without automatic
   expect(writes).toBe(1);
 });
 
+test("RECUR-05 focus refresh keeps the open payment picker draft for the same actor (F4)", async ({
+  page,
+}) => {
+  await mockPrivateWorkspace(page);
+  await page.route("**/api/purchases/qa-history", async (route) => {
+    await route.fulfill({
+      json: {
+        purchase: { ...history, version: 9 },
+        manualEvidence: [],
+        timeline: [],
+        ledgerEntries: [
+          {
+            id: "qa-pay",
+            observationId: "qa-paid",
+            origin: "source",
+            version: 7,
+            kind: "payment",
+            minor: "12000",
+            currency: "EUR",
+            date: "2026-01-10",
+            dateBasis: "explicit-event-date",
+            eligible: true,
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/recurring", (route) =>
+    route.fulfill({
+      json: {
+        status: "current",
+        pageScope: "page",
+        pageSnapshot: false,
+        automaticSuggestionsAvailable: false,
+        userSelectionRequired: true,
+        records: [],
+        nextCursor: null,
+        mutationToken: "recurring-token",
+      },
+    }),
+  );
+  await page.goto("/recurring");
+  await page
+    .getByRole("button", { name: "Choose payments from QA history" })
+    .click();
+  await page.getByLabel("Payment · 2026-01-10 · EUR 120.00").check();
+  await page.getByLabel("Service identity").fill("Keep this draft");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByLabel("Service identity")).toHaveValue(
+    "Keep this draft",
+  );
+  await expect(
+    page.getByRole("checkbox", { name: "Payment · 2026-01-10 · EUR" }),
+  ).toBeChecked();
+});
+
 test("RECUR-05 actor change clears selection and token before a new decision", async ({
   page,
 }) => {

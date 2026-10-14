@@ -3,7 +3,7 @@ import {
   correctionStateSchema,
   type PurchaseDetail,
 } from "@invoxim/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { identityFailure, readPrivateForIdentity } from "./api";
 import { cashEvents } from "./cash";
 import { reviewQuestions } from "./copy";
@@ -24,10 +24,12 @@ export function Corrections({
   detail,
   onReload,
   expectedUserId,
+  reloadKey,
 }: {
   detail: PurchaseDetail;
   onReload: () => void;
   expectedUserId: string;
+  reloadKey: number;
 }) {
   const [state, setState] = useState<CorrectionState | null>(null);
   const [availability, setAvailability] = useState(
@@ -40,6 +42,8 @@ export function Corrections({
     state?.mutationToken ?? "",
   );
   const purchaseId = detail.purchase.id;
+  const askedReload = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a re-fetch trigger; onReload is only used on identity failure and must not re-run the fetch
   useEffect(() => {
     const controller = new AbortController();
     void readPrivateForIdentity(
@@ -50,21 +54,26 @@ export function Corrections({
     )
       .then((value) => {
         if (!controller.signal.aborted) {
+          askedReload.current = false;
           setState(value);
           setAvailability("");
         }
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          if (identityFailure(error)) onReload();
-          else
+          if (identityFailure(error)) {
+            if (!askedReload.current) {
+              askedReload.current = true;
+              onReload();
+            }
+          } else
             setAvailability(
               "Corrections are currently unavailable. Your existing purchase records remain readable.",
             );
         }
       });
     return () => controller.abort();
-  }, [purchaseId, onReload, expectedUserId]);
+  }, [purchaseId, expectedUserId, reloadKey]);
   if (!state)
     return (
       <section className="workspace-correction-unavailable">

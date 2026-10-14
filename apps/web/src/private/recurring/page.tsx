@@ -6,7 +6,7 @@ import {
   recurringDetailResponseSchema,
   recurringListResponseSchema,
 } from "@invoxim/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandMark, Icon } from "../../icons";
 import {
   identityFailure,
@@ -16,6 +16,7 @@ import {
   readPrivateForIdentity,
 } from "../api";
 import { Coverage } from "../components";
+import { useFocusRefresh } from "../use-focus-refresh";
 import { RecurringWorkspace } from "./workspace";
 
 type Data = {
@@ -32,11 +33,12 @@ export function RecurringPage({ displayName }: { displayName: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [revision, setRevision] = useState(0);
   const latestRevision = useRef(0);
-  function refresh() {
-    setState({ kind: "loading" });
+  // Background refresh: keep the picker draft until the new response lands.
+  const refresh = useCallback(() => {
     latestRevision.current += 1;
     setRevision(latestRevision.current);
-  }
+  }, []);
+  useFocusRefresh(refresh);
   useEffect(() => {
     const requestRevision = revision;
     const request = new AbortController();
@@ -99,24 +101,6 @@ export function RecurringPage({ displayName }: { displayName: string }) {
     void load();
     return () => request.abort();
   }, [revision]);
-  useEffect(() => {
-    const revalidate = () => {
-      setState({ kind: "loading" });
-      latestRevision.current += 1;
-      setRevision(latestRevision.current);
-    };
-    const visibility = () => {
-      if (document.visibilityState === "visible") revalidate();
-    };
-    window.addEventListener("focus", revalidate);
-    window.addEventListener("pageshow", revalidate);
-    document.addEventListener("visibilitychange", visibility);
-    return () => {
-      window.removeEventListener("focus", revalidate);
-      window.removeEventListener("pageshow", revalidate);
-      document.removeEventListener("visibilitychange", visibility);
-    };
-  }, []);
   return (
     <div className="app-frame private-app recurring-app">
       <a className="skip" href="#content">
@@ -198,7 +182,7 @@ export function RecurringPage({ displayName }: { displayName: string }) {
             <>
               <Coverage coverage={state.data.coverage} />
               <RecurringWorkspace
-                key={`${state.data.profile.user.id}:${revision}`}
+                key={state.data.profile.user.id}
                 userId={state.data.profile.user.id}
                 list={state.data.list}
                 detail={state.data.detail}

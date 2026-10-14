@@ -12,6 +12,19 @@ import { CategoryField, CurrencyField, moneyMinor } from "./correction-forms";
 import { type CorrectionMutation, useCorrectionMutation } from "./mutations";
 
 type Review = CorrectionState["reviews"][number];
+function submitResolve(
+  mutation: CorrectionMutation,
+  review: Review,
+  body: unknown,
+) {
+  const parsed = reviewResolutionRequestSchema.safeParse(body);
+  if (!parsed.success) return mutation.invalid();
+  mutation.submit(
+    `/api/review/${encodeURIComponent(review.id)}/resolve`,
+    "POST",
+    parsed.data,
+  );
+}
 function ReviewFields({
   review,
   purchase,
@@ -69,13 +82,7 @@ function ReviewFields({
               changes,
             };
           }
-          const parsed = reviewResolutionRequestSchema.safeParse(body);
-          if (!parsed.success) return mutation.invalid();
-          mutation.submit(
-            `/api/review/${encodeURIComponent(review.id)}/resolve`,
-            "POST",
-            parsed.data,
-          );
+          submitResolve(mutation, review, body);
         } catch {
           mutation.invalid();
         }
@@ -203,16 +210,10 @@ export function ReviewControls({
                   type="button"
                   disabled={mutation.locked}
                   onClick={() => {
-                    const parsed = reviewResolutionRequestSchema.safeParse({
+                    submitResolve(mutation, review, {
                       version: review.version,
                       action: "not-a-purchase",
                     });
-                    if (!parsed.success) return mutation.invalid();
-                    mutation.submit(
-                      `/api/review/${encodeURIComponent(review.id)}/resolve`,
-                      "POST",
-                      parsed.data,
-                    );
                   }}
                 >
                   Not a purchase
@@ -265,16 +266,10 @@ export function ReviewControls({
                   type="button"
                   disabled={mutation.locked}
                   onClick={() => {
-                    const parsed = reviewResolutionRequestSchema.safeParse({
+                    submitResolve(mutation, review, {
                       version: review.version,
                       action: "dismiss-operational",
                     });
-                    if (!parsed.success) return mutation.invalid();
-                    mutation.submit(
-                      `/api/review/${encodeURIComponent(review.id)}/resolve`,
-                      "POST",
-                      parsed.data,
-                    );
                   }}
                 >
                   Dismiss operational warning
@@ -286,17 +281,11 @@ export function ReviewControls({
                 type="button"
                 disabled={mutation.locked}
                 onClick={() => {
-                  const parsed = reviewResolutionRequestSchema.safeParse({
+                  submitResolve(mutation, review, {
                     version: review.version,
                     action: "different-purchase",
                     purchaseVersion: purchase.version,
                   });
-                  if (!parsed.success) return mutation.invalid();
-                  mutation.submit(
-                    `/api/review/${encodeURIComponent(review.id)}/resolve`,
-                    "POST",
-                    parsed.data,
-                  );
                 }}
               >
                 These are different purchases

@@ -182,6 +182,29 @@ test("EDIT-02 conflict retains entered correction until deliberate reload", asyn
   ).toBeVisible();
 });
 
+test("EDIT-04 focus refresh keeps an open correction editor and its draft (F4)", async ({
+  page,
+}) => {
+  const writes: unknown[] = [];
+  await workspace(page, (request) => {
+    writes.push(request.body);
+    return { body: result };
+  });
+  await page.goto("/purchases/purchase-a");
+  await page
+    .getByRole("button", { name: "Edit purchase details", exact: true })
+    .click();
+  await page.getByLabel("Merchant", { exact: true }).fill("Draft while idle");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByLabel("Merchant", { exact: true })).toHaveValue(
+    "Draft while idle",
+  );
+  await expect(
+    page.getByRole("button", { name: "Save purchase details", exact: true }),
+  ).toBeVisible();
+  expect(writes).toHaveLength(0);
+});
+
 test("EDIT-03 unknown payment confirmation retry reuses its request identity", async ({
   page,
 }) => {
@@ -368,7 +391,10 @@ test("EDIT-04 merge and reversal submit distinct owned versions without fabricat
   await page
     .getByRole("button", { name: "Refresh records", exact: true })
     .click();
-  await page.getByText("Inclusion and merge controls", { exact: true }).click();
+  // Background refresh keeps the merge panel open; wait for the reversal action.
+  await expect(
+    page.getByRole("button", { name: "Reverse merge", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Reverse merge", exact: true })
     .click();
