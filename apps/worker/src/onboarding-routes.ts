@@ -115,6 +115,10 @@ export function createOnboardingRoutes() {
       ai,
       ready: providers.length > 0,
       signingSecret: ready.secret,
+      // Provider configs own the MAILBOX_LIMIT default ("3"). The fallback is
+      // only a UI cap for the response when neither provider is configured, so
+      // it must stay equal to that default (see mailbox/configuration.ts and
+      // mailbox/outlook-configuration.ts).
       mailboxLimit: gmail?.limit ?? outlook?.limit ?? 3,
       mailboxProviders: providers,
       remainingStatements: ready.remainingStatements,
