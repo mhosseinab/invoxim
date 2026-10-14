@@ -6,6 +6,7 @@ import { hashOnboardingValue } from "../onboarding/configuration";
 import type { PipelineClassificationFactory } from "../pipeline/types";
 import type { AiPriceSnapshot } from "./budget";
 import {
+  CLEF_RECEIPT_POLICY_VERSION,
   type ClefBinding,
   createClefEmailClassifier,
   type ReceiptClassificationConfiguration,
@@ -35,6 +36,7 @@ export function createReceiptClassifierFactory(
       if (!row) throw new AiSettingsError("CONFLICT");
       const configurationDigest = await hashOnboardingValue({
         classification: configuration,
+        classifierPolicyVersion: CLEF_RECEIPT_POLICY_VERSION,
         sourceDocuments: work.documents.map((document) => ({
           partKey: document.partKey,
           contentHash: document.contentHash,

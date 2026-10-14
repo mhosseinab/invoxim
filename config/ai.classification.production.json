@@ -1,10 +1,11 @@
 {
   "enabled": true,
   "model": "@cf/cloudflare/clef",
-  "version": "receipt-classification-v1",
+  "version": "receipt-classification-v2",
   "maxInputBytes": 24000,
   "timeoutMs": 30000,
   "negativeThreshold": 0.1,
+  "positiveThreshold": 0.9,
   "categoryThreshold": 0.5,
   "pricing": {
     "version": "cloudflare-clef-20261013",

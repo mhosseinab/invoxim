@@ -77,10 +77,10 @@ export async function hashOnboardingValue(value: unknown): Promise<string> {
 }
 
 export const RECEIPT_CLASSIFIER_NOTICE = Object.freeze({
-  id: "cloudflare-clef-v1",
+  id: "cloudflare-clef-v2",
   displayName: "Cloudflare Workers AI — Clef email classification",
   dataUseSummary:
-    "Bounded email text is sent to Cloudflare Clef to decide whether it contains purchase evidence and suggest a category. Financial extraction uses your separately selected provider. Cloudflare states it does not train on Workers AI customer content without explicit consent.",
+    "Bounded email text is sent to Cloudflare Clef to detect invoices, payment receipts, credit notes or completed refund confirmations and suggest a category. Order-only and delivery/status notifications do not qualify on their own. Financial extraction uses your separately selected provider. Cloudflare states it does not train on Workers AI customer content without explicit consent.",
   retentionSummary:
     "This app does not store email text or model transcripts. Cloudflare processes classification content under its Workers AI terms; this app does not enable remote content storage or assert a fixed retention period.",
   privacyUrl:

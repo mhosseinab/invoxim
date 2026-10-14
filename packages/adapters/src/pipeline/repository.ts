@@ -79,6 +79,14 @@ export interface PipelineCommit {
   readonly nextDocumentIndex: number | null;
 }
 export interface PipelineRepository {
+  skipDocument?(
+    lease: JobLease,
+    outcome: {
+      documentId: string;
+      classificationFingerprint: string;
+      nextDocumentIndex: number | null;
+    },
+  ): Promise<"committed" | "stale">;
   skipSource?(
     lease: JobLease,
     classificationFingerprint: string,
@@ -1165,10 +1173,10 @@ export function createPipelineRepository(
       throw new PipelinePersistenceError("PIPELINE_CONFLICT");
     return outcome;
   }
-  async function skipSource(
+  function negativeClassificationGuard(
     lease: JobLease,
     classificationFingerprint: string,
-  ): Promise<"committed" | "stale"> {
+  ): Predicate {
     fingerprintSchema.parse(classificationFingerprint);
     const guard = liveGuard(lease, clock());
     guard.sql += ` AND EXISTS(SELECT 1 FROM discovery_source_jobs dj JOIN documents d ON d.user_id=dj.user_id AND d.source_message_id=dj.source_message_id JOIN ai_extractions e ON e.user_id=d.user_id AND e.document_id=d.id WHERE dj.user_id=? AND dj.job_id=? AND d.pipeline_index=0 AND e.run_key=? AND e.extraction_version='email-classification-v1' AND e.completed_at IS NOT NULL AND e.generation=(SELECT generation FROM ai_settings WHERE user_id=e.user_id) AND e.credential_version=(SELECT credential_version FROM ai_settings WHERE user_id=e.user_id) AND json_extract(e.result_json,'$.status')='classified' AND json_extract(e.result_json,'$.isReceipt')=0 AND e.settings_revision=(SELECT ai_settings_revision FROM processing_consents WHERE user_id=? AND id=?))`;
@@ -1179,6 +1187,61 @@ export function createPipelineRepository(
       lease.context.userId,
       lease.consentId,
     );
+    return guard;
+  }
+  async function skipDocument(
+    lease: JobLease,
+    outcome: {
+      documentId: string;
+      classificationFingerprint: string;
+      nextDocumentIndex: number | null;
+    },
+  ): Promise<"committed" | "stale"> {
+    identifier.parse(outcome.documentId);
+    const guard = negativeClassificationGuard(
+      lease,
+      outcome.classificationFingerprint,
+    );
+    guard.sql += ` AND EXISTS(SELECT 1 FROM discovery_source_jobs current JOIN documents d ON d.user_id=current.user_id AND d.source_message_id=current.source_message_id WHERE current.user_id=? AND current.job_id=? AND current.pipeline_stage='infer' AND d.id=? AND d.pipeline_index=current.document_index AND d.parse_state IN('ready','extracted'))`;
+    guard.values.push(lease.context.userId, lease.jobId, outcome.documentId);
+    if (outcome.nextDocumentIndex !== null) {
+      guard.sql += ` AND EXISTS(SELECT 1 FROM discovery_source_jobs current JOIN documents d ON d.user_id=current.user_id AND d.source_message_id=current.source_message_id WHERE current.user_id=? AND current.job_id=? AND d.pipeline_index=? AND d.pipeline_index=current.document_index+1)`;
+      guard.values.push(
+        lease.context.userId,
+        lease.jobId,
+        outcome.nextDocumentIndex,
+      );
+    }
+    const follow =
+      outcome.nextDocumentIndex === null
+        ? []
+        : await continuation(
+            lease,
+            { stage: "infer", documentIndex: outcome.nextDocumentIndex },
+            guard,
+          );
+    if (outcome.nextDocumentIndex !== null && !follow.length) return "stale";
+    return batch([
+      stmt(
+        `UPDATE documents SET parse_state='extracted',parse_code='non-purchase' WHERE user_id=? AND id=? AND ${guard.sql}`,
+        [lease.context.userId, outcome.documentId],
+        guard,
+      ),
+      ...follow,
+      stmt(
+        `UPDATE source_messages SET processing_status=CASE WHEN EXISTS(SELECT 1 FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id WHERE r.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND r.status='open') OR EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state NOT IN('ready','extracted')) THEN 'review' ELSE 'processed' END WHERE user_id=? AND id=(SELECT source_message_id FROM discovery_source_jobs WHERE user_id=? AND job_id=?) AND ${guard.sql}`,
+        [lease.context.userId, lease.context.userId, lease.jobId],
+        guard,
+      ),
+      importProjection(lease, guard),
+      complete(lease, guard, "non-purchase"),
+    ]);
+  }
+  async function skipSource(
+    lease: JobLease,
+    classificationFingerprint: string,
+  ): Promise<"committed" | "stale"> {
+    const guard = negativeClassificationGuard(lease, classificationFingerprint);
     return batch([
       stmt(
         `UPDATE documents SET parse_state='extracted',parse_code='non-purchase' WHERE user_id=? AND source_message_id=(SELECT source_message_id FROM discovery_source_jobs WHERE user_id=? AND job_id=?) AND ${guard.sql}`,
@@ -1301,6 +1364,7 @@ export function createPipelineRepository(
     return batch(statements);
   }
   return {
+    skipDocument,
     skipSource,
     failDocument,
     load,

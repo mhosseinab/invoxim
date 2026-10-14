@@ -388,6 +388,27 @@ export function createPipelineService(
               ? completed
               : stale;
           }
+          if (!classification.isReceipt) {
+            if (!repository.skipDocument)
+              return failCurrentDocument
+                ? await failCurrentDocument(
+                    "classification-handler-unavailable",
+                  )
+                : await finishFailure(
+                    "review",
+                    "classification-handler-unavailable",
+                  );
+            return (await repository.skipDocument(lease, {
+              documentId: metadata.id,
+              classificationFingerprint: classificationKey,
+              nextDocumentIndex:
+                work.documentIndex + 1 < work.documents.length
+                  ? work.documentIndex + 1
+                  : null,
+            })) === "committed"
+              ? completed
+              : stale;
+          }
           classifiedCategory =
             classification.category === "uncategorized"
               ? undefined

@@ -22,6 +22,7 @@ export type EmailClassification =
       readonly status: "needs-review";
       readonly reason:
         | "schema"
+        | "uncertain"
         | "input-limit"
         | "budget"
         | "in-progress"
@@ -76,6 +77,7 @@ export function validateEmailClassification(
     Object.keys(row).length === 2 &&
     [
       "schema",
+      "uncertain",
       "input-limit",
       "budget",
       "in-progress",

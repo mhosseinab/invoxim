@@ -16,6 +16,7 @@ import { computeAiFingerprint } from "../../../packages/adapters/src/ai/configur
 import { createPipelineRepository } from "../../../packages/adapters/src/pipeline/repository";
 import { createPipelineService } from "../../../packages/adapters/src/pipeline/service";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { createPipelineRuntime } from "../src/pipeline-runtime";
 
 const db = env.DB;
 const policy = {
@@ -454,7 +455,6 @@ it("CLEF-01 actual runtime with encrypted Gmail credential and consent digest co
     await import("../../../packages/adapters/src/security/cipher");
   const { selectedOnboardingConfigurationDigest } =
     await import("../../../packages/adapters/src/onboarding/configuration");
-  const { createPipelineRuntime } = await import("../src/pipeline-runtime");
   const { createGmailContentFactory } =
     await import("../../../packages/adapters/src/pipeline/gmail-factory");
   const keyring = {
@@ -738,7 +738,7 @@ it("CLEF-01 unreadable attachment prevents a negative body decision from discard
       )
       .bind(tenant.userId)
       .first("processing_status"),
-  ).toBe("discovered");
+  ).toBe("review");
   expect(
     await db
       .prepare(
@@ -1540,4 +1540,66 @@ it("VERSION-05 already reconciled paid v3 receipt cannot create a duplicate purc
       .bind(tenant.userId)
       .first(),
   ).toEqual({ amount_minor: 1500, currency: "EUR" });
+});
+
+it("AI-CLEF-PRECISION-01 uncertain classification is metered and never invokes financial extraction", async () => {
+  const { pipeline, run, extract } = service(0.45);
+  expect(await pipeline.run(lease, control)).toEqual({ kind: "completed" });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(extract).not.toHaveBeenCalled();
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM purchases WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(0);
+  expect(
+    await db
+      .prepare("SELECT parse_code FROM documents WHERE user_id=? AND id='d'")
+      .bind(tenant.userId)
+      .first("parse_code"),
+  ).toBe("classification-uncertain");
+  expect(
+    await db
+      .prepare(
+        "SELECT state FROM usage_events WHERE user_id=? AND destination_id='cloudflare-clef'",
+      )
+      .bind(tenant.userId)
+      .first("state"),
+  ).toBe("known");
+});
+it("AI-CLEF-PRECISION-01 policy identity invalidates custom configuration cache fingerprints", async () => {
+  const { hashOnboardingValue } =
+    await import("../../../packages/adapters/src/onboarding/configuration");
+  const { CLEF_RECEIPT_POLICY_VERSION } =
+    await import("../../../packages/adapters/src/ai/clef");
+  const repository = createPipelineRepository(db);
+  const work = await repository.load(lease);
+  if (!work) throw new Error("fixture work missing");
+  const selected = {
+    config,
+    extractor: { extract: vi.fn() },
+    pricing: new Map([[config.fingerprint, price]]),
+  };
+  const classifier = await createReceiptClassifierFactory(db, classification, {
+    binding: { run: vi.fn() },
+  }).open(lease, work, [], selected);
+  const sourceDocuments = work.documents.map((document) => ({
+    partKey: document.partKey,
+    contentHash: document.contentHash,
+    parserVersion: document.parserVersion,
+  }));
+  const previousDigest = await hashOnboardingValue({
+    classification,
+    sourceDocuments,
+  });
+  const currentDigest = await hashOnboardingValue({
+    classification,
+    classifierPolicyVersion: CLEF_RECEIPT_POLICY_VERSION,
+    sourceDocuments,
+  });
+  const currentPrice = classifier.pricing.get(classifier.config.fingerprint);
+  expect(currentPrice?.configurationDigest).toBe(currentDigest);
+  expect(currentPrice?.configurationDigest).not.toBe(previousDigest);
+  expect(classifier.config.promptVersion).toBe("email-classification-v1");
 });
