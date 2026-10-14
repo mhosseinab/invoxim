@@ -432,6 +432,7 @@ it("HOME-05 actual review endpoint retains exact missing field names without dis
   };
   expect(body.reviews.find((r) => r.id === "qa-missing-question")).toEqual({
     id: "qa-missing-question",
+    sourceMessageId: "o-missing",
     documentId: "o-missing",
     purchaseId: "missing",
     reason: "incomplete-financial-facts",

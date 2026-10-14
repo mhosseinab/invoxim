@@ -512,6 +512,7 @@ it("HOME-05 read-only open review list retains linked and unlinked missing-field
   expect(result.reviews).toEqual([
     {
       id: "review-a",
+      sourceMessageId: "pending-refund",
       documentId: "pending-refund",
       purchaseId: "a",
       reason: "ambiguous-event",
@@ -538,6 +539,7 @@ it("HOME-05 unlinked incomplete questions are bounded, tenant-owned, typed and c
     reviews: [
       {
         id: "unlinked-missing",
+        sourceMessageId: "pending-refund",
         documentId: "pending-refund",
         purchaseId: null,
         reason: "incomplete-financial-facts",
