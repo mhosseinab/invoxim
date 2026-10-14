@@ -374,6 +374,49 @@ test("UI-04 paused jobs override importing copy and announce a ready milestone",
   ).toHaveCount(0);
 });
 
+test("UI-04 paused scheduling and paused run stage report paused in both the status line and the coverage panel", async ({
+  page,
+}) => {
+  await fixtures(page);
+  const scheduled = structuredClone(coverage);
+  const inbox = scheduled.connections[0];
+  if (!inbox?.imports[0]) throw new Error("Missing fixture inbox");
+  inbox.schedulingState = "paused";
+  inbox.pendingJobs = 0;
+  inbox.pausedJobs = 0;
+  inbox.imports[0].completedAt = 1;
+  inbox.imports[0].pauseReason = null;
+  inbox.imports[0].stage = "processing_pending";
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({ json: scheduled }),
+  );
+  await page.goto("/home");
+  await expect(page.getByRole("status")).toContainText(
+    "1 purchase records ready. Processing is paused.",
+  );
+  await expect(
+    page.getByRole("region", { name: "Inbox coverage" }),
+  ).toContainText("Processing is paused.");
+  const staged = structuredClone(coverage);
+  const stagedInbox = staged.connections[0];
+  if (!stagedInbox?.imports[0]) throw new Error("Missing fixture inbox");
+  stagedInbox.pendingJobs = 0;
+  stagedInbox.pausedJobs = 0;
+  stagedInbox.imports[0].completedAt = 1;
+  stagedInbox.imports[0].pauseReason = null;
+  stagedInbox.imports[0].stage = "paused";
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({ json: staged }),
+  );
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText(
+    "1 purchase records ready. Processing is paused.",
+  );
+  await expect(
+    page.getByRole("region", { name: "Inbox coverage" }),
+  ).toContainText("Processing is paused.");
+});
+
 test("HOME-05 only validated missing fields become exact questions including unlinked documents", async ({
   page,
 }) => {

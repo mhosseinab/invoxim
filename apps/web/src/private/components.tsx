@@ -163,6 +163,17 @@ function importDateLabel(value: string) {
       }).format(date);
 }
 
+export function isPaused(
+  connection: PurchaseCoverage["connections"][number],
+): boolean {
+  return (
+    connection.schedulingState === "paused" ||
+    connection.pausedJobs > 0 ||
+    connection.imports.some(
+      (run) => run.pauseReason !== null || run.stage === "paused",
+    )
+  );
+}
 export function Coverage({
   coverage,
   full = false,
@@ -173,14 +184,7 @@ export function Coverage({
   const connectedCount = coverage.connections.filter(
     (connection) => connection.state === "connected",
   ).length;
-  const paused = coverage.connections.some(
-    (connection) =>
-      connection.schedulingState === "paused" ||
-      connection.pausedJobs > 0 ||
-      connection.imports.some(
-        (run) => run.pauseReason !== null || run.stage === "paused",
-      ),
-  );
+  const paused = coverage.connections.some(isPaused);
   const pending = coverage.connections.some(
     (connection) =>
       connection.pendingJobs > 0 ||
@@ -234,12 +238,7 @@ export function Coverage({
         {coverage.connections.length === 0 && <p>{text.noMailbox}</p>}
       </div>
       {coverage.connections.map((connection) => {
-        const connectionPaused =
-          connection.schedulingState === "paused" ||
-          connection.pausedJobs > 0 ||
-          connection.imports.some(
-            (run) => run.pauseReason !== null || run.stage === "paused",
-          );
+        const connectionPaused = isPaused(connection);
         const connectionPending =
           connection.pendingJobs > 0 ||
           connection.imports.some((run) => run.completedAt === null);

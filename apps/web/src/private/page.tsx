@@ -19,7 +19,7 @@ import {
 import { useEffect, useState } from "react";
 import { BrandMark, Icon } from "../icons";
 import { identityFailure, PrivateLoadError, readPrivate } from "./api";
-import { amount, Coverage, PurchaseCard, Totals } from "./components";
+import { amount, Coverage, isPaused, PurchaseCard, Totals } from "./components";
 import { privateCopy as text } from "./copy";
 import { Corrections } from "./corrections";
 import { Reviews } from "./reviews";
@@ -560,7 +560,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
               ? text.loading
               : state.kind === "error"
                 ? "Records could not be loaded."
-                : `${state.data.coverage.readyPurchaseCount} purchase records ready.${state.data.coverage.connections.some((connection) => connection.pausedJobs > 0 || connection.imports.some((run) => run.pauseReason !== null)) ? " Processing is paused. Existing records remain available." : ""}`}
+                : `${state.data.coverage.readyPurchaseCount} purchase records ready.${state.data.coverage.connections.some(isPaused) ? " Processing is paused. Existing records remain available." : ""}`}
           </p>
           {state.kind === "error" && (
             <section className="private-panel" role="alert">
