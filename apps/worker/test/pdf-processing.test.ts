@@ -150,7 +150,7 @@ it("PDF-PROCESSING-07: pre-abort and mid-decompression cancellation return typed
     });
   }
 });
-it("PDF-PROCESSING-08: direct-model PDF aggregate page limits hide all partial message evidence", async () => {
+it("PDF-PROCESSING-08: aggregate PDF page limit preserves complete independent documents", async () => {
   const bytes = generateTextPdf([["Invoice EUR 100.00"]]);
   const result = await createDocumentTextExtractor({
     pdf: createLocalPdfTextExtractor(),
@@ -171,9 +171,12 @@ it("PDF-PROCESSING-08: direct-model PDF aggregate page limits hide all partial m
     { tenant, inputMode: "direct-model" },
   );
   expect(result).toMatchObject({
-    status: "incomplete",
+    status: "needs_review",
     code: "page_limit",
-    documents: [],
+    documents: [
+      { status: "ready", identity: { partId: "a" } },
+      { status: "incomplete", code: "page_limit", identity: { partId: "b" } },
+    ],
   });
 });
 it("PDF-PROCESSING-09: converted PDF hash changes with original bytes and preserves provider part ID", async () => {
@@ -197,7 +200,7 @@ it("PDF-PROCESSING-09: converted PDF hash changes with original bytes and preser
     expect(result.documents[0]).toMatchObject({
       status: "ready",
       identity: { partId: "unchanged-part" },
-      parserVersion: "documents-direct-pdf-v2/unpdf-1.8.1/bounded-flate-v2",
+      parserVersion: "documents-direct-pdf-v2/unpdf-1.8.1/bounded-flate-v3",
     });
     hashes.push(result.documents[0]?.contentHash);
   }
@@ -294,7 +297,7 @@ it("PDF-PROCESSING-13: direct converter output cannot return blank pages", async
   }
 });
 
-it("PDF-PROCESSING-14: body plus PDF shares the same aggregate text allowance", async () => {
+it("PDF-PROCESSING-14: covering body cannot consume the bounded attachment text allowance", async () => {
   const result = await createDocumentTextExtractor({
     limits: { textCharacters: 150 },
     pdf: {
@@ -330,9 +333,11 @@ it("PDF-PROCESSING-14: body plus PDF shares the same aggregate text allowance", 
     { tenant, inputMode: "direct-model" },
   );
   expect(result).toMatchObject({
-    status: "incomplete",
-    code: "text_limit",
-    documents: [],
+    status: "ready",
+    documents: [
+      { status: "ready", role: "body" },
+      { status: "ready", role: "attachment" },
+    ],
   });
 });
 
@@ -417,5 +422,175 @@ it.each([
     expect(
       await preflightPdf(generatePdfGateRegression(kind), DOCUMENT_LIMITS),
     ).not.toBeNull();
+  },
+);
+
+it("CONTENT-BOUNDS-01: oversized inert HTML retains real invoice text and exact original hash without fetching", async () => {
+  const html = `<html><head><style>${".decoration { color: red; }".repeat(2000)}</style></head><body><p>Invoice EUR 123.45</p><script>${"tracker();".repeat(3000)}</script></body></html>`;
+  const bytes = new TextEncoder().encode(html);
+  const network = vi.spyOn(globalThis, "fetch");
+  try {
+    const result = await createDocumentTextExtractor().extract(
+      {
+        connectionId: "synthetic",
+        providerMessageId: "synthetic",
+        root: { partId: "body", mimeType: "text/html", bytes },
+      },
+      { tenant, inputMode: "direct-model" },
+    );
+    expect(result.status).toBe("ready");
+    const document = result.documents[0];
+    expect(document).toMatchObject({
+      status: "ready",
+      parserVersion: "documents-direct-selected-v2",
+    });
+    if (document?.status !== "ready") throw new Error("not ready");
+    expect(document.textParts.map((part) => part.text)).toEqual([
+      "Invoice EUR 123.45",
+    ]);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    expect(document.contentHash).toBe(
+      [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+    );
+    expect(network).not.toHaveBeenCalled();
+  } finally {
+    network.mockRestore();
+  }
+});
+
+it("CONTENT-BOUNDS-02: a truncated body cannot discard an independent valid PDF", async () => {
+  const result = await createDocumentTextExtractor({
+    pdf: createLocalPdfTextExtractor(),
+  }).extract(
+    {
+      connectionId: "synthetic",
+      providerMessageId: "synthetic",
+      root: {
+        partId: "root",
+        mimeType: "multipart/mixed",
+        children: [
+          {
+            partId: "body",
+            mimeType: "text/plain",
+            bytes: new TextEncoder().encode("Covering email ".repeat(4000)),
+          },
+          {
+            partId: "pdf",
+            mimeType: "application/pdf",
+            filename: "invoice.pdf",
+            bytes: generateTextPdf([["Invoice EUR 123.45"]]),
+          },
+        ],
+      },
+    },
+    { tenant, inputMode: "direct-model" },
+  );
+  expect(result).toMatchObject({ status: "needs_review", code: "text_limit" });
+  expect(result.documents[0]).toMatchObject({
+    status: "ready",
+    truncated: true,
+  });
+  expect(result.documents[1]).toMatchObject({
+    status: "ready",
+    identity: { partId: "pdf" },
+    textParts: [{ page: 1, text: "Invoice EUR 123.45" }],
+  });
+});
+
+it("PDF-COMPAT-01: legal bare CR stream delimiters remain bounded and readable", async () => {
+  const bytes = generateTextPdf([["Invoice EUR 123.45"]]);
+  // Replacing LF by CR preserves byte offsets and Length exactly.
+  for (let index = 0; index < bytes.length; index++)
+    if (bytes[index] === 10) bytes[index] = 13;
+  const result = await createLocalPdfTextExtractor().extract(
+    bytes,
+    DOCUMENT_LIMITS,
+  );
+  expect(result).toMatchObject({
+    status: "ready",
+    pages: ["Invoice EUR 123.45"],
+  });
+});
+
+it("PDF-COMPAT-02: common nested catalog preferences preserve text without enabling active content", async () => {
+  const { nestedCatalogPdf } =
+    await import("./fixtures/synthetic-compatible-pdf");
+  expect(
+    await createLocalPdfTextExtractor().extract(
+      nestedCatalogPdf(),
+      DOCUMENT_LIMITS,
+    ),
+  ).toMatchObject({ status: "ready", pages: ["Invoice EUR 123.45"] });
+  expect(
+    await createLocalPdfTextExtractor().extract(
+      nestedCatalogPdf("/OpenAction << /S /JavaScript /JS (attack) >>"),
+      DOCUMENT_LIMITS,
+    ),
+  ).not.toHaveProperty("pages");
+});
+
+it("CONTENT-BOUNDS-03: selected excerpts retain real source offsets, deterministic head/tail and intact Unicode", async () => {
+  const { selectBodyText } =
+    await import("../../../packages/core/src/documents/body-selection");
+  const text = `HEAD ${"🙂".repeat(500)}\nInvoice EUR 123.45\n${"z".repeat(2000)} TAIL`;
+  const first = selectBodyText(text, false, 500);
+  expect(first).toEqual(selectBodyText(text, false, 500));
+  expect(first.truncated).toBe(true);
+  expect(
+    first.spans.reduce((sum, span) => sum + span.text.length, 0),
+  ).toBeLessThanOrEqual(500);
+  expect(first.spans[0]?.text).toContain("HEAD");
+  expect(first.spans.at(-1)?.text).toContain("TAIL");
+  for (const span of first.spans) {
+    expect(span.text).toBe(text.slice(span.start, span.end));
+    expect(
+      [...span.text].every(
+        (character) =>
+          character.length === 2 || !/[\uD800-\uDFFF]/.test(character),
+      ),
+    ).toBe(true);
+  }
+});
+
+it("CONTENT-BOUNDS-04: over 64 visible HTML ranges cannot silently lose the invoice tail", async () => {
+  const { selectBodyText } =
+    await import("../../../packages/core/src/documents/body-selection");
+  const html = `${"<p>Cover line</p>".repeat(80)}<p>Invoice EUR 123.45 TAIL</p>`;
+  const result = selectBodyText(html, true, 24000);
+  expect(result.truncated).toBe(true);
+  expect(result.spans.length).toBeLessThanOrEqual(64);
+  expect(result.spans.at(-1)?.text).toBe("Invoice EUR 123.45 TAIL");
+  for (const span of result.spans)
+    expect(span.text).toBe(html.slice(span.start, span.end));
+});
+
+it("CONTENT-BOUNDS-05: quoted-history omission is explicit and malformed HTML cannot manufacture complete evidence", async () => {
+  const { selectBodyText } =
+    await import("../../../packages/core/src/documents/body-selection");
+  const result = selectBodyText(
+    "Current invoice EUR 12.34\n> old refund EUR 99.99\nCurrent footer",
+    false,
+    24000,
+  );
+  expect(result.truncated).toBe(true);
+  expect(result.spans.map((span) => span.text).join("\n")).not.toContain(
+    "old refund",
+  );
+  expect(selectBodyText("<script>unterminated", true, 24000)).toMatchObject({
+    complete: false,
+    spans: [],
+  });
+});
+
+it.each(["pages", "count", "pages-array", "count-array"] as const)(
+  "PDF-COMPAT-03: nested %s cannot supply authoritative top-level PDF control keys",
+  async (kind) => {
+    const { nestedCatalogPdf } =
+      await import("./fixtures/synthetic-compatible-pdf");
+    const { preflightPdf } =
+      await import("../../../packages/adapters/src/documents/pdf-preflight");
+    expect(
+      await preflightPdf(nestedCatalogPdf(undefined, kind), DOCUMENT_LIMITS),
+    ).toBe("malformed_pdf");
   },
 );

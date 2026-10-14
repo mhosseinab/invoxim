@@ -69,6 +69,8 @@ export type DocumentResult = {
 } & (
   | {
       status: "ready";
+      /** Selected source excerpts omit visible content; never infer full-document absence. */
+      truncated?: true;
       textParts: {
         page: number | null;
         text: string;

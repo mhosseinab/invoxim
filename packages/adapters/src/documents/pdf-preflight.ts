@@ -37,7 +37,7 @@ const unsupportedNames = new Set([
 const MAX_INFLATED_BYTES = 8 * 1024 * 1024;
 const MAX_STREAMS = 128;
 const MAX_OBJECTS = 4096;
-export const LOCAL_PDF_PARSER_VERSION = "unpdf-1.8.1/bounded-flate-v2";
+export const LOCAL_PDF_PARSER_VERSION = "unpdf-1.8.1/bounded-flate-v3";
 
 /** Byte-preserving representation: unlike TextDecoder(latin1), never maps PDF bytes. */
 function binaryText(bytes: Uint8Array): string {
@@ -183,6 +183,31 @@ function canonicalDictionary(value: string): boolean {
     (value.match(/<<|>>/g)?.length ?? 0) === 2
   );
 }
+// Catalog/page-tree dictionaries may contain passive nested preferences. Stream
+// control dictionaries retain the stricter single-level grammar above.
+function catalogDictionary(value: string): string | null {
+  if (/[()%#]/.test(value) || !/^<<[\s\S]*>>\s*$/.test(value)) return null;
+  const stack: string[] = [];
+  const direct: string[] = [];
+  let offset = 0;
+  for (const token of value.matchAll(/<<|>>|\[|\]/g)) {
+    if (stack.length === 1) direct.push(value.slice(offset, token.index));
+    const symbol = token[0];
+    if (symbol === "<<" || symbol === "[") {
+      // Preserve a value barrier: omission must not turn `/Count [99] 1`
+      // into an apparently valid direct `/Count 1` scalar.
+      if (stack.length === 1) direct.push(" [] ");
+      stack.push(symbol);
+    } else {
+      const expected = symbol === ">>" ? "<<" : "[";
+      if (stack.pop() !== expected) return null;
+      if (!stack.length && value.slice(token.index + symbol.length).trim())
+        return null;
+    }
+    offset = token.index + symbol.length;
+  }
+  return stack.length === 0 ? `<< ${direct.join(" ")} >>` : null;
+}
 function validateCatalog(
   source: string,
   xrefOffset: number,
@@ -208,7 +233,7 @@ function validateCatalog(
       `^${id}\\s+${generation}\\s+obj\\s*(<<[\\s\\S]*>>)\\s*endobj\\s*$`,
     ).exec(source.slice(entry.position, nextOffset));
     const value = object?.[1];
-    return value && canonicalDictionary(value) ? value : null;
+    return value ? catalogDictionary(value) : null;
   }
   const catalog = dictionary(Number(roots[0]?.[1]), Number(roots[0]?.[2]));
   if (!catalog || !/\/Type\s*\/Catalog(?=\s|\/|>)/.test(catalog))
@@ -271,7 +296,7 @@ export async function preflightPdf(
   const sections: string[] = [];
   // Only conventional streams with explicit direct or integer-object lengths are accepted. This avoids
   // trusting delimiter-like bytes inside compression data or object streams.
-  const streams = /\bstream\r?\n/g;
+  const streams = /\bstream(?:\r\n|\r|\n)/g;
   while (true) {
     const match = streams.exec(source);
     if (!match) break;
@@ -309,7 +334,7 @@ export async function preflightPdf(
       !Number.isSafeInteger(length) ||
       length < 0 ||
       end > bytes.length ||
-      !/^(?:\r?\n)?endstream\b/.test(source.slice(end, end + 16))
+      !/^(?:\r\n|\r|\n)?endstream\b/.test(source.slice(end, end + 16))
     )
       return "malformed_pdf";
     const filterNames = names(dictionary).filter((name) => name === "filter");

@@ -71,13 +71,22 @@ it("direct plain text and HTML attachments stay byte faithful", async () => {
     expect(doc.parserVersion).toBe("documents-direct-v1");
   }
 });
-it("combined alternatives honor aggregate text bounds without partial model input", async () => {
+it("oversized alternatives select complete visible source text under the aggregate bound", async () => {
   const result = await createDocumentTextExtractor({
     limits: { textCharacters: plain.length + html.length - 1 },
   }).extract(input(), context);
-  expect(result.status).toBe("incomplete");
-  expect(result.code).toBe("text_limit");
-  expect(result.documents).toEqual([]);
+  expect(result.status).toBe("ready");
+  const doc = result.documents[0];
+  if (doc?.status !== "ready") throw new Error("not ready");
+  expect(doc.parserVersion).toBe("documents-direct-selected-v2");
+  expect(doc.textParts.map((part) => part.text)).toEqual([
+    plain,
+    "Paid EUR 42.00",
+  ]);
+  expect(
+    doc.textParts.reduce((sum, part) => sum + part.text.length, 0),
+  ).toBeLessThan(plain.length + html.length - 1);
+  expect(doc.truncated).toBeUndefined();
 });
 it("direct PDF mode converts page text with original source identity while legacy conversion remains available", async () => {
   const originalBytes = bytes("%PDF-synthetic");

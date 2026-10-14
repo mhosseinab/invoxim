@@ -71,7 +71,10 @@ function tagEnd(html: string, start: number): number {
   return -1;
 }
 /** Tokenizes text only. There is no DOM, rendering, URL resolution, or outbound port. */
-export function inertHtmlText(html: string): {
+export function inertHtmlText(
+  html: string,
+  onSourceText?: (start: number, end: number) => void,
+): {
   text: string;
   complete: boolean;
 } {
@@ -82,10 +85,16 @@ export function inertHtmlText(html: string): {
   while (cursor < html.length) {
     const opening = html.indexOf("<", cursor);
     if (opening < 0) {
-      if (hiddenStack.length === 0) chunks.push(html.slice(cursor));
+      if (hiddenStack.length === 0) {
+        chunks.push(html.slice(cursor));
+        onSourceText?.(cursor, html.length);
+      }
       break;
     }
-    if (hiddenStack.length === 0) chunks.push(html.slice(cursor, opening));
+    if (hiddenStack.length === 0) {
+      chunks.push(html.slice(cursor, opening));
+      onSourceText?.(cursor, opening);
+    }
     if (lower.startsWith("<!--", opening)) {
       const end = lower.indexOf("-->", opening + 4);
       if (end < 0) return { text: "", complete: false };
