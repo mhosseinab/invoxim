@@ -1,40 +1,32 @@
 import {
   AuthRequestError,
   createGmailDiscoveryProviderFactory,
-  createLoginAuth,
   createOnboardingImportPreparation,
   createOnboardingRepository,
-  createProfileService,
-  loginConfiguration,
   ProcessingNotConfiguredError,
   readAuthJson,
 } from "@invoxim/adapters";
 import { createOnboardingUsecases, OnboardingError } from "@invoxim/core";
+import type { Context } from "hono";
 import { Hono } from "hono";
-import { createInvocationDatabase } from "./invocation-database";
+import { apiError, requireTenantContext } from "./http/guard";
 import {
   type MailboxRuntimeBindings,
   mailboxProcessingConfiguration,
 } from "./mailbox-runtime";
 export type OnboardingBindings = MailboxRuntimeBindings;
 function error(
-  status: 400 | 401 | 403 | 409 | 413 | 415 | 429 | 503,
+  status: number,
   code: string,
-  retryable = status === 503,
-  requestId: string = crypto.randomUUID(),
-  message = "Request unavailable",
+  retryable?: boolean,
+  requestId?: string,
+  message?: string,
 ) {
-  return Response.json(
-    {
-      error: {
-        code,
-        message,
-        requestId,
-        retryable,
-      },
-    },
-    { status, headers: { "Cache-Control": "no-store" } },
-  );
+  return apiError(status, code, {
+    ...(retryable === undefined ? {} : { retryable }),
+    ...(requestId === undefined ? {} : { requestId }),
+    ...(message === undefined ? {} : { message }),
+  });
 }
 function json(value: unknown) {
   const body = JSON.stringify(value);
@@ -122,46 +114,34 @@ function startDiagnostic(cause: unknown, requestId: string) {
 }
 export function createOnboardingRoutes() {
   const app = new Hono<{ Bindings: OnboardingBindings }>();
-  async function authorized(request: Request, bindings: OnboardingBindings) {
-    const config = loginConfiguration(bindings);
-    if (!config || !bindings.DB)
-      return { response: error(401, "unauthorized") } as const;
-    if (
-      (request.method === "POST" &&
-        request.headers.get("origin") !== config.origin) ||
-      new URL(request.url).origin !== config.origin ||
-      (request.headers.has("origin") &&
-        request.headers.get("origin") !== config.origin)
-    )
-      return { response: error(403, "origin_required") } as const;
-    const database = createInvocationDatabase(bindings.DB, 40),
-      current = await createProfileService(
-        database.db,
-        createLoginAuth(database.db, config),
-        config,
-      ).current(request.headers);
-    if (!current) return { response: error(401, "unauthorized") } as const;
+  async function authorized(c: Context<{ Bindings: OnboardingBindings }>) {
+    const bindings = c.env ?? {};
+    const ready = await requireTenantContext(c, {
+      mutation: false,
+      recent: false,
+    });
+    if ("response" in ready) return ready;
     const { ai, gmail, outlook, providers } =
       mailboxProcessingConfiguration(bindings);
-    const repository = createOnboardingRepository(database.db, {
+    const repository = createOnboardingRepository(ready.db, {
       ai,
       ready: providers.length > 0,
-      signingSecret: config.secret,
+      signingSecret: ready.secret,
       mailboxLimit: gmail?.limit ?? outlook?.limit ?? 3,
       mailboxProviders: providers,
-      remainingStatements: database.remainingStatements,
+      remainingStatements: ready.remainingStatements,
     });
     return {
       session: {
-        tenant: current.tenant,
-        sessionId: current.session.id,
-        loginEmail: current.user.email,
+        tenant: ready.tenant,
+        sessionId: ready.sessionId,
+        loginEmail: ready.current.user.email,
       },
       service: createOnboardingUsecases({
         repository,
         preparation: createOnboardingImportPreparation(
           gmail
-            ? createGmailDiscoveryProviderFactory(database.db, gmail)
+            ? createGmailDiscoveryProviderFactory(ready.db, gmail)
             : null,
           !!outlook,
         ),
@@ -170,7 +150,7 @@ export function createOnboardingRoutes() {
   }
   app.get("/api/onboarding", async (c) => {
     try {
-      const current = await authorized(c.req.raw, c.env ?? {});
+      const current = await authorized(c);
       return "response" in current
         ? current.response
         : json(await current.service.view(current.session, query(c.req.raw)));
@@ -180,7 +160,7 @@ export function createOnboardingRoutes() {
   });
   app.get("/api/processing-disclosure", async (c) => {
     try {
-      const current = await authorized(c.req.raw, c.env ?? {});
+      const current = await authorized(c);
       return "response" in current
         ? current.response
         : json(
@@ -194,7 +174,7 @@ export function createOnboardingRoutes() {
   });
   app.post("/api/onboarding/start-import", async (c) => {
     try {
-      const current = await authorized(c.req.raw, c.env ?? {});
+      const current = await authorized(c);
       if ("response" in current) return current.response;
       if (new URL(c.req.url).search) return error(400, "invalid_request");
       return json(

@@ -1,13 +1,9 @@
 import type { GmailBindings, OutlookBindings } from "@invoxim/adapters";
 import {
-  AuthRequestError,
   createGmailAuthorization,
-  createLoginAuth,
   createMailboxService,
   createOutlookAuthorization,
-  createProfileService,
   gmailConfiguration,
-  loginConfiguration,
   outlookConfiguration,
   readAuthJson,
 } from "@invoxim/adapters";
@@ -17,9 +13,10 @@ import {
   mailboxStartResponseSchema,
 } from "@invoxim/contracts";
 import { MailboxError } from "@invoxim/core";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { createMailboxManagement } from "../../../packages/adapters/src/mailbox/service";
-import { createInvocationDatabase } from "./invocation-database";
+import { apiError, mapFailure, requireTenantContext } from "./http/guard";
 
 type MailboxBindings = GmailBindings & OutlookBindings;
 export function createMailboxRoutes() {
@@ -28,86 +25,9 @@ export function createMailboxRoutes() {
     await next();
     context.res.headers.set("Cache-Control", "no-store");
   });
-  function error(
-    status: 401 | 403 | 404 | 409 | 503 | 400 | 413 | 415,
-    code: string,
-  ) {
-    return Response.json(
-      {
-        error: {
-          code,
-          message: "Request unavailable",
-          requestId: crypto.randomUUID(),
-          retryable: status === 503,
-        },
-      },
-      { status, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-  async function enabled(
-    request: Request,
-    bindings: MailboxBindings,
-    provider?: "gmail" | "outlook",
-  ) {
-    const login = loginConfiguration(bindings);
-    if (!login || !bindings.DB) throw new MailboxError("UNAUTHENTICATED");
-    if (
-      new URL(request.url).origin !== login.origin ||
-      (!["GET", "HEAD"].includes(request.method) &&
-        request.headers.get("origin") !== login.origin)
-    )
-      return { denied: true } as const;
-    const db = createInvocationDatabase(bindings.DB, 40).db;
-    const current = await createProfileService(
-      db,
-      createLoginAuth(db, login),
-      login,
-    ).current(request.headers);
-    if (!current) throw new MailboxError("UNAUTHENTICATED");
-    const session = {
-      tenant: current.tenant,
-      sessionId: current.session.id,
-      createdAtMs: current.session.createdAt.getTime(),
-    };
-    if (!provider)
-      return {
-        kind: "management" as const,
-        service: createMailboxManagement(db),
-        session,
-        origin: login.origin,
-      };
-    const gmail = provider !== "outlook" ? gmailConfiguration(bindings) : null;
-    const outlook =
-      provider !== "gmail" ? outlookConfiguration(bindings) : null;
-    if (gmail)
-      return {
-        kind: "oauth" as const,
-        service: createMailboxService(
-          db,
-          gmail,
-          createGmailAuthorization(gmail),
-        ),
-        session,
-        origin: login.origin,
-      };
-    if (outlook)
-      return {
-        kind: "oauth" as const,
-        service: createMailboxService(
-          db,
-          outlook,
-          createOutlookAuthorization(outlook),
-        ),
-        session,
-        origin: login.origin,
-      };
-    throw new MailboxError("UNAVAILABLE");
-  }
   function failure(cause: unknown) {
-    if (cause instanceof AuthRequestError)
-      return error(cause.status, cause.code);
     if (!(cause instanceof MailboxError))
-      return error(503, "mailbox_unavailable");
+      return mapFailure(cause, "mailbox_unavailable");
     const statuses = {
       UNAUTHENTICATED: 401,
       RECENT_AUTH_REQUIRED: 403,
@@ -122,18 +42,69 @@ export function createMailboxRoutes() {
       RECONNECT_REQUIRED: 409,
       UNAVAILABLE: 503,
     } as const;
-    return error(statuses[cause.code], cause.code.toLowerCase());
+    return apiError(statuses[cause.code], cause.code.toLowerCase());
+  }
+  async function enabled(
+    c: Context<{ Bindings: MailboxBindings }>,
+    provider?: "gmail" | "outlook",
+  ) {
+    // Disconnect/start keep today's weaker gate: no recent-login or
+    // workspace-token requirement (OD-1).
+    const ready = await requireTenantContext(c, {
+      mutation: false,
+      recent: false,
+    });
+    if ("response" in ready) return ready;
+    const session = {
+      tenant: ready.tenant,
+      sessionId: ready.sessionId,
+      createdAtMs: ready.createdAtMs,
+    };
+    if (!provider)
+      return {
+        kind: "management" as const,
+        service: createMailboxManagement(ready.db),
+        session,
+        origin: ready.login.origin,
+      };
+    const gmail =
+      provider !== "outlook" ? gmailConfiguration(c.env ?? {}) : null;
+    const outlook =
+      provider !== "gmail" ? outlookConfiguration(c.env ?? {}) : null;
+    if (gmail)
+      return {
+        kind: "oauth" as const,
+        service: createMailboxService(
+          ready.db,
+          gmail,
+          createGmailAuthorization(gmail),
+        ),
+        session,
+        origin: ready.login.origin,
+      };
+    if (outlook)
+      return {
+        kind: "oauth" as const,
+        service: createMailboxService(
+          ready.db,
+          outlook,
+          createOutlookAuthorization(outlook),
+        ),
+        session,
+        origin: ready.login.origin,
+      };
+    throw new MailboxError("UNAVAILABLE");
   }
   // GET /api/connections is owned by storage-routes (combined connections view).
   app.delete("/api/connections/:id", async (c) => {
     try {
-      const ready = await enabled(c.req.raw, c.env ?? {});
-      if ("denied" in ready) return error(403, "origin_denied");
+      const ready = await enabled(c);
+      if ("response" in ready) return ready.response;
       const input = mailboxDisconnectRequestSchema.safeParse(
         await readAuthJson(c.req.raw),
       );
       if (!input.success || c.req.param("id").length > 120)
-        return error(400, "invalid_request");
+        return apiError(400, "invalid_request");
       await ready.service.disconnect(
         ready.session,
         c.req.param("id"),
@@ -150,12 +121,12 @@ export function createMailboxRoutes() {
   for (const provider of ["gmail", "outlook"] as const) {
     app.post(`/api/connections/mailbox/${provider}/start`, async (c) => {
       try {
-        const ready = await enabled(c.req.raw, c.env ?? {}, provider);
-        if ("denied" in ready) return error(403, "origin_denied");
+        const ready = await enabled(c, provider);
+        if ("response" in ready) return ready.response;
         const input = mailboxStartRequestSchema.safeParse(
           await readAuthJson(c.req.raw),
         );
-        if (!input.success) return error(400, "invalid_request");
+        if (!input.success) return apiError(400, "invalid_request");
         if (ready.kind !== "oauth") throw new MailboxError("UNAVAILABLE");
         return c.json(
           mailboxStartResponseSchema.parse(
@@ -169,8 +140,8 @@ export function createMailboxRoutes() {
     app.get(`/api/oauth/mailbox/${provider}/callback`, async (c) => {
       let origin: string | undefined;
       try {
-        const ready = await enabled(c.req.raw, c.env ?? {}, provider);
-        if ("denied" in ready) return error(403, "origin_denied");
+        const ready = await enabled(c, provider);
+        if ("response" in ready) return ready.response;
         origin = ready.origin;
         const url = new URL(c.req.url);
         const keys = [...url.searchParams.keys()];
