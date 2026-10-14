@@ -1,4 +1,4 @@
-import type { GmailBindings } from "@invoxim/adapters";
+import type { GmailBindings, OutlookBindings } from "@invoxim/adapters";
 import {
   createLoginAuth,
   createProfileService,
@@ -6,6 +6,7 @@ import {
   createReviewSourceReader,
   gmailConfiguration,
   loginConfiguration,
+  outlookConfiguration,
   PurchaseViewError,
   ReviewSourceError,
 } from "@invoxim/adapters";
@@ -52,7 +53,7 @@ function query(request: Request) {
   return values;
 }
 export function createPurchaseRoutes() {
-  const app = new Hono<{ Bindings: GmailBindings }>();
+  const app = new Hono<{ Bindings: GmailBindings & OutlookBindings }>();
   app.use("/api/purchases/*", async (c, next) => {
     await next();
     c.res.headers.set("Cache-Control", "no-store");
@@ -61,7 +62,10 @@ export function createPurchaseRoutes() {
     await next();
     c.res.headers.set("Cache-Control", "no-store");
   });
-  async function authorized(request: Request, bindings: GmailBindings) {
+  async function authorized(
+    request: Request,
+    bindings: GmailBindings & OutlookBindings,
+  ) {
     const configuration = loginConfiguration(bindings);
     if (!configuration || !bindings.DB)
       return { response: error(401, "unauthorized") } as const;
@@ -89,7 +93,19 @@ export function createPurchaseRoutes() {
       const current = await authorized(c.req.raw, c.env ?? {});
       if ("response" in current) return current.response;
       if (new URL(c.req.url).search) return error(400, "invalid_request");
-      const configuration = gmailConfiguration(c.env);
+      const provider = await current.db
+        .prepare(
+          "SELECT c.provider FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id WHERE r.user_id=? AND r.id=? AND r.status='open' AND c.kind='mailbox'",
+        )
+        .bind(current.tenant.userId, c.req.param("id"))
+        .first<string>("provider");
+      if (!provider) return error(404, "not_found");
+      const configuration =
+        provider === "gmail"
+          ? gmailConfiguration(c.env)
+          : provider === "outlook"
+            ? outlookConfiguration(c.env)
+            : null;
       if (!configuration) return error(503, "source_unavailable");
       return json(
         await createReviewSourceReader(current.db, configuration).read(
@@ -127,7 +143,9 @@ export function createPurchaseRoutes() {
       return failure(cause);
     }
   });
-  async function summary(c: Context<{ Bindings: GmailBindings }>) {
+  async function summary(
+    c: Context<{ Bindings: GmailBindings & OutlookBindings }>,
+  ) {
     try {
       const current = await authorized(c.req.raw, c.env ?? {});
       if ("response" in current) return current.response;

@@ -540,6 +540,17 @@ export function createOutlookFolderStore(db: D1Database) {
         .bind(...owner(lease), ...values, ...guard.values),
       db
         .prepare(
+          `UPDATE sync_states SET stage='queued' WHERE user_id=? AND connection_id=? AND scope_key LIKE ? AND sync_kind='incremental' AND run_key='live' AND slice_key='live' AND stage='idle' AND ${marker} AND ${guard.sql}`,
+        )
+        .bind(
+          lease.context.userId,
+          lease.connectionId,
+          `outlook:${lease.generation}:%`,
+          ...values,
+          ...guard.values,
+        ),
+      db
+        .prepare(
           `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,'sync',?,'ready',?,0 WHERE ${marker} AND ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
         )
         .bind(

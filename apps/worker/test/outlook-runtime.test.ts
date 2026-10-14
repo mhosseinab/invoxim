@@ -273,6 +273,7 @@ function graphTransport(
   options: {
     revoked?: boolean;
     beforeRead?: (url: URL) => Promise<void>;
+    afterFinancial?: () => Promise<void>;
     financial?:
       | "known"
       | "missing-usage"
@@ -307,6 +308,7 @@ function graphTransport(
         });
       if (url.origin === "https://routellm.abacus.ai") {
         events.push("financial");
+        await options.afterFinancial?.();
         if (options.financial === "outage")
           throw new Error("Synthetic transport outage");
         if (options.financial === "timeout")
@@ -733,8 +735,64 @@ it("OUTLOOK-02 hourly Worker sync refreshes recursive inventory so new folders e
   const transport = graphTransport(events);
   const base = transport.getMockImplementation();
   if (!base) throw new Error("Synthetic Graph transport missing");
+  let addedFolder = false;
+  const nextInventory =
+    "https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=added%2B%2F%3D";
   transport.mockImplementation(async (input, init) => {
     const url = new URL(String(input));
+    if (addedFolder && url.pathname === "/v1.0/me/mailFolders") {
+      events.push("inventory");
+      if (url.searchParams.has("$skiptoken")) {
+        expect(url.href).toBe(nextInventory);
+        return Response.json({
+          value: [
+            {
+              id: "new-folder",
+              parentFolderId: "root",
+              displayName: "New folder",
+              childFolderCount: 1,
+              isHidden: false,
+            },
+          ],
+        });
+      }
+      return Response.json({
+        value: [
+          {
+            id: "archive",
+            parentFolderId: "root",
+            displayName: "Archive",
+            childFolderCount: 0,
+            isHidden: false,
+          },
+        ],
+        "@odata.nextLink": nextInventory,
+      });
+    }
+    if (url.pathname === "/v1.0/me/mailFolders/new-folder/messages/delta")
+      return Response.json({
+        value: [],
+        "@odata.deltaLink":
+          "https://graph.microsoft.com/v1.0/me/mailFolders/new-folder/messages/delta?$deltatoken=new%2B%2F%3D",
+      });
+    if (url.pathname === "/v1.0/me/mailFolders/new-folder/childFolders")
+      return Response.json({
+        value: [
+          {
+            id: "nested-folder",
+            parentFolderId: "new-folder",
+            displayName: "Nested",
+            childFolderCount: 0,
+            isHidden: false,
+          },
+        ],
+      });
+    if (url.pathname === "/v1.0/me/mailFolders/nested-folder/messages/delta")
+      return Response.json({
+        value: [],
+        "@odata.deltaLink":
+          "https://graph.microsoft.com/v1.0/me/mailFolders/nested-folder/messages/delta?$deltatoken=nested%2B%2F%3D",
+      });
     if (url.pathname.endsWith("/messages")) return Response.json({ value: [] });
     return base(input, init);
   });
@@ -753,7 +811,10 @@ it("OUTLOOK-02 hourly Worker sync refreshes recursive inventory so new folders e
     .bind(f.session.tenant.userId)
     .first<string>("id");
   for (let cycle = 0; cycle < 2; cycle++) {
-    if (cycle === 1) events.length = 0;
+    if (cycle === 1) {
+      events.length = 0;
+      addedFolder = true;
+    }
     const id = crypto.randomUUID();
     await db
       .prepare(
@@ -771,4 +832,233 @@ it("OUTLOOK-02 hourly Worker sync refreshes recursive inventory so new folders e
     await drain(f);
   }
   expect(events).toContain("inventory");
+  expect(
+    await db
+      .prepare(
+        "SELECT folder_id FROM outlook_folders WHERE user_id=? ORDER BY folder_id",
+      )
+      .bind(f.session.tenant.userId)
+      .all(),
+  ).toMatchObject({
+    results: [
+      { folder_id: "archive" },
+      { folder_id: "nested-folder" },
+      { folder_id: "new-folder" },
+    ],
+  });
+  expect(
+    await db
+      .prepare(
+        "SELECT history_cursor FROM sync_states WHERE user_id=? AND scope_key='outlook:1:new-folder' AND slice_key='live'",
+      )
+      .bind(f.session.tenant.userId)
+      .first("history_cursor"),
+  ).toBe(
+    "https://graph.microsoft.com/v1.0/me/mailFolders/new-folder/messages/delta?$deltatoken=new%2B%2F%3D",
+  );
+  expect(
+    await db
+      .prepare(
+        "SELECT history_cursor FROM sync_states WHERE user_id=? AND scope_key='outlook:1:nested-folder' AND slice_key='live'",
+      )
+      .bind(f.session.tenant.userId)
+      .first("history_cursor"),
+  ).toBe(
+    "https://graph.microsoft.com/v1.0/me/mailFolders/nested-folder/messages/delta?$deltatoken=nested%2B%2F%3D",
+  );
 });
+
+async function hourly(f: Awaited<ReturnType<typeof fixture>>, cycle: number) {
+  const live = await db
+    .prepare(
+      "SELECT id FROM sync_states WHERE user_id=? AND scope_key='mailbox' AND slice_key='live'",
+    )
+    .bind(f.session.tenant.userId)
+    .first<string>("id");
+  const consent = await db
+    .prepare(
+      "SELECT id FROM processing_consents WHERE user_id=? AND revoked_at IS NULL",
+    )
+    .bind(f.session.tenant.userId)
+    .first<string>("id");
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at) VALUES(?,?,'outlook',?,1,?,'sync',?,'ready',0)",
+    )
+    .bind(
+      id,
+      f.session.tenant.userId,
+      consent,
+      live,
+      `sync:outlook:1:hourly:${cycle}`,
+    )
+    .run();
+  await f.consume(id);
+  await drain(f);
+}
+it("OUTLOOK-02/03/04 second and third hourly rounds poll existing folders with saved opaque delta URLs and create new purchase evidence", async () => {
+  const f = await fixture("outlook-runtime-hourly-existing");
+  await f.start();
+  const events: string[] = [];
+  const network = graphTransport(events);
+  const base = network.getMockImplementation();
+  if (!base) throw new Error("Synthetic Graph transport missing");
+  let cycle = 0;
+  const deltaUrls: string[] = [];
+  network.mockImplementation(async (input, init) => {
+    const url = new URL(String(input));
+    const message = cycle === 0 ? "immutable-message" : `new-message-${cycle}`;
+    if (url.pathname.endsWith("/messages/delta")) {
+      deltaUrls.push(url.href);
+      return Response.json({
+        value: [{ id: message }],
+        "@odata.deltaLink": `https://graph.microsoft.com/v1.0/me/mailFolders/archive/messages/delta?$deltatoken=round${cycle}%2B%2F%3D`,
+      });
+    }
+    if (cycle > 0 && url.pathname === `/v1.0/me/messages/${message}`)
+      return Response.json(
+        url.searchParams.get("$select")?.includes("body")
+          ? {
+              id: message,
+              body: {
+                contentType: "text",
+                content: `Synthetic Store\nInvoice 2026-10-13\nTotal EUR 15.00\nUnpaid invoice\nSource ${message}`,
+              },
+              hasAttachments: false,
+            }
+          : {
+              id: message,
+              parentFolderId: "archive",
+              receivedDateTime: new Date(Date.now() - 60000).toISOString(),
+              subject: "Synthetic receipt",
+              isDraft: false,
+            },
+      );
+    if (
+      cycle > 0 &&
+      url.pathname === `/v1.0/me/messages/${message}/attachments`
+    )
+      return Response.json({ value: [] });
+    return base(input, init);
+  });
+  await drain(f);
+  for (cycle = 0; cycle < 3; cycle++) await hourly(f, cycle);
+  expect(deltaUrls).toHaveLength(3);
+  expect(deltaUrls[1]).toBe(
+    "https://graph.microsoft.com/v1.0/me/mailFolders/archive/messages/delta?$deltatoken=round0%2B%2F%3D",
+  );
+  expect(deltaUrls[2]).toBe(
+    "https://graph.microsoft.com/v1.0/me/mailFolders/archive/messages/delta?$deltatoken=round1%2B%2F%3D",
+  );
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) n FROM source_messages WHERE user_id=?")
+      .bind(f.session.tenant.userId)
+      .first("n"),
+  ).toBe(3);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) n FROM purchases WHERE user_id=?")
+      .bind(f.session.tenant.userId)
+      .first("n"),
+  ).toBe(3);
+});
+
+it.each(["settings", "digest", "lease"] as const)(
+  "OUTLOOK-01 cached classification followed by %s change before financial transport cannot send or advance",
+  async (change) => {
+    const f = await fixture(`outlook-runtime-cached-fence-${change}`);
+    await f.start();
+    const events: string[] = [];
+    let changed = false;
+    f.bindings.AI = {
+      run: async () => {
+        events.push("clef");
+        return syntheticClassificationBindings.AI.run();
+      },
+    };
+    const changes = {
+      settings: "UPDATE ai_settings SET revision=revision+1 WHERE user_id=?",
+      digest:
+        "UPDATE processing_consents SET accepted_configuration_digest='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' WHERE user_id=?",
+      lease:
+        "UPDATE jobs SET fence=fence+1 WHERE user_id=? AND status='leased'",
+    };
+    graphTransport(events, {
+      beforeRead: async (url) => {
+        if (
+          changed ||
+          !events.includes("clef") ||
+          !url.searchParams.get("$select")?.includes("body")
+        )
+          return;
+        changed = true;
+        await db.prepare(changes[change]).bind(f.session.tenant.userId).run();
+      },
+    });
+    await drain(f);
+    expect(changed).toBe(true);
+    expect(events).not.toContain("financial");
+    expect(
+      await db
+        .prepare(
+          "SELECT COUNT(*) n FROM usage_events WHERE user_id=? AND destination_id='cloudflare-clef'",
+        )
+        .bind(f.session.tenant.userId)
+        .first("n"),
+    ).toBe(1);
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) n FROM purchases WHERE user_id=?")
+        .bind(f.session.tenant.userId)
+        .first("n"),
+    ).toBe(0);
+  },
+);
+it.each(["settings", "digest", "lease", "revoked"] as const)(
+  "OUTLOOK-01 %s change in financial response cannot cache or create a stale continuation under40 SQL",
+  async (change) => {
+    const f = await fixture(`outlook-runtime-late-financial-${change}`);
+    await f.start();
+    const events: string[] = [];
+    const changes = {
+      settings: "UPDATE ai_settings SET revision=revision+1 WHERE user_id=?",
+      digest:
+        "UPDATE processing_consents SET accepted_configuration_digest='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' WHERE user_id=?",
+      lease:
+        "UPDATE jobs SET fence=fence+1 WHERE user_id=? AND status='leased'",
+      revoked: "UPDATE processing_consents SET revoked_at=1 WHERE user_id=?",
+    };
+    graphTransport(events, {
+      afterFinancial: async () => {
+        await db.prepare(changes[change]).bind(f.session.tenant.userId).run();
+      },
+    });
+    await drain(f);
+    expect(events.filter((event) => event === "financial")).toHaveLength(1);
+    expect(
+      await db
+        .prepare(
+          "SELECT COUNT(*) n FROM ai_extractions WHERE user_id=? AND destination_id='abacus-routellm' AND completed_at IS NOT NULL",
+        )
+        .bind(f.session.tenant.userId)
+        .first("n"),
+    ).toBe(0);
+    expect(
+      await db
+        .prepare(
+          "SELECT COUNT(*) n FROM discovery_source_jobs WHERE user_id=? AND pipeline_stage='reconcile'",
+        )
+        .bind(f.session.tenant.userId)
+        .first("n"),
+    ).toBe(0);
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) n FROM purchases WHERE user_id=?")
+        .bind(f.session.tenant.userId)
+        .first("n"),
+    ).toBe(0);
+    expect(Math.max(...f.counts)).toBeLessThanOrEqual(40);
+  },
+);

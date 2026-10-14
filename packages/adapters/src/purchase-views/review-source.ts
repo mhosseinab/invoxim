@@ -3,8 +3,14 @@ import type { TenantContext } from "@invoxim/core";
 import { z } from "zod";
 import type { GmailConfiguration } from "../mailbox/configuration";
 import { createGmailAuthorization } from "../mailbox/gmail";
+import {
+  createOutlookAuthorization,
+  validateOutlookReadScopes,
+} from "../mailbox/outlook";
+import type { OutlookConfiguration } from "../mailbox/outlook-configuration";
 import { createMailboxService } from "../mailbox/service";
 import { createCredentialVault } from "../security/vault";
+import { loadOutlookReviewMetadata } from "./outlook-review-metadata";
 
 export class ReviewSourceError extends Error {
   constructor(
@@ -20,6 +26,7 @@ interface Source {
   mailboxAddress: string;
   receivedAt: number;
   consentId: string;
+  scopes: string;
 }
 const metadataPartSchema = z.object({
   filename: z.string().max(255).optional(),
@@ -181,22 +188,35 @@ export async function loadGmailReviewHeaders(
 }
 export function createReviewSourceReader(
   db: D1Database,
-  configuration: GmailConfiguration,
+  configuration: GmailConfiguration | OutlookConfiguration,
   fetcher: typeof fetch = fetch,
 ) {
   const vault = createCredentialVault(db, configuration.cipher);
   const mailbox = createMailboxService(
     db,
     configuration,
-    createGmailAuthorization(configuration),
+    configuration.provider === "outlook"
+      ? createOutlookAuthorization(configuration)
+      : createGmailAuthorization(configuration),
   );
   async function source(tenant: TenantContext, id: string) {
-    return db
+    const row = await db
       .prepare(
-        "SELECT c.id AS connectionId,c.generation,s.provider_message_id AS providerMessageId,c.display_address AS mailboxAddress,s.received_at AS receivedAt,pc.id AS consentId FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id AND pc.revoked_at IS NULL AND pc.background_authorized=1 WHERE r.user_id=? AND r.id=? AND r.status='open' AND c.provider='gmail' AND c.state='connected' AND s.available=1 AND s.generation=c.generation AND EXISTS(SELECT 1 FROM profiles WHERE user_id=r.user_id AND status='active') ORDER BY pc.accepted_at DESC,pc.id LIMIT 1",
+        "SELECT c.id AS connectionId,c.generation,s.provider_message_id AS providerMessageId,c.display_address AS mailboxAddress,s.received_at AS receivedAt,pc.id AS consentId,c.scopes FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id AND pc.revoked_at IS NULL AND pc.background_authorized=1 WHERE r.user_id=? AND r.id=? AND r.status='open' AND c.provider=? AND c.kind='mailbox' AND c.state='connected' AND s.available=1 AND s.generation=c.generation AND EXISTS(SELECT 1 FROM profiles WHERE user_id=r.user_id AND status='active') ORDER BY pc.accepted_at DESC,pc.id LIMIT 1",
       )
-      .bind(tenant.userId, id)
+      .bind(tenant.userId, id, configuration.provider)
       .first<Source>();
+    if (row && configuration.provider === "outlook") {
+      try {
+        validateOutlookReadScopes(
+          z.array(z.string()).parse(JSON.parse(row.scopes)).join(" "),
+          true,
+        );
+      } catch {
+        return null;
+      }
+    }
+    return row;
   }
   return {
     async read(tenant: TenantContext, id: string) {
@@ -226,12 +246,37 @@ export function createReviewSourceReader(
       const before = await source(tenant, id);
       if (JSON.stringify(before) !== JSON.stringify(initial))
         throw new ReviewSourceError("source_changed");
-      const headers = await loadGmailReviewHeaders(
-        initial.providerMessageId,
-        credentials.secret.accessToken,
-        initial.mailboxAddress,
-        fetcher,
-      );
+      const credentialVersion = credentials.version;
+      async function assertCurrent() {
+        const current = await source(tenant, id);
+        const snapshot = await vault.read(tenant, target, credentialVersion);
+        if (
+          !snapshot ||
+          snapshot.version !== credentialVersion ||
+          JSON.stringify(current) !== JSON.stringify(initial)
+        )
+          throw new ReviewSourceError("source_changed");
+      }
+      let headers: Awaited<ReturnType<typeof loadGmailReviewHeaders>>;
+      try {
+        headers =
+          configuration.provider === "outlook"
+            ? await loadOutlookReviewMetadata(
+                initial.providerMessageId,
+                credentials.secret.accessToken,
+                assertCurrent,
+                fetcher,
+              )
+            : await loadGmailReviewHeaders(
+                initial.providerMessageId,
+                credentials.secret.accessToken,
+                initial.mailboxAddress,
+                fetcher,
+              );
+      } catch (cause) {
+        if (cause instanceof ReviewSourceError) throw cause;
+        throw new ReviewSourceError("source_unavailable");
+      }
       const after = await source(tenant, id);
       const latestCredentials = await vault.read(
         tenant,

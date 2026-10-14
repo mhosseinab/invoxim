@@ -104,6 +104,7 @@ export function validateOutlookContinuation(
 export function createOutlookGraphTransport(
   accessToken: string,
   pageSize: 1 | 5 = 5,
+  fetcher: typeof fetch = fetch,
 ) {
   if (
     typeof accessToken !== "string" ||
@@ -131,7 +132,7 @@ export function createOutlookGraphTransport(
     });
     try {
       response = await Promise.race([
-        fetch(url, {
+        fetcher(url, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             Prefer: `IdType="ImmutableId", odata.maxpagesize=${pageSize}`,
