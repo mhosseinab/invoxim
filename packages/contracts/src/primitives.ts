@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /** Reviewed SIX subset, published 2026-09-17; unsupported codes fail closed. */
 export const currencyMinorDigits = {
   EUR: 2,
@@ -12,6 +14,24 @@ export function minorDigits(currency: string): number {
     throw new Error("UNSUPPORTED_CURRENCY");
   return currencyMinorDigits[currency as keyof typeof currencyMinorDigits];
 }
+/** Maximum absolute minor-unit amount accepted in money fields. */
+export const MINOR_BOUND = 9_000_000_000_000n;
+/**
+ * One supported-currency schema: only registry codes pass.
+ * Replaces the four variants that disagreed (ext#4).
+ */
+export const supportedCurrency = z.enum(
+  Object.keys(currencyMinorDigits) as [string, ...string[]],
+);
+/**
+ * FX rate decimal string: up to 13 integer digits and up to 18 fraction
+ * digits, matching `core/money-conversion.ts`. Previously contracts allowed
+ * only 12 integer digits (ext#5).
+ */
+export const fxRateDecimal = z
+  .string()
+  .regex(/^(?:0|[1-9][0-9]{0,12})(?:\.[0-9]{1,18})?$/)
+  .pipe(z.string().refine((value) => BigInt(value.replace(".", "")) > 0n));
 export function validCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year = 0, month = 0, day = 0] = value.split("-").map(Number);

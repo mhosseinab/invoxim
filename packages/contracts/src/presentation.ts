@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { AppConfig } from "./designs";
 import { configSchema } from "./designs";
 import {
-  currencyMinorDigits,
+  MINOR_BOUND,
+  supportedCurrency,
   validCalendarDate,
   validTimezone,
 } from "./primitives";
@@ -15,9 +16,7 @@ const timezone = z
   .min(1)
   .max(80)
   .refine(validTimezone, "Invalid timezone");
-const currency = z.enum(
-  Object.keys(currencyMinorDigits) as [string, ...string[]],
-);
+const currency = supportedCurrency;
 const range = {
   startDate: date,
   endDate: date,
@@ -139,7 +138,7 @@ const signedMinorString = z
 const boundedMinorString = minorString.pipe(
   z
     .string()
-    .refine((value) => BigInt(value) <= 9000000000000n, "Amount out of range"),
+    .refine((value) => BigInt(value) <= MINOR_BOUND, "Amount out of range"),
 );
 export const acceptedLedgerEntrySchema = z.strictObject({
   kind: z.enum(["payment", "refund"]),

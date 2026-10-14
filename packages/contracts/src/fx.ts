@@ -1,13 +1,15 @@
 import { z } from "zod";
 import {
-  currencyMinorDigits,
+  MINOR_BOUND,
+  fxRateDecimal,
   hasControlCharacters,
+  supportedCurrency,
   validCalendarDate,
 } from "./primitives";
 
 export const fxCalculationVersion = "fx-v1" as const;
 export const fxMaxConvertedMinor = "9223372036854775807";
-export const fxCurrencySchema = z.string().regex(/^[A-Z]{3}$/);
+export const fxCurrencySchema = supportedCurrency;
 const date = z.string().refine(validCalendarDate);
 const identifier = z
   .string()
@@ -23,7 +25,7 @@ const magnitude = z
   .string()
   .max(13)
   .regex(/^(?:0|[1-9][0-9]*)$/)
-  .pipe(z.string().refine((value) => BigInt(value) <= 9000000000000n));
+  .pipe(z.string().refine((value) => BigInt(value) <= MINOR_BOUND));
 const signedInteger = z
   .string()
   .max(48)
@@ -57,10 +59,7 @@ export const fxRateRequestSchema = z
 export const fxRateQuoteSchema = fxRateRequestSchema
   .extend({
     effectiveDate: date,
-    rate: z
-      .string()
-      .regex(/^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,18})?$/)
-      .pipe(z.string().refine((value) => BigInt(value.replace(".", "")) > 0n)),
+    rate: fxRateDecimal,
     source: publicIdentifier,
     version: publicIdentifier,
     retrievedAt: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
@@ -100,8 +99,8 @@ const converted = z
     )
       return;
     const known =
-      Object.hasOwn(currencyMinorDigits, value.entry.currency) &&
-      Object.hasOwn(currencyMinorDigits, value.reportingCurrency);
+      supportedCurrency.safeParse(value.entry.currency).success &&
+      supportedCurrency.safeParse(value.reportingCurrency).success;
     const signed = BigInt(value.signedMinor);
     if (
       !known ||
