@@ -1,16 +1,14 @@
 import { hasControlCharacters } from "@invoxim/contracts";
 import {
+  type ArchiveBackfillLease,
+  type ArchiveBackfillPage,
+  type ArchiveBackfillStore,
+  type ArchiveBackfillView,
   ArchiveServiceError,
   type ArchiveSession,
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
-import type {
-  ArchiveBackfillLease,
-  ArchiveBackfillPage,
-  ArchiveBackfillStore,
-  ArchiveBackfillView,
-} from "../../../core/src/archive/backfill-types";
 import {
   driveFileScopeSql,
   mailboxScopeSql,

@@ -1,16 +1,14 @@
 import { hasControlCharacters } from "@invoxim/contracts";
-import { ArchiveServiceError } from "@invoxim/core";
-import type {
-  ArchiveObjectLease,
-  ArchiveObjectStore,
-} from "../../../core/src/archive/objects";
-import type {
-  ArchiveDispatchOutcome,
-  ArchiveDispatchStore,
-  ArchiveQueuePort,
-  ArchiveQueueWorkflow,
-} from "../../../core/src/archive/queue-types";
-import type { ArchiveWorkflowResult } from "../../../core/src/archive/workflow-types";
+import {
+  type ArchiveDispatchOutcome,
+  type ArchiveDispatchStore,
+  type ArchiveObjectLease,
+  type ArchiveObjectStore,
+  type ArchiveQueuePort,
+  type ArchiveQueueWorkflow,
+  ArchiveServiceError,
+  type ArchiveWorkflowResult,
+} from "@invoxim/core";
 import { DriveArchiveError } from "./types";
 
 export interface ArchiveQueueOptions {

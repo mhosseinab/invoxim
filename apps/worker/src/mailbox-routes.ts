@@ -1,6 +1,7 @@
 import type { GmailBindings, OutlookBindings } from "@invoxim/adapters";
 import {
   createGmailAuthorization,
+  createMailboxManagement,
   createMailboxService,
   createOutlookAuthorization,
   gmailConfiguration,
@@ -15,7 +16,6 @@ import {
 import { MailboxError } from "@invoxim/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { createMailboxManagement } from "../../../packages/adapters/src/mailbox/service";
 import { apiError, json, mapFailure, requireTenantContext } from "./http/guard";
 
 type MailboxBindings = GmailBindings & OutlookBindings;

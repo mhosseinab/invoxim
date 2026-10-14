@@ -1,13 +1,14 @@
 import { hasControlCharacters } from "@invoxim/contracts";
-import { ArchiveServiceError, type TenantContext } from "@invoxim/core";
+import {
+  type ArchiveDispatchCandidate,
+  type ArchiveDispatchLookup,
+  type ArchiveDispatchOutcome,
+  type ArchiveDispatchStore,
+  type ArchiveDispatchWork,
+  ArchiveServiceError,
+  type TenantContext,
+} from "@invoxim/core";
 import { z } from "zod";
-import type {
-  ArchiveDispatchCandidate,
-  ArchiveDispatchLookup,
-  ArchiveDispatchOutcome,
-  ArchiveDispatchStore,
-  ArchiveDispatchWork,
-} from "../../../core/src/archive/queue-types";
 import { mailboxScopeSql } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
 import { archiveObjectEligibilitySql } from "./objects";

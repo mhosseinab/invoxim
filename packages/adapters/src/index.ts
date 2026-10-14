@@ -42,6 +42,8 @@ export type {
 } from "./discovery/outlook";
 export { createOutlookGraphDiscovery } from "./discovery/outlook";
 export * from "./discovery/outlook-coordinator";
+export { createOutlookJobRunner } from "./discovery/outlook-job";
+export { createOutlookDiscoveryProviderFactory } from "./discovery/outlook-provider-factory";
 export * from "./discovery/provider-factory";
 export * from "./discovery/service";
 export * from "./documents/gmail";
@@ -56,6 +58,12 @@ export type { DriveServiceConfiguration } from "./drive/service-types";
 export { createDriveArchiveTransport } from "./drive/transport";
 export * from "./drive/types";
 export * from "./fx/configuration";
+export {
+  createFxPeriodService,
+  type FxPeriodInput,
+  type FxPeriodResult,
+} from "./fx/period";
+export { createFxPeriodSigning } from "./fx/period-signing";
 export { createPublicReferenceRateReader } from "./fx/reference";
 export { createFxValuationRepository } from "./fx/repository";
 export * from "./fx/service";
@@ -89,7 +97,9 @@ export { createOnboardingRepository } from "./onboarding/repository";
 export * from "./pipeline/gmail-content";
 export { createGmailContentFactory } from "./pipeline/gmail-factory";
 export * from "./pipeline/outlook-content";
+export { createOutlookContentFactory } from "./pipeline/outlook-factory";
 export * from "./pipeline/repository";
+export { connectionConsentLiveSql } from "./pipeline/repository-guards";
 export { createPipelineService } from "./pipeline/service";
 export * from "./pipeline/types";
 export * from "./purchase-views";

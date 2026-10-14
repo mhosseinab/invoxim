@@ -1,14 +1,12 @@
-import { ArchiveServiceError } from "@invoxim/core";
+import {
+  type ArchiveCredentialFences,
+  type ArchiveObjectLease,
+  ArchiveServiceError,
+  type ArchiveUploadPlan,
+  type ArchiveUploadSessionSnapshot,
+  type ArchiveUploadSessionStore,
+} from "@invoxim/core";
 import { z } from "zod";
-import type {
-  ArchiveCredentialFences,
-  ArchiveObjectLease,
-  ArchiveUploadPlan,
-} from "../../../core/src/archive/objects";
-import type {
-  ArchiveUploadSessionSnapshot,
-  ArchiveUploadSessionStore,
-} from "../../../core/src/archive/workflow-session-types";
 import { readEnvelopeVersion } from "../security/cipher";
 import { archiveSafe as safe } from "./boundary";
 import { archiveObjectAuthorization } from "./objects";

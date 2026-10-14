@@ -1,32 +1,26 @@
 import {
   type AuthBindings,
+  type FxPeriodInput,
+  type FxPeriodResult,
   type FxReferenceBindings,
+  type FxReportingPage,
+  type FxReportingPageInput,
+  type FxRevaluationPage,
   readAuthJson,
 } from "@invoxim/adapters";
 import {
   fxPeriodRequestSchema,
   fxPeriodResponseSchema,
-} from "@invoxim/contracts";
-import type { TenantContext } from "@invoxim/core";
-import type { Context } from "hono";
-import { Hono } from "hono";
-import type {
-  FxPeriodInput,
-  FxPeriodResult,
-} from "../../../packages/adapters/src/fx/period";
-import type {
-  FxReportingPage,
-  FxReportingPageInput,
-  FxRevaluationPage,
-} from "../../../packages/adapters/src/fx/service";
-import {
   fxReportingExportSchema,
   fxReportingQuerySchema,
   fxReportingRequestSchema,
   fxReportingResponseSchema,
   fxRevaluationRequestSchema,
   fxRevaluationResponseSchema,
-} from "../../../packages/contracts/src/fx-reporting";
+} from "@invoxim/contracts";
+import type { TenantContext } from "@invoxim/core";
+import type { Context } from "hono";
+import { Hono } from "hono";
 import {
   apiError,
   InvalidQueryError,

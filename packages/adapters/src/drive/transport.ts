@@ -1,5 +1,5 @@
+import { MAX_MULTIPART_ORIGINAL_BYTES } from "@invoxim/core";
 import { z } from "zod";
-import { MAX_MULTIPART_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
 import { sha256Hex } from "../security/helpers";
 import { driveFolderPlanSchema, driveOriginalPlanSchema } from "./plans";
 import {

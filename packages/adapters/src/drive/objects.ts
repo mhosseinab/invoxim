@@ -1,5 +1,6 @@
 import { hasControlCharacters } from "@invoxim/contracts";
 import {
+  type ArchiveCredentialFences,
   type ArchiveObjectLease,
   type ArchiveObjectRequest,
   type ArchiveObjectStore,
@@ -9,7 +10,6 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
-import type { ArchiveCredentialFences } from "../../../core/src/archive/objects";
 import { driveFileScopeSql } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
 import { archiveUploadPlanSchema } from "./plans";

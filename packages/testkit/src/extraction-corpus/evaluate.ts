@@ -1,12 +1,12 @@
-import { validateExtraction } from "../../../core/src/ai/validation";
-import { createDocumentTextExtractor } from "../../../core/src/documents/extractor";
-import type { MimePart } from "../../../core/src/documents/types";
-import { planLedgerIngestion } from "../../../core/src/ledger/plan";
-import type {
-  LedgerPlan,
-  LedgerSnapshot,
-} from "../../../core/src/ledger/types";
-import type { TenantContext } from "../../../core/src/tenant-context";
+import {
+  createDocumentTextExtractor,
+  type LedgerPlan,
+  type LedgerSnapshot,
+  type MimePart,
+  planLedgerIngestion,
+  type TenantContext,
+  validateExtraction,
+} from "@invoxim/core";
 import type { CorpusCase, OfflineOutcome } from "./types";
 
 const tenant = {
