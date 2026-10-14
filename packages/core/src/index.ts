@@ -15,6 +15,7 @@ export {
   validatePersistableAiResult,
 } from "./ai/validation";
 export * from "./archive/authorization-types";
+export * from "./archive/backfill-types";
 export type {
   ArchiveFolderAuthorization,
   ArchiveFolderLease,
@@ -23,7 +24,11 @@ export type {
   ArchiveFolderWork,
 } from "./archive/folders";
 export * from "./archive/objects";
+export * from "./archive/queue-types";
 export * from "./archive/service-types";
+export { createArchiveWorkflow } from "./archive/workflow";
+export * from "./archive/workflow-session-types";
+export * from "./archive/workflow-types";
 export { monthlyAnchor } from "./calendar-anchor";
 export { createCorrectionService } from "./corrections/service";
 export * from "./corrections/settlement";

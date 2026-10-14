@@ -1,6 +1,6 @@
 import { hasControlCharacters } from "@invoxim/contracts";
+import { MAX_ARCHIVE_ORIGINAL_BYTES } from "@invoxim/core";
 import { z } from "zod";
-import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
 
 const fileId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
 const workspaceMarker = z.string().regex(/^[A-Za-z0-9_-]{16,96}$/);

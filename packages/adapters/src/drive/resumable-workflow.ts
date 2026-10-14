@@ -1,9 +1,10 @@
-import { ArchiveServiceError, type TenantContext } from "@invoxim/core";
-import type {
-  ArchiveCredentialFences,
-  ArchiveObjectLease,
-} from "../../../core/src/archive/objects";
-import type { ArchiveUploadSessionStore } from "../../../core/src/archive/workflow-session-types";
+import {
+  type ArchiveCredentialFences,
+  type ArchiveObjectLease,
+  ArchiveServiceError,
+  type ArchiveUploadSessionStore,
+  type TenantContext,
+} from "@invoxim/core";
 import type { CredentialCipher } from "../security/types";
 import {
   type DriveResumableTransport,

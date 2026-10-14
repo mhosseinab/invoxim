@@ -1,24 +1,19 @@
-import type { ArchiveAuthorizationPort, TenantContext } from "@invoxim/core";
 import {
+  type ArchiveAuthorizationPort,
+  type ArchiveCredentialFences,
+  type ArchiveObjectLease,
+  type ArchiveOriginalResult,
   ArchiveServiceError,
+  type ArchiveUploadPlan,
+  type ArchiveWorkflowPorts,
+  type ArchiveWorkflowResult,
+  createArchiveWorkflow,
   DOCUMENT_LIMITS,
-  OriginalReadError,
-} from "@invoxim/core";
-import type {
-  ArchiveCredentialFences,
-  ArchiveObjectLease,
-  ArchiveUploadPlan,
-} from "../../../core/src/archive/objects";
-import { createArchiveWorkflow } from "../../../core/src/archive/workflow";
-import type {
-  ArchiveOriginalResult,
-  ArchiveWorkflowPorts,
-  ArchiveWorkflowResult,
-} from "../../../core/src/archive/workflow-types";
-import {
   MAX_ARCHIVE_ORIGINAL_BYTES,
   MAX_MULTIPART_ORIGINAL_BYTES,
-} from "../../../core/src/archive/workflow-types";
+  OriginalReadError,
+  type TenantContext,
+} from "@invoxim/core";
 import { createOriginalMailReader } from "../documents/original-mail";
 import {
   ContentError,

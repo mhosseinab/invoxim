@@ -5,17 +5,17 @@ import type {
 } from "@invoxim/adapters";
 import {
   aiConfiguration,
+  connectionConsentLiveSql,
   createGmailContentFactory,
   createGmailDiscoveryProviderFactory,
+  createOutlookContentFactory,
+  createOutlookDiscoveryProviderFactory,
+  createOutlookJobRunner,
   createProcessingDiscoveryReadiness,
   gmailConfiguration,
   outlookConfiguration,
 } from "@invoxim/adapters";
 import type { JobHandler } from "@invoxim/core";
-import { createOutlookJobRunner } from "../../../packages/adapters/src/discovery/outlook-job";
-import { createOutlookDiscoveryProviderFactory } from "../../../packages/adapters/src/discovery/outlook-provider-factory";
-import { createOutlookContentFactory } from "../../../packages/adapters/src/pipeline/outlook-factory";
-import { connectionConsentLiveSql } from "../../../packages/adapters/src/pipeline/repository-guards";
 import { createDiscoveryRuntime } from "./discovery-runtime";
 import type { JobBindings } from "./job-configuration";
 import { jobConfiguration, QUERY_LIMIT } from "./job-configuration";

@@ -1,4 +1,4 @@
-import type { ArchiveQueuePort } from "../../../core/src/archive/queue-types";
+import type { ArchiveQueuePort } from "@invoxim/core";
 import { createArchiveDispatchStore } from "./dispatch-store";
 import { createArchiveObjectStore } from "./objects";
 import { createArchiveQueue } from "./queue";

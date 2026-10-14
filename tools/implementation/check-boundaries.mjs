@@ -15,6 +15,7 @@ async function directories(folder) {
   }
 }
 const entries = [];
+const violations = [];
 for (const base of ["apps", "packages"])
   for (const folder of await directories(path.join(root, base))) {
     const manifest = JSON.parse(
@@ -67,13 +68,20 @@ async function scan(folder, entry) {
         const owner = entries.find((candidate) =>
           resolved.startsWith(candidate.folder + path.sep),
         );
-        if (owner && owner.name !== entry.name) entry.imports.push(owner.name);
-      } else
-        entry.imports.push(
-          value.startsWith("@invoxim/")
-            ? value.split("/").slice(0, 2).join("/")
-            : value,
-        );
+        if (owner && owner.name !== entry.name) {
+          violations.push(
+            `${full}: deep relative import ${value} must go through package root ${owner.name}`,
+          );
+          entry.imports.push(owner.name);
+        }
+      } else if (value.startsWith("@invoxim/")) {
+        const packageName = value.split("/").slice(0, 2).join("/");
+        if (value !== packageName)
+          violations.push(
+            `${full}: subpath import ${value} must go through package root ${packageName}`,
+          );
+        entry.imports.push(packageName);
+      } else entry.imports.push(value);
     }
     function walk(node) {
       if (
@@ -114,7 +122,7 @@ async function scan(folder, entry) {
   }
 }
 for (const entry of entries) await scan(entry.folder, entry);
-const errors = validateGraph(entries);
+const errors = [...violations, ...validateGraph(entries)];
 if (errors.length) {
   console.error(errors.join("\n"));
   process.exitCode = 1;

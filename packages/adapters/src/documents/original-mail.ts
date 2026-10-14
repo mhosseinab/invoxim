@@ -2,9 +2,12 @@ import type {
   TransientOriginalReader,
   TransientOriginalResult,
 } from "@invoxim/core";
-import { MAX_TRANSIENT_ORIGINAL_BYTES, OriginalReadError } from "@invoxim/core";
+import {
+  MAX_ARCHIVE_ORIGINAL_BYTES,
+  MAX_TRANSIENT_ORIGINAL_BYTES,
+  OriginalReadError,
+} from "@invoxim/core";
 import { z } from "zod";
-import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
 
 type UnsupportedCode = Extract<
   TransientOriginalResult,

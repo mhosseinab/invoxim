@@ -8,6 +8,8 @@ import type {
 } from "@invoxim/adapters";
 import {
   aiConfiguration,
+  createFxPeriodService,
+  createFxPeriodSigning,
   createFxReportingService,
   createJobStore,
   createLifecycleCleanup,
@@ -21,8 +23,6 @@ import {
 } from "@invoxim/adapters";
 import { publicConfigSchema } from "@invoxim/contracts";
 import { Hono } from "hono";
-import { createFxPeriodService } from "../../../packages/adapters/src/fx/period";
-import { createFxPeriodSigning } from "../../../packages/adapters/src/fx/period-signing";
 import { runtimeAiBindings } from "./ai-bindings";
 import { createAiRoutes } from "./ai-routes";
 import { createAuthRoutes } from "./auth-routes";

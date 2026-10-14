@@ -109,6 +109,100 @@ test("FOUND-03 CLI checks relative and workspace-subpath imports including re-ex
   }
 });
 
+test("SW-2 CLI rejects deep relative imports that cross into another package", async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { execFileSync } = await import("node:child_process");
+  const path = await import("node:path");
+  const root = await mkdtemp(path.join(tmpdir(), "invoxim-boundaries-"));
+  try {
+    for (const layer of ["core", "adapters"]) {
+      await mkdir(path.join(root, "packages", layer, "src"), { recursive: true });
+      await writeFile(
+        path.join(root, "packages", layer, "package.json"),
+        JSON.stringify({
+          name: `@invoxim/${layer}`,
+          dependencies:
+            layer === "adapters" ? { "@invoxim/core": "workspace:*" } : {},
+        }),
+      );
+    }
+    await writeFile(
+      path.join(root, "packages/core/src/index.ts"),
+      "export const core = 1;\n",
+    );
+    await writeFile(
+      path.join(root, "packages/adapters/src/index.ts"),
+      'import { core } from "../../core/src/index";\nexport const adapter = core;\n',
+    );
+    assert.throws(
+      () =>
+        execFileSync(
+          process.execPath,
+          ["tools/implementation/check-boundaries.mjs", root],
+          { encoding: "utf8", stdio: "pipe" },
+        ),
+      (error) => {
+        assert.equal(error.status, 1);
+        assert.match(
+          error.stderr,
+          /deep relative import .* must go through package root @invoxim\/core/,
+        );
+        return true;
+      },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SW-2 CLI rejects workspace subpath imports that bypass the package root", async () => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { execFileSync } = await import("node:child_process");
+  const path = await import("node:path");
+  const root = await mkdtemp(path.join(tmpdir(), "invoxim-boundaries-"));
+  try {
+    for (const layer of ["core", "adapters"]) {
+      await mkdir(path.join(root, "packages", layer, "src"), { recursive: true });
+      await writeFile(
+        path.join(root, "packages", layer, "package.json"),
+        JSON.stringify({
+          name: `@invoxim/${layer}`,
+          dependencies:
+            layer === "adapters" ? { "@invoxim/core": "workspace:*" } : {},
+        }),
+      );
+    }
+    await writeFile(
+      path.join(root, "packages/core/src/index.ts"),
+      "export const core = 1;\n",
+    );
+    await writeFile(
+      path.join(root, "packages/adapters/src/index.ts"),
+      'import { core } from "@invoxim/core/src/index";\nexport const adapter = core;\n',
+    );
+    assert.throws(
+      () =>
+        execFileSync(
+          process.execPath,
+          ["tools/implementation/check-boundaries.mjs", root],
+          { encoding: "utf8", stdio: "pipe" },
+        ),
+      (error) => {
+        assert.equal(error.status, 1);
+        assert.match(
+          error.stderr,
+          /subpath import @invoxim\/core\/src\/index must go through package root @invoxim\/core/,
+        );
+        return true;
+      },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("FOUND-03 CLI rejects import types, import-equals and declared external infrastructure", async () => {
   const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
