@@ -33,9 +33,9 @@ export {
   issueWorkspaceMutationToken,
   verifyWorkspaceMutationToken,
 } from "./corrections/workspace-token";
-export { createGmailDiscoveryProviderFactory } from "./discovery/provider-factory";
 export { createOutlookJobRunner } from "./discovery/outlook-job";
 export { createOutlookDiscoveryProviderFactory } from "./discovery/outlook-provider-factory";
+export { createGmailDiscoveryProviderFactory } from "./discovery/provider-factory";
 export type { DiscoveryServiceOptions } from "./discovery/service";
 export { createDiscoveryService } from "./discovery/service";
 export { createLocalPdfTextExtractor } from "./documents/pdf";
