@@ -13,6 +13,27 @@ import {
 } from "./clef";
 import { AiSettingsError } from "./settings";
 
+/** Classification fingerprint recipe (A1). Must stay byte-identical to budget.ts verification. */
+export async function computeClassificationFingerprint(input: {
+  configurationDigest: string;
+  settingsRevision: number;
+  generation: number;
+  credentialVersion: number;
+  policyVersion: number;
+}): Promise<string> {
+  return hashOnboardingValue([
+    "hosted",
+    input.configurationDigest,
+    input.settingsRevision,
+    input.generation,
+    input.credentialVersion,
+    input.policyVersion,
+    EMAIL_CLASSIFICATION_VERSION,
+    EMAIL_CLASSIFICATION_VERSION,
+    1,
+  ]);
+}
+
 /** One explicitly disclosed hosted decision processor, independent of financial BYOK routing. */
 export function createReceiptClassifierFactory(
   db: D1Database,
@@ -47,17 +68,13 @@ export function createReceiptClassifierFactory(
           },
         ],
       });
-      const fingerprint = await hashOnboardingValue([
-        "hosted",
+      const fingerprint = await computeClassificationFingerprint({
         configurationDigest,
-        work.settingsRevision,
-        row.generation,
-        row.credential_version,
-        authorityPrice.policyVersion,
-        EMAIL_CLASSIFICATION_VERSION,
-        EMAIL_CLASSIFICATION_VERSION,
-        1,
-      ]);
+        settingsRevision: work.settingsRevision,
+        generation: row.generation,
+        credentialVersion: row.credential_version,
+        policyVersion: authorityPrice.policyVersion,
+      });
       const config: ApprovedAiConfig = {
         destinationId: "cloudflare-clef",
         modelId: configuration.model,
