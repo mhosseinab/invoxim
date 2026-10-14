@@ -1002,10 +1002,10 @@ it("T14 pipeline snapshot preserves a manual source association without model ob
     .bind(current.context.userId)
     .run();
   const candidate = input();
-  const snapshot = await createPipelineRepository(db, repoOptions()).loadSnapshot(
-    current,
-    candidate,
-  );
+  const snapshot = await createPipelineRepository(
+    db,
+    repoOptions(),
+  ).loadSnapshot(current, candidate);
   expect(snapshot?.manualEvidence).toEqual([
     {
       contentHash: candidate.identity.contentHash,

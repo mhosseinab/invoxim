@@ -152,9 +152,21 @@ for (const fixture of fixtures.cases)
           // Production annual is cadence-scoped; FN14 is the monthly case.
           const series = deriveRecurringSuggestion({
             payments: [
-              recurringPayment("a", "2027-01-31", requireFixture(input.monthlyMinor)),
-              recurringPayment("b", "2027-02-28", requireFixture(input.monthlyMinor)),
-              recurringPayment("c", "2027-03-31", requireFixture(input.monthlyMinor)),
+              recurringPayment(
+                "a",
+                "2027-01-31",
+                requireFixture(input.monthlyMinor),
+              ),
+              recurringPayment(
+                "b",
+                "2027-02-28",
+                requireFixture(input.monthlyMinor),
+              ),
+              recurringPayment(
+                "c",
+                "2027-03-31",
+                requireFixture(input.monthlyMinor),
+              ),
             ],
           });
           if (series.status !== "series") throw new Error("expected series");
@@ -164,8 +176,16 @@ for (const fixture of fixtures.cases)
           const series = deriveRecurringSuggestion({
             payments: [
               recurringPayment("first", "2026-12-31", "500"),
-              recurringPayment("prev", "2027-01-31", requireFixture(input.previousMinor)),
-              recurringPayment("next", "2027-02-28", requireFixture(input.nextMinor)),
+              recurringPayment(
+                "prev",
+                "2027-01-31",
+                requireFixture(input.previousMinor),
+              ),
+              recurringPayment(
+                "next",
+                "2027-02-28",
+                requireFixture(input.nextMinor),
+              ),
             ],
           });
           if (series.status !== "series" || !series.comparison)
@@ -214,7 +234,8 @@ for (const fixture of fixtures.cases)
               stale ? { ...base, effectiveDate: stale } : null,
               policy,
             );
-            if (result.status === "converted") throw new Error("FX_RATE_MISSING");
+            if (result.status === "converted")
+              throw new Error("FX_RATE_MISSING");
             return { rateDate: result.reason };
           }
           const result = convertFxEntry(

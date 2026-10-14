@@ -473,11 +473,14 @@ it("HOME-02/LIFECYCLE-02 concurrent refund produces export totals derived from t
     },
   ]);
   const tenant = { userId: "qa-home-a", authority: "session" } as TenantContext;
-  const snapshot = await createPurchaseViewReader(faulted).exportSnapshot(tenant, {
-    q: "history",
-    from: "2026-10-01",
-    to: "2026-10-31",
-  });
+  const snapshot = await createPurchaseViewReader(faulted).exportSnapshot(
+    tenant,
+    {
+      q: "history",
+      from: "2026-10-01",
+      to: "2026-10-31",
+    },
+  );
   expect(interleaved).toBe(true);
   expect(
     snapshot.ledgerEntries

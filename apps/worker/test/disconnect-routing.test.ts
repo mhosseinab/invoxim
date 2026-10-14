@@ -56,7 +56,10 @@ async function fixture(name: string) {
     headers,
     name,
     origin: login.origin,
-    disconnect: (body = { generation: 1, credentialVersion: 1 }, id = "outlook") =>
+    disconnect: (
+      body = { generation: 1, credentialVersion: 1 },
+      id = "outlook",
+    ) =>
       worker.fetch(
         new Request(`${login.origin}/api/connections/${id}`, {
           method: "DELETE",

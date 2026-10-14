@@ -600,8 +600,8 @@ async function prepared(name: string) {
   const lease = await store.claim(commitJob);
   if (!lease) throw new Error("Missing reconcile lease");
   const repository = createPipelineRepository(meter.db, {
-    processingDigest: async () => "f".repeat(64),
-  }),
+      processingDigest: async () => "f".repeat(64),
+    }),
     work = await repository.load(lease);
   const document = work?.documents[0];
   if (!document || !work?.extractionFingerprint)

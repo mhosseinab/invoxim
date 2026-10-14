@@ -91,7 +91,10 @@ const triggerEntry = (currency: string): CashFact => ({
   documentId: "doc-trigger",
 });
 
-function toCorrectionEventFact(entry: CashFact, index: number): CorrectionEventFact {
+function toCorrectionEventFact(
+  entry: CashFact,
+  index: number,
+): CorrectionEventFact {
   return {
     id: `entry-${index}`,
     observationId: entry.observationId,
@@ -135,7 +138,10 @@ function sqlSupportedCash(
   if (!entry.accepted) return false;
   const expected =
     entry.kind === "payment" ? "explicitly-paid" : "completed-refund";
-  if (entry.evidenceCode !== "manual-confirmation" && entry.evidenceCode !== expected)
+  if (
+    entry.evidenceCode !== "manual-confirmation" &&
+    entry.evidenceCode !== expected
+  )
     return false;
   if (connectionDeletionPending) return false;
   for (const review of reviews) {
@@ -145,7 +151,10 @@ function sqlSupportedCash(
       review.reason === "payment-allocation-review"
     )
       continue;
-    if (review.observationId !== null && review.observationId === entry.observationId)
+    if (
+      review.observationId !== null &&
+      review.observationId === entry.observationId
+    )
       return false;
     if (
       review.observationId === null &&
@@ -161,7 +170,10 @@ function sqlSupportedCash(
 }
 
 function scenarioEntries(scenario: Scenario): CashFact[] {
-  return [...scenario.entries, triggerEntry(scenario.purchase.currency ?? "EUR")];
+  return [
+    ...scenario.entries,
+    triggerEntry(scenario.purchase.currency ?? "EUR"),
+  ];
 }
 
 function runTsSettlement(scenario: Scenario): CorrectionSettlement {
@@ -285,7 +297,9 @@ function runPlan(scenario: Scenario): PaymentState {
     },
   };
   const plan = planLedgerIngestion(input, snapshot);
-  const projected = plan.paymentStates.find((item) => item.purchaseId === purchaseId);
+  const projected = plan.paymentStates.find(
+    (item) => item.purchaseId === purchaseId,
+  );
   if (projected) return projected.paymentState;
   const updated = plan.purchases.find((item) => item.id === purchaseId);
   return updated?.paymentState ?? scenario.purchase.paymentState;
@@ -474,10 +488,15 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
     const clean: ReviewFact[] = [];
     const tsSupportedFlag = (entry: CashFact, reviews: ReviewFact[]) => {
       const fact = toCorrectionEventFact(entry, 0);
-      return hasCashProof(fact) && restorationEligibility(fact, reviews.map(toReviewFact));
+      return (
+        hasCashProof(fact) &&
+        restorationEligibility(fact, reviews.map(toReviewFact))
+      );
     };
     // Clean facts agree.
-    expect(sqlSupportedCash(shared, clean, false)).toBe(tsSupportedFlag(shared, clean));
+    expect(sqlSupportedCash(shared, clean, false)).toBe(
+      tsSupportedFlag(shared, clean),
+    );
     // user-confirmed short-circuit: SQL true even with a blocking refund-exceeds review
     // (user-confirmed entries carry observation_id NULL per schema; TS still blocks refunds).
     const refundBlockReview: ReviewFact[] = [
@@ -499,7 +518,9 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       observationId: null,
       documentId: null,
     };
-    expect(sqlSupportedCash(confirmedRefund, refundBlockReview, false)).toBe(true);
+    expect(sqlSupportedCash(confirmedRefund, refundBlockReview, false)).toBe(
+      true,
+    );
     expect(tsSupportedFlag(confirmedRefund, refundBlockReview)).toBe(false);
     // Connection deletion only exists in the SQL rule.
     expect(sqlSupportedCash(shared, clean, true)).toBe(false);
@@ -535,13 +556,17 @@ it.fails(
       const plan = runPlan(scenario);
       const settlement = runTsSettlement(scenario);
       const sql = runSqlSettlement(scenario);
-      expect({ name: scenario.name, plan, settlement: settlement.paymentState, sql: sql.paymentState })
-        .toEqual({
-          name: scenario.name,
-          plan,
-          settlement: plan,
-          sql: plan,
-        });
+      expect({
+        name: scenario.name,
+        plan,
+        settlement: settlement.paymentState,
+        sql: sql.paymentState,
+      }).toEqual({
+        name: scenario.name,
+        plan,
+        settlement: plan,
+        sql: plan,
+      });
     }
   },
 );

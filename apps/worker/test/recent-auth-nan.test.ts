@@ -68,9 +68,9 @@ it("WRK-4 AI settings mutation rejects a NaN session createdAt", async () => {
     f.bindings,
   );
   expect(response.status).toBe(403);
-  expect((await response.json() as { error: { code: string } }).error.code).toBe(
-    "origin_or_recent_auth_required",
-  );
+  expect(
+    ((await response.json()) as { error: { code: string } }).error.code,
+  ).toBe("origin_or_recent_auth_required");
 });
 
 it("WRK-4 lifecycle mutation rejects a NaN session createdAt", async () => {
@@ -88,7 +88,7 @@ it("WRK-4 lifecycle mutation rejects a NaN session createdAt", async () => {
     f.bindings,
   );
   expect(response.status).toBe(403);
-  expect((await response.json() as { error: { code: string } }).error.code).toBe(
-    "recent_auth_required",
-  );
+  expect(
+    ((await response.json()) as { error: { code: string } }).error.code,
+  ).toBe("recent_auth_required");
 });

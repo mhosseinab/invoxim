@@ -74,9 +74,11 @@ export function faultingDatabase(
   ): { fired: boolean; result?: unknown } {
     const rule = rules[ruleIndex];
     if (!rule) return { fired: false };
-    const n = ++seen[ruleIndex]!;
+    const n = (seen[ruleIndex] ?? 0) + 1;
+    seen[ruleIndex] = n;
     if (n <= (rule.skip ?? 0)) return { fired: false };
-    if (rule.once !== false && (fired[ruleIndex] ?? 0) > 0) return { fired: false };
+    if (rule.once !== false && (fired[ruleIndex] ?? 0) > 0)
+      return { fired: false };
     fired[ruleIndex] = (fired[ruleIndex] ?? 0) + 1;
     return {
       fired: true,
@@ -92,7 +94,9 @@ export function faultingDatabase(
       const wrapped: D1PreparedStatement = {
         bind: (...values: unknown[]) => wrap(inner.bind(...values)),
         first: (async (column?: string) => {
-          const idx = rules.findIndex((r) => r.on === "first" && matches(r, sql));
+          const idx = rules.findIndex(
+            (r) => r.on === "first" && matches(r, sql),
+          );
           const proceed = () =>
             column === undefined ? inner.first() : inner.first(column);
           if (idx === -1) return proceed();
@@ -132,10 +136,13 @@ export function faultingDatabase(
 
   const db: D1Database = {
     prepare(query: string) {
-      const idx = rules.findIndex((r) => r.on === "prepare" && matches(r, query));
+      const idx = rules.findIndex(
+        (r) => r.on === "prepare" && matches(r, query),
+      );
       if (idx !== -1) {
         const rule = rules[idx];
-        const n = ++seen[idx]!;
+        const n = (seen[idx] ?? 0) + 1;
+        seen[idx] = n;
         if (
           rule &&
           n > (rule.skip ?? 0) &&

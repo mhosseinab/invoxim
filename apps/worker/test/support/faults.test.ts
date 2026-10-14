@@ -5,11 +5,11 @@ import { faultingDatabase, statementCounter } from "./faults";
 const db = env.DB;
 
 beforeAll(async () => {
-  await db.prepare("CREATE TABLE IF NOT EXISTS qa_faults(id TEXT PRIMARY KEY)").run();
-  await db.prepare("DELETE FROM qa_faults").run();
   await db
-    .prepare("INSERT INTO qa_faults(id) VALUES('a'),('b')")
+    .prepare("CREATE TABLE IF NOT EXISTS qa_faults(id TEXT PRIMARY KEY)")
     .run();
+  await db.prepare("DELETE FROM qa_faults").run();
+  await db.prepare("INSERT INTO qa_faults(id) VALUES('a'),('b')").run();
 });
 
 describe("faultingDatabase", () => {
@@ -46,7 +46,11 @@ describe("faultingDatabase", () => {
 
   it("fires on the Nth matching call when skip is set", async () => {
     const calls: string[] = [];
-    const { db: faulted, assertFaultsFired, fireCounts } = faultingDatabase(db, [
+    const {
+      db: faulted,
+      assertFaultsFired,
+      fireCounts,
+    } = faultingDatabase(db, [
       {
         match: "SELECT id FROM qa_faults",
         on: "all",
@@ -98,7 +102,9 @@ describe("faultingDatabase", () => {
       faulted.prepare("DELETE FROM qa_faults WHERE id='missing'").run(),
     ).rejects.toThrow("AFTER_RUN_FAULT");
     expect(() => assertFaultsFired()).not.toThrow();
-    await db.prepare("INSERT OR IGNORE INTO qa_faults(id) VALUES('a'),('b')").run();
+    await db
+      .prepare("INSERT OR IGNORE INTO qa_faults(id) VALUES('a'),('b')")
+      .run();
   });
 
   it("supports prepare-time faults that throw synchronously", () => {
@@ -119,7 +125,10 @@ describe("statementCounter", () => {
   it("counts every statement execution", async () => {
     const { db: counted, count } = statementCounter(db);
     await counted.prepare("SELECT id FROM qa_faults").all();
-    await counted.prepare("SELECT id FROM qa_faults WHERE id=?").bind("a").first();
+    await counted
+      .prepare("SELECT id FROM qa_faults WHERE id=?")
+      .bind("a")
+      .first();
     expect(count()).toBe(2);
     await counted.batch([counted.prepare("SELECT id FROM qa_faults")]);
     expect(count()).toBe(3);

@@ -156,13 +156,28 @@ describe("MONEY-01..07 exact domain arithmetic", () => {
       retrievedAt: 1791676800000,
     };
     expect(
-      convertFxEntry(entry, "USD", { ...base, effectiveDate: "2026-10-09" }, policy),
+      convertFxEntry(
+        entry,
+        "USD",
+        { ...base, effectiveDate: "2026-10-09" },
+        policy,
+      ),
     ).toMatchObject({ status: "converted" });
     expect(
-      convertFxEntry(entry, "USD", { ...base, effectiveDate: "2026-10-12" }, policy),
+      convertFxEntry(
+        entry,
+        "USD",
+        { ...base, effectiveDate: "2026-10-12" },
+        policy,
+      ),
     ).toMatchObject({ status: "unconverted", reason: "rate_future" });
     expect(
-      convertFxEntry(entry, "USD", { ...base, effectiveDate: "2026-09-30" }, policy),
+      convertFxEntry(
+        entry,
+        "USD",
+        { ...base, effectiveDate: "2026-09-30" },
+        policy,
+      ),
     ).toMatchObject({ status: "unconverted", reason: "rate_stale" });
   });
   it("fixed-seed decimal round trip independent integer oracle (500 runs)", () => {
