@@ -1,6 +1,8 @@
 import {
   hasControlCharacters,
+  supportedCurrency,
   supportedExtractionPrompt,
+  validCalendarDate,
 } from "@invoxim/contracts";
 import type {
   JobLease,
@@ -14,7 +16,9 @@ import type {
 } from "@invoxim/core";
 import {
   calendarDate,
+  ENTRY_MINOR_BOUND,
   ledgerEventKey,
+  minorDigits,
   normalizeLedgerMerchant,
   parseMoney,
   validatePersistableAiResult,
@@ -240,14 +244,14 @@ function originalEventValues(
 ): NonNullable<LedgerEvent["sourceValues"]> {
   const amount = z
     .union([
-      z.number().int().min(0).max(9000000000000),
+      z.number().int().min(0).max(Number(ENTRY_MINOR_BOUND)),
       z
         .string()
         .regex(/^(0|[1-9][0-9]*)$/)
         .max(13),
     ])
     .transform((value) => Number(value))
-    .refine((value) => value <= 9000000000000);
+    .refine((value) => value <= Number(ENTRY_MINOR_BOUND));
   const parsed = z
     .strictObject({
       amountMinor: amount.optional(),
@@ -259,28 +263,8 @@ function originalEventValues(
           "user-corrected-date",
         ])
         .optional(),
-      currency: z
-        .string()
-        .refine((value) => {
-          try {
-            parseMoney("0", value);
-            return true;
-          } catch {
-            return false;
-          }
-        })
-        .optional(),
-      eventDate: z
-        .string()
-        .refine((value) => {
-          try {
-            calendarDate(value);
-            return true;
-          } catch {
-            return false;
-          }
-        })
-        .optional(),
+      currency: supportedCurrency.optional(),
+      eventDate: z.string().refine(validCalendarDate).optional(),
     })
     .parse(safeJson(encoded));
   return {
@@ -320,7 +304,11 @@ function checkedInput(input: LedgerInput): void {
   checkedResult(input.result);
 }
 function monetary(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 0 || value > 9000000000000)
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > Number(ENTRY_MINOR_BOUND)
+  )
     throw new PipelinePersistenceError("INVALID_PIPELINE");
 }
 function validatePlan(input: LedgerInput, plan: LedgerPlan): void {
@@ -364,7 +352,7 @@ function validatePlan(input: LedgerInput, plan: LedgerPlan): void {
       throw new PipelinePersistenceError("INVALID_PIPELINE");
     monetary(purchase.totalMinor);
     calendarDate(purchase.documentDate);
-    parseMoney("0", purchase.currency);
+    minorDigits(purchase.currency);
     if (
       purchase.version !== 1 ||
       purchase.merchant.length > 200 ||
@@ -377,7 +365,7 @@ function validatePlan(input: LedgerInput, plan: LedgerPlan): void {
     identifier.parse(event.businessKey);
     monetary(event.amountMinor);
     calendarDate(event.eventDate);
-    parseMoney("0", event.currency);
+    minorDigits(event.currency);
     if (
       !plan.observations.some(
         (observation) => observation.id === event.observationId,

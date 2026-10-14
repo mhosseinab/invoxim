@@ -18,6 +18,7 @@ import {
   validCalendarDate,
 } from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
+import { parseMinor } from "@invoxim/core";
 import { z } from "zod";
 
 export class PurchaseViewError extends Error {
@@ -137,19 +138,18 @@ export function matchesPeriod(
     (!filter?.currency || event.currency === filter.currency)
   );
 }
-function totals(
-  events: EventRow[],
-  filter?: PurchaseFilters,
+function perCurrencyTotals(
+  entries: Iterable<Pick<EventRow, "kind" | "minor" | "currency">>,
 ): CurrencyTotals[] {
-  const map = new Map<string, { paid: bigint; refunded: bigint }>();
-  for (const event of events) {
-    if (!event.eligible || !matchesPeriod(event, filter)) continue;
-    const sum = map.get(event.currency) ?? { paid: 0n, refunded: 0n };
-    if (event.kind === "payment") sum.paid += BigInt(event.minor);
-    else sum.refunded += BigInt(event.minor);
-    map.set(event.currency, sum);
+  const sums = new Map<string, { paid: bigint; refunded: bigint }>();
+  for (const entry of entries) {
+    const sum = sums.get(entry.currency) ?? { paid: 0n, refunded: 0n };
+    const amount = parseMinor(entry.minor);
+    if (entry.kind === "payment") sum.paid += amount;
+    else sum.refunded += amount;
+    sums.set(entry.currency, sum);
   }
-  return [...map]
+  return [...sums]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([currency, value]) => ({
       currency,
@@ -157,6 +157,14 @@ function totals(
       refundedMinor: value.refunded.toString(),
       netMinor: (value.paid - value.refunded).toString(),
     }));
+}
+function totals(
+  events: EventRow[],
+  filter?: PurchaseFilters,
+): CurrencyTotals[] {
+  return perCurrencyTotals(
+    events.filter((event) => event.eligible && matchesPeriod(event, filter)),
+  );
 }
 function rowEvents(row: Row) {
   const parsed = eventsSchema.safeParse(JSON.parse(row.events));
@@ -460,7 +468,7 @@ export function createPurchaseViewReader(db: D1Database) {
       .first<Record<string, number>>();
     let cursor = "",
       excluded = 0;
-    const sums = new Map<string, { paid: bigint; refunded: bigint }>();
+    const eligible: Pick<EventRow, "kind" | "minor" | "currency">[] = [];
     // 25 bounded chunks leave room for session/profile reads within the shared 40-query cap.
     for (let page = 0; page < 25; page++) {
       const rows = (
@@ -482,22 +490,12 @@ export function createPurchaseViewReader(db: D1Database) {
           excluded++;
           continue;
         }
-        const sum = sums.get(row.currency) ?? { paid: 0n, refunded: 0n };
-        if (row.kind === "payment") sum.paid += BigInt(row.minor);
-        else sum.refunded += BigInt(row.minor);
-        sums.set(row.currency, sum);
+        eligible.push(row);
       }
       if (rows.length < 4000)
         return purchaseSummarySchema.parse({
           ...counts,
-          totals: [...sums]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([currency, v]) => ({
-              currency,
-              paidMinor: v.paid.toString(),
-              refundedMinor: v.refunded.toString(),
-              netMinor: (v.paid - v.refunded).toString(),
-            })),
+          totals: perCurrencyTotals(eligible),
           excludedEntryCount: excluded,
           conversion: "not_configured",
           dateBasis: "event",
