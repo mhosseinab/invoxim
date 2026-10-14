@@ -1,8 +1,13 @@
-import { hasControlCharacters } from "@invoxim/contracts";
-import { ArchiveServiceError } from "@invoxim/core";
-import { z } from "zod";
-import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
-import { createDriveArchiveTransport, readDriveJson } from "./transport";
+import { sha256Hex } from "../security/helpers";
+import { driveOriginalPlanSchema } from "./plans";
+import {
+  acknowledgedBytes,
+  type DriveRequestContext,
+  driveRequest,
+  mapDriveFailure,
+  readDriveJson,
+} from "./request";
+import { createDriveArchiveTransport } from "./transport";
 import {
   DriveArchiveError,
   type DriveHttpTransport,
@@ -11,33 +16,6 @@ import {
 
 export const DRIVE_RESUMABLE_CHUNK_BYTES = 4 * 1024 * 1024;
 const uploadEndpoint = "https://www.googleapis.com/upload/drive/v3/files";
-const planSchema = z.object({
-  fileId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  parentId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  workspaceMarker: z.string().regex(/^[A-Za-z0-9_-]{16,96}$/),
-  name: z
-    .string()
-    .min(1)
-    .max(180)
-    .refine(
-      (value) =>
-        new TextEncoder().encode(value).length <= 180 &&
-        !hasControlCharacters(value) &&
-        !value.includes("/") &&
-        !value.includes("\\") &&
-        value.trim() === value &&
-        value !== "." &&
-        value !== "..",
-    ),
-  mimeType: z.enum([
-    "application/pdf",
-    "image/png",
-    "image/jpeg",
-    "message/rfc822",
-  ]),
-  size: z.number().int().min(1).max(MAX_ARCHIVE_ORIGINAL_BYTES),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-});
 export type DriveResumableStatus =
   | { status: "complete" }
   | { status: "incomplete"; uploadedBytes: number }
@@ -84,31 +62,6 @@ export function validatedDriveSessionUrl(value: unknown): string {
     throw new DriveArchiveError("invalid_response");
   }
 }
-async function abortable<T>(
-  promise: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  let stop = () => {};
-  const aborted = new Promise<never>((_, reject) => {
-    stop = () => reject(new DriveArchiveError("timeout"));
-    signal.addEventListener("abort", stop, { once: true });
-    if (signal.aborted) stop();
-  });
-  try {
-    return await Promise.race([promise, aborted]);
-  } finally {
-    signal.removeEventListener("abort", stop);
-  }
-}
-function acknowledged(response: Response, total: number): number {
-  const range = response.headers.get("Range");
-  if (range === null) return 0;
-  const parsed = /^bytes=0-(0|[1-9][0-9]{0,15})$/.exec(range);
-  const last = parsed?.[1] === undefined ? NaN : Number(parsed[1]);
-  if (!Number.isSafeInteger(last) || last < 0 || last >= total)
-    throw new DriveArchiveError("invalid_response");
-  return last + 1;
-}
 /** Fixed Drive protocol; caller persists the preallocated ID and encrypted session before bytes. */
 export function createDriveResumableTransport(
   http: DriveHttpTransport = (request) => fetch(request),
@@ -121,6 +74,7 @@ export function createDriveResumableTransport(
   const timeoutMs = options.timeoutMs ?? 10000;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000)
     throw new DriveArchiveError("invalid_input");
+  const context: DriveRequestContext = { http, timeoutMs, ...options };
   const metadata = createDriveArchiveTransport(http, timeoutMs, options);
   async function request(
     accessToken: string,
@@ -128,98 +82,32 @@ export function createDriveResumableTransport(
     init: RequestInit,
     total?: number,
   ) {
-    if (!/^[\x21-\x7e]{1,8192}$/.test(accessToken))
-      throw new DriveArchiveError("invalid_input");
-    const controller = new AbortController();
-    const deadline = Date.now() + timeoutMs;
-    const cancel = () => controller.abort();
-    options.signal?.addEventListener("abort", cancel, { once: true });
-    if (options.signal?.aborted) controller.abort();
-    const timer = setTimeout(cancel, timeoutMs);
-    let response: Response | undefined;
-    try {
-      if (controller.signal.aborted) throw new DriveArchiveError("timeout");
-      if (options.authorize)
-        await abortable(options.authorize(), controller.signal);
-      if (controller.signal.aborted || Date.now() >= deadline)
-        throw new DriveArchiveError("timeout");
-      response = await abortable<Response>(
-        http(
-          new Request(url, {
-            ...init,
-            headers: {
-              ...init.headers,
-              Authorization: `Bearer ${accessToken}`,
-              Accept: "application/json",
-            },
-            redirect: "manual",
-            signal: controller.signal,
-          }),
-        ).then((settled) => {
-          if (controller.signal.aborted && settled.body)
-            void settled.body.cancel().catch(() => undefined);
-          return settled;
-        }),
-        controller.signal,
-      );
-      if (
-        response.redirected ||
-        (response.status >= 300 &&
-          response.status < 400 &&
-          (total === undefined || response.status !== 308)) ||
-        (response.status === 308 && response.headers.has("Location"))
-      )
-        throw new DriveArchiveError("invalid_response");
-      if (response.status === 401)
-        throw new DriveArchiveError("reconnect_required");
-      if (response.status === 429) throw new DriveArchiveError("rate_limited");
-      if (response.status >= 500) throw new DriveArchiveError("unavailable");
-      if ([200, 201, 308, 404, 409].includes(response.status))
-        return {
-          status: response.status,
-          location: response.headers.get("Location"),
-          uploadedBytes:
-            response.status === 308 ? acknowledged(response, total ?? 0) : 0,
-        };
-      const body = await readDriveJson(response, controller.signal, deadline);
-      const reasons = z
-        .object({
-          error: z.object({
-            errors: z.array(z.object({ reason: z.string().max(128) })).max(10),
-          }),
-        })
-        .safeParse(body);
-      const values = reasons.success
-        ? reasons.data.error.errors.map((entry) => entry.reason)
-        : [];
-      if (values.includes("storageQuotaExceeded"))
-        throw new DriveArchiveError("quota_exceeded");
-      if (
-        values.includes("rateLimitExceeded") ||
-        values.includes("userRateLimitExceeded")
-      )
-        throw new DriveArchiveError("rate_limited");
-      throw new DriveArchiveError(
-        response.status === 403 ? "permission_denied" : "unavailable",
-      );
-    } catch (error) {
-      if (
-        error instanceof DriveArchiveError ||
-        error instanceof ArchiveServiceError
-      )
-        throw error;
-      throw new DriveArchiveError(
-        controller.signal.aborted ? "timeout" : "unavailable",
-      );
-    } finally {
-      clearTimeout(timer);
-      options.signal?.removeEventListener("abort", cancel);
-      controller.abort();
-      if (response?.body) void response.body.cancel().catch(() => undefined);
-    }
+    return driveRequest(
+      context,
+      accessToken,
+      url,
+      init,
+      async (response, signal, deadline) => {
+        if (response.status >= 500)
+          throw new DriveArchiveError("unavailable");
+        if ([200, 201, 308, 404, 409].includes(response.status)) {
+          return {
+            status: response.status,
+            location: response.headers.get("Location"),
+            uploadedBytes:
+              response.status === 308
+                ? acknowledgedBytes(response, total ?? 0)
+                : 0,
+          };
+        }
+        const body = await readDriveJson(response, signal, deadline);
+        throw mapDriveFailure(response.status, body);
+      },
+      { allowResumeStatus: total !== undefined },
+    );
   }
   function validate(plan: DriveOriginalPlan) {
-    if (!planSchema.safeParse(plan).success)
+    if (!driveOriginalPlanSchema.safeParse(plan).success)
       throw new DriveArchiveError("invalid_input");
   }
   async function complete(
@@ -304,11 +192,7 @@ export function createDriveResumableTransport(
       )
         throw new DriveArchiveError("invalid_input");
       const bytes = new Uint8Array(originalBytes);
-      const hash = [
-        ...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
-      ]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
+      const hash = await sha256Hex(bytes);
       if (hash !== plan.sha256) throw new DriveArchiveError("invalid_input");
       const end = Math.min(offset + DRIVE_RESUMABLE_CHUNK_BYTES, plan.size);
       try {

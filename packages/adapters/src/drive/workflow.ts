@@ -15,13 +15,17 @@ import type {
   ArchiveWorkflowPorts,
   ArchiveWorkflowResult,
 } from "../../../core/src/archive/workflow-types";
-import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
+import {
+  MAX_ARCHIVE_ORIGINAL_BYTES,
+  MAX_MULTIPART_ORIGINAL_BYTES,
+} from "../../../core/src/archive/workflow-types";
 import { createOriginalMailReader } from "../documents/original-mail";
 import {
   ContentError,
   createGmailContentReader,
 } from "../pipeline/gmail-content";
 import { createOutlookContentReader } from "../pipeline/outlook-content";
+import { sha256Hex } from "../security/helpers";
 import type { CredentialCipher, ProviderCredentials } from "../security/types";
 import { createCredentialVault } from "../security/vault";
 import { createArchiveFolderStore } from "./folders";
@@ -29,6 +33,7 @@ import { createArchiveObjectStore } from "./objects";
 import { createDriveCredentialRefresher } from "./refresh";
 import { createDriveResumableTransport } from "./resumable";
 import { createDriveResumableWorkflow } from "./resumable-workflow";
+import { scopesInclude } from "./scopes";
 import { createArchiveUploadSessionStore } from "./session-store";
 import { createDriveArchiveTransport } from "./transport";
 import { DriveArchiveError, type DriveHttpTransport } from "./types";
@@ -76,19 +81,6 @@ function usable(
     expiresAt: value.expiresAt,
   };
 }
-function granted(scopes: string, permission: string) {
-  try {
-    const value: unknown = JSON.parse(scopes);
-    return (
-      Array.isArray(value) &&
-      value.length <= 16 &&
-      value.every((scope) => typeof scope === "string") &&
-      value.includes(permission)
-    );
-  } catch {
-    return false;
-  }
-}
 function originalName(plan: ArchiveUploadPlan) {
   const extension = {
     "application/pdf": "pdf",
@@ -97,15 +89,6 @@ function originalName(plan: ArchiveUploadPlan) {
     "message/rfc822": "eml",
   }[plan.mimeType];
   return { ...plan, name: `receipt-${plan.fileId}.${extension}` };
-}
-async function hash(bytes: Uint8Array) {
-  return [
-    ...new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)),
-    ),
-  ]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 /** Operator composition supplies approved adapters; tokens never reach core or durable plans. */
 export function createDriveArchiveWorkflow(
@@ -175,13 +158,13 @@ export function createDriveArchiveWorkflow(
         const provider =
           current.mail_provider === "gmail" ? "gmail" : "outlook";
         if (
-          !granted(
+          !scopesInclude(
             current.mail_scopes,
             provider === "gmail"
               ? "https://www.googleapis.com/auth/gmail.readonly"
               : "https://graph.microsoft.com/Mail.Read",
           ) ||
-          !granted(
+          !scopesInclude(
             current.storage_scopes,
             "https://www.googleapis.com/auth/drive.file",
           )
@@ -292,7 +275,7 @@ export function createDriveArchiveWorkflow(
           inspectOriginal: (plan) =>
             transport.inspectOriginal(accessToken, originalName(plan)),
           uploadOriginal: (plan, bytes) =>
-            plan.size > 5 * 1024 * 1024
+            plan.size > MAX_MULTIPART_ORIGINAL_BYTES
               ? resumable.uploadOriginal(originalName(plan), bytes)
               : transport.uploadOriginal(
                   accessToken,
@@ -351,7 +334,7 @@ export function createDriveArchiveWorkflow(
             const sourceIdentity = {
               providerMessageId: content.input.providerMessageId,
               partKey: part.partId,
-              sha256: await hash(sourceBytes),
+              sha256: await sha256Hex(sourceBytes),
               mimeType,
               size: sourceBytes.length,
             };

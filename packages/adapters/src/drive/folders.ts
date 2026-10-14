@@ -8,6 +8,7 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
+import { archiveSafe as safe } from "./boundary";
 
 const identifier = z
   .string()
@@ -67,14 +68,6 @@ function plan(row: FolderRow): ArchiveFolderPlan {
     name: "Invoxim Receipts",
     state: row.state,
   };
-}
-async function safe<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof ArchiveServiceError) throw error;
-    throw new ArchiveServiceError("UNAVAILABLE");
-  }
 }
 export function createArchiveFolderStore(
   db: D1Database,

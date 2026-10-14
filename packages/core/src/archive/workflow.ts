@@ -6,9 +6,11 @@ import type {
   ArchiveWorkflowPorts,
   ArchiveWorkflowResult,
 } from "./workflow-types";
-import { MAX_ARCHIVE_ORIGINAL_BYTES } from "./workflow-types";
+import {
+  MAX_ARCHIVE_ORIGINAL_BYTES,
+  MAX_MULTIPART_ORIGINAL_BYTES,
+} from "./workflow-types";
 
-const multipartMaximumBytes = 5 * 1024 * 1024;
 class DeferredArchiveStage extends ArchiveServiceError {
   constructor() {
     super("UNAVAILABLE");
@@ -83,7 +85,7 @@ export function createArchiveWorkflow(ports: ArchiveWorkflowPorts) {
       )
         return { status: "unsupported" };
       const bytes = new Uint8Array(original.bytes);
-      resumableStage = bytes.length > multipartMaximumBytes;
+      resumableStage = bytes.length > MAX_MULTIPART_ORIGINAL_BYTES;
       const sha256 = await digest(bytes);
       const isBody = ["text/plain", "text/html"].includes(work.documentMime);
       if (
@@ -135,7 +137,7 @@ export function createArchiveWorkflow(ports: ArchiveWorkflowPorts) {
           throw new ArchiveServiceError("CONFLICT");
         folderLease = undefined;
         // Large originals stage folder creation separately to leave queue settlement headroom.
-        if (bytes.length > multipartMaximumBytes) {
+        if (bytes.length > MAX_MULTIPART_ORIGINAL_BYTES) {
           if (!(await ports.objects.release(context, work.lease)))
             throw new ArchiveServiceError("CONFLICT");
           return { status: "deferred" };

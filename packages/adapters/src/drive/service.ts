@@ -15,6 +15,7 @@ import {
 } from "@invoxim/core";
 import { z } from "zod";
 import { CredentialError } from "../security/cipher";
+import { pkceVerifier, stateHash } from "../security/helpers";
 import { createOAuthStateStore } from "../security/oauth-state";
 import { createCredentialVault } from "../security/vault";
 import {
@@ -56,15 +57,6 @@ const credentialsSchema = z.object({
   refreshToken: token.optional(),
   expiresAt: z.number().int().safe().positive(),
 });
-async function stateHash(state: string) {
-  return [
-    ...new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(state)),
-    ),
-  ]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
 async function boundary<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
@@ -118,17 +110,12 @@ export function createDriveService(
       .prepare("SELECT version FROM archive_settings WHERE user_id=?")
       .bind(session.tenant.userId)
       .first<{ version: number }>();
-    const pkceVerifier = btoa(
-      String.fromCharCode(...crypto.getRandomValues(new Uint8Array(64))),
-    )
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+    const verifier = pkceVerifier();
     const state = await states.create(session.tenant, {
       sessionId: session.sessionId,
       purpose: "storage",
       provider: "google",
-      pkceVerifier,
+      pkceVerifier: verifier,
     });
     const stored = await db
       .prepare(
@@ -150,7 +137,7 @@ export function createDriveService(
     const authorizationUrl = await provider.authorize({
       state: state.state,
       nonce: state.nonce,
-      verifier: pkceVerifier,
+      verifier,
       callback: configuration.callback,
     });
     await live(session);

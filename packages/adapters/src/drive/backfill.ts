@@ -11,6 +11,7 @@ import type {
   ArchiveBackfillStore,
   ArchiveBackfillView,
 } from "../../../core/src/archive/backfill-types";
+import { archiveSafe as safe } from "./boundary";
 import { archiveMailboxPermissionSql } from "./dispatch-store";
 import { archiveObjectAdmissionSql } from "./objects";
 
@@ -82,14 +83,6 @@ function view(row: RunRow): ArchiveBackfillView {
     });
   if (!parsed.success) throw new ArchiveServiceError("UNAVAILABLE");
   return parsed.data;
-}
-async function safe<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof ArchiveServiceError) throw error;
-    throw new ArchiveServiceError("UNAVAILABLE");
-  }
 }
 /** Explicit frozen metadata membership; no provider, inference or financial access. */
 export function createArchiveBackfillStore(

@@ -9,27 +9,16 @@ import type {
   ArchiveUploadSessionSnapshot,
   ArchiveUploadSessionStore,
 } from "../../../core/src/archive/workflow-session-types";
-import { MAX_ARCHIVE_ORIGINAL_BYTES } from "../../../core/src/archive/workflow-types";
 import { readEnvelopeVersion } from "../security/cipher";
+import { archiveSafe as safe } from "./boundary";
 import { archiveObjectAuthorization } from "./objects";
+import { archiveUploadPlanSchema } from "./plans";
 
 const maximumVersion = 2147483646;
 const localSessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 const integer = z.number().int().safe().nonnegative();
 const version = integer.min(1).max(maximumVersion);
-const planSchema = z.strictObject({
-  fileId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  parentId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-  workspaceMarker: z.string().regex(/^[A-Za-z0-9_-]{16,96}$/),
-  mimeType: z.enum([
-    "application/pdf",
-    "image/png",
-    "image/jpeg",
-    "message/rfc822",
-  ]),
-  size: integer.min(1).max(MAX_ARCHIVE_ORIGINAL_BYTES),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-});
+const planSchema = archiveUploadPlanSchema;
 const referenceSchema = z.strictObject({
   ciphertext: z.string().min(1).max(40000),
   keyVersion: version,
@@ -68,14 +57,6 @@ function snapshot(
     expiresAt: row.expires_at,
     uploadedBytes: row.uploaded_bytes,
   };
-}
-async function safe<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof ArchiveServiceError) throw error;
-    throw new ArchiveServiceError("UNAVAILABLE");
-  }
 }
 /** Durable metadata only; no plaintext session URL or original bytes are accepted. */
 export function createArchiveUploadSessionStore(
