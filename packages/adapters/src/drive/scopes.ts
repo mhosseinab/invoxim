@@ -38,8 +38,7 @@ export function grantedScopes(
   const normalized = parsed.map((scope) => aliases[scope] ?? scope);
   const actual = new Set(normalized);
   if (actual.size !== normalized.length) return false;
-  if (mode === "includes")
-    return expected.every((scope) => actual.has(scope));
+  if (mode === "includes") return expected.every((scope) => actual.has(scope));
   return (
     expected.every((scope) => actual.has(scope)) &&
     [...actual].every((scope) => expected.includes(scope))

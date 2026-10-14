@@ -160,7 +160,8 @@ export async function driveRequest<T>(
       controller.signal,
       timeoutError,
     );
-    const isResume = options.allowResumeStatus === true && response.status === 308;
+    const isResume =
+      options.allowResumeStatus === true && response.status === 308;
     if (
       response.redirected ||
       (response.status >= 300 &&

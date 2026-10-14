@@ -88,8 +88,7 @@ export function createDriveResumableTransport(
       url,
       init,
       async (response, signal, deadline) => {
-        if (response.status >= 500)
-          throw new DriveArchiveError("unavailable");
+        if (response.status >= 500) throw new DriveArchiveError("unavailable");
         if ([200, 201, 308, 404, 409].includes(response.status)) {
           return {
             status: response.status,
