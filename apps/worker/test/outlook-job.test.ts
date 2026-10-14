@@ -5,6 +5,7 @@ import { beforeAll, expect, it } from "vitest";
 import folderExclusionsMigration from "../../../packages/adapters/migrations/0004_outlook_folder_exclusions.sql?raw";
 import type { OutlookGraphDiscoveryPort } from "../../../packages/adapters/src/discovery/outlook";
 import { createOutlookJobRunner } from "../../../packages/adapters/src/discovery/outlook-job";
+import { sourceKey } from "../../../packages/adapters/src/hash";
 import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
@@ -38,15 +39,16 @@ async function claimed(
   name: string,
   mode: "live" | "recent" = "live",
   claimDatabase: D1Database = env.DB,
+  generation = 1,
 ): Promise<JobLease> {
   const current = await owner(`qa-outlook-job-${name}`, "outlook-mailbox", [
     ...OUTLOOK_AUTHORIZATION_SCOPES,
   ]);
   const userId = current.tenant.userId;
   await env.DB.prepare(
-    "UPDATE connections SET provider='outlook',scheduling_state='active',next_sync_at=NULL WHERE user_id=? AND id='outlook-mailbox'",
+    "UPDATE connections SET provider='outlook',scheduling_state='active',next_sync_at=NULL,generation=? WHERE user_id=? AND id='outlook-mailbox'",
   )
-    .bind(userId)
+    .bind(generation, userId)
     .run();
   await env.DB.prepare(
     "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,'outlook-mailbox',1,'synthetic','local',0,0,1)",
@@ -54,9 +56,15 @@ async function claimed(
     .bind(`pc-${name}`, userId)
     .run();
   await env.DB.prepare(
-    "INSERT INTO import_runs(id,user_id,connection_id,consent_id,connection_generation,frozen_start,frozen_cutoff,timezone,request_fingerprint,started_at) VALUES(?,?,'outlook-mailbox',?,1,'2025-10-12T00:00:00.000Z','2026-10-13T00:00:00.000Z','UTC',?,0)",
+    "INSERT INTO import_runs(id,user_id,connection_id,consent_id,connection_generation,frozen_start,frozen_cutoff,timezone,request_fingerprint,started_at) VALUES(?,?,'outlook-mailbox',?,?,'2025-10-12T00:00:00.000Z','2026-10-13T00:00:00.000Z','UTC',?,0)",
   )
-    .bind(`run-${name}`, userId, `pc-${name}`, `fingerprint-${name}`)
+    .bind(
+      `run-${name}`,
+      userId,
+      `pc-${name}`,
+      generation,
+      `fingerprint-${name}`,
+    )
     .run();
   if (mode === "live") {
     await env.DB.prepare(
@@ -87,12 +95,13 @@ async function claimed(
         .run();
   }
   await env.DB.prepare(
-    "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at) VALUES(?,?,'outlook-mailbox',?,1,?,?,?,'ready',0)",
+    "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at) VALUES(?,?,'outlook-mailbox',?,?,?,?,?,'ready',0)",
   )
     .bind(
       `j-${name}`,
       userId,
       `pc-${name}`,
+      generation,
       `ss-${name}`,
       mode === "live" ? "sync" : "discover",
       `j-${name}`,
@@ -1409,4 +1418,88 @@ it("OUTLOOK-05 an over-day or unusable Graph Retry-After pauses rate service wit
     ).toBe(0);
     expect(meter.executedStatements()).toBeLessThanOrEqual(40);
   }
+});
+
+it("INT-5/G1 rediscovery after reconnect cannot enqueue a second extraction job for an already-queued source", async () => {
+  const lease = await claimed("cross-generation", "live", env.DB, 2);
+  const folderId = "inbox-folder";
+  const messageId = "immutable-cross-generation";
+  const deltaLink = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=cross-generation`;
+  await seedLiveFolder(lease, "folder-cross-generation", folderId);
+  // Generation 1 already discovered, queued and extracted this message.
+  await env.DB.prepare(
+    "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,processing_status,generation,available) VALUES('source-cross-generation',?,?,?,?,'processed',1,1)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      messageId,
+      Date.parse("2026-10-12T12:00:00.000Z"),
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at) VALUES('extract-generation-1',?,?,?,1,'source-extract',?,'completed',0)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.consentId,
+      await sourceKey(lease.context.userId, lease.connectionId, messageId, 1),
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO discovery_source_jobs(user_id,job_id,source_message_id) VALUES(?,'extract-generation-1','source-cross-generation')",
+  )
+    .bind(lease.context.userId)
+    .run();
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => ({
+      ...provider(async () => {
+        throw new Error("Inventory is complete");
+      }),
+      deltaFolder: async () => ({
+        ids: [messageId],
+        folderRemovedIds: [],
+        deltaLink,
+      }),
+      metadata: async (id) => ({
+        id,
+        parentFolderId: folderId,
+        receivedAtMs: Date.parse("2026-10-12T12:00:00.000Z"),
+        available: true,
+        excluded: false,
+        candidate: "matched",
+      }),
+    }),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,history_cursor FROM sync_states WHERE user_id=? AND id='folder-cross-generation'",
+    )
+      .bind(lease.context.userId)
+      .first(),
+  ).toEqual({ stage: "idle", history_cursor: deltaLink });
+  expect(
+    await env.DB.prepare(
+      "SELECT j.id FROM jobs j JOIN discovery_source_jobs d ON d.user_id=j.user_id AND d.job_id=j.id WHERE j.user_id=? AND j.type='source-extract' AND d.source_message_id='source-cross-generation'",
+    )
+      .bind(lease.context.userId)
+      .all(),
+  ).toMatchObject({ results: [{ id: "extract-generation-1" }] });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND type='source-extract'",
+    )
+      .bind(lease.context.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
 });

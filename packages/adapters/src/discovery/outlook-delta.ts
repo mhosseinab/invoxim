@@ -7,6 +7,7 @@ import {
   validateOutlookContinuation,
   validateOutlookId,
 } from "./outlook-transport";
+import { initialSourceJobAbsentSql, initialSourceJobSql } from "./source-jobs";
 
 interface ParentState {
   id: string;
@@ -761,8 +762,9 @@ export function createOutlookDeltaRunner(
           item.id,
           lease.generation,
         );
+        // G1: one initial extraction job per source across generations (pages.ts parity).
         add(
-          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,'source-extract',?,'ready',?,? WHERE ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
+          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,'source-extract',?,'ready',?,? WHERE ${initialSourceJobAbsentSql(sourceId)} AND ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
           [
             crypto.randomUUID(),
             lease.context.userId,
@@ -772,16 +774,20 @@ export function createOutlookDeltaRunner(
             dedupeKey,
             now,
             parent.slice_key === "older" ? 1 : 0,
+            lease.context.userId,
+            ...sourceValues,
             ...childMarkerValues,
             ...leaseGuard.values,
           ],
         );
         add(
-          `INSERT INTO discovery_source_jobs(user_id,job_id,source_message_id) SELECT ?,(SELECT id FROM jobs WHERE user_id=? AND dedupe_key=?),${sourceId} WHERE ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,job_id) DO NOTHING`,
+          `INSERT INTO discovery_source_jobs(user_id,job_id,source_message_id) SELECT ?,${initialSourceJobSql(sourceId)},${sourceId} WHERE ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,job_id) DO NOTHING`,
           [
             lease.context.userId,
             lease.context.userId,
+            lease.connectionId,
             dedupeKey,
+            ...sourceValues,
             ...sourceValues,
             ...childMarkerValues,
             ...leaseGuard.values,

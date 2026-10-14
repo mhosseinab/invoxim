@@ -12,6 +12,7 @@ import { z } from "zod";
 import { sourceKey } from "../hash";
 import { activeProfileSql } from "../pipeline/repository-guards";
 import type { DiscoveryServiceOptions } from "./service";
+import { initialSourceJobAbsentSql, initialSourceJobSql } from "./source-jobs";
 
 interface State {
   id: string;
@@ -478,7 +479,7 @@ export function createDiscoveryPages(
         "(SELECT id FROM source_messages WHERE user_id=? AND connection_id=? AND provider_message_id=?)";
       const sourceValues = [lease.context.userId, lease.connectionId, item.id];
       add(
-        `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,'source-extract',?,'ready',?,? WHERE NOT EXISTS(SELECT 1 FROM jobs initial JOIN discovery_source_jobs original ON original.user_id=initial.user_id AND original.job_id=initial.id WHERE initial.user_id=? AND original.source_message_id=${sourceId} AND initial.type='source-extract' AND substr(initial.dedupe_key,1,7)='source:') AND ${check.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
+        `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,'source-extract',?,'ready',?,? WHERE ${initialSourceJobAbsentSql(sourceId)} AND ${check.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
         [
           crypto.randomUUID(),
           lease.context.userId,
@@ -493,7 +494,7 @@ export function createDiscoveryPages(
         ],
       );
       add(
-        `INSERT INTO discovery_source_jobs(user_id,job_id,source_message_id) SELECT ?,(SELECT initial.id FROM jobs initial WHERE initial.user_id=? AND initial.connection_id=? AND initial.type='source-extract' AND (initial.dedupe_key=? OR EXISTS(SELECT 1 FROM discovery_source_jobs original WHERE original.user_id=initial.user_id AND original.job_id=initial.id AND original.source_message_id=${sourceId})) ORDER BY initial.connection_generation,initial.id LIMIT 1),${sourceId} WHERE ${check.sql} ON CONFLICT(user_id,job_id) DO NOTHING`,
+        `INSERT INTO discovery_source_jobs(user_id,job_id,source_message_id) SELECT ?,${initialSourceJobSql(sourceId)},${sourceId} WHERE ${check.sql} ON CONFLICT(user_id,job_id) DO NOTHING`,
         [
           lease.context.userId,
           lease.context.userId,
