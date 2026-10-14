@@ -439,7 +439,9 @@ export async function runClefEvaluation(options = {}) {
       }
       results.push({
         ...row,
-        outcome: clefOutcome(routeClefDocument(answer, classificationConfiguration)),
+        outcome: clefOutcome(
+          routeClefDocument(answer, classificationConfiguration),
+        ),
         receiptProbability: answer.answers.receipt.noul,
         documentType: answer.answers.documentType,
         category: answer.answers.category.choice,
