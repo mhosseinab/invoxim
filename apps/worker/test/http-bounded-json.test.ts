@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import {
   BoundedJsonError,
-  MAX_JSON_RESPONSE_BYTES,
   boundedJsonResponse,
+  MAX_JSON_RESPONSE_BYTES,
   parseRetryAfter,
   readBoundedJson,
   readJsonRequestBody,
@@ -22,8 +22,11 @@ function stream(
   return new ReadableStream<Uint8Array>({
     pull(controller) {
       onPull?.(++pulls);
-      if (index < chunks.length) controller.enqueue(chunks[index++]!);
-      else controller.close();
+      if (index < chunks.length) {
+        const chunk = chunks[index++];
+        if (!chunk) throw new Error("Synthetic stream chunk unavailable");
+        controller.enqueue(chunk);
+      } else controller.close();
     },
   });
 }
@@ -67,9 +70,12 @@ it("2xx response bodies still parse", async () => {
 // 0 and Number("garbage") is NaN, neither of which is > cap).
 it("declared content-length above the cap rejects without streaming the body", async () => {
   let pulled = 0;
-  const response = new Response(stream([bytes('{"ok":true}')], () => pulled++), {
-    headers: { "content-length": "999999" },
-  });
+  const response = new Response(
+    stream([bytes('{"ok":true}')], () => pulled++),
+    {
+      headers: { "content-length": "999999" },
+    },
+  );
   // Response construction may pull once; the reader must not consume more.
   const pullsAfterConstruct = pulled;
   await expect(readJsonResponseBody(response, 1024)).rejects.toMatchObject({
@@ -208,9 +214,9 @@ it("abort and deadline failures reject as aborted", async () => {
 });
 
 it("readBoundedJson is the shared primitive for request and response reads", async () => {
-  await expect(
-    readBoundedJson(jsonStream('{"a":1}'), 1024),
-  ).resolves.toEqual({ a: 1 });
+  await expect(readBoundedJson(jsonStream('{"a":1}'), 1024)).resolves.toEqual({
+    a: 1,
+  });
   await expect(readBoundedJson(null, 1024)).rejects.toMatchObject({
     reason: "body-missing",
   });

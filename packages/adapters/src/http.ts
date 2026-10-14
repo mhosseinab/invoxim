@@ -72,7 +72,10 @@ export async function readBoundedJson(
           throw new BoundedJsonError("too-large");
         continue;
       }
-      if (++dataChunks > MAX_DATA_CHUNKS || item.value.byteLength > maxBytes - size)
+      if (
+        ++dataChunks > MAX_DATA_CHUNKS ||
+        item.value.byteLength > maxBytes - size
+      )
         throw new BoundedJsonError("too-large");
       bytes.set(item.value, size);
       size += item.value.byteLength;
@@ -99,10 +102,7 @@ export async function readBoundedJson(
   }
 }
 
-function declaredOverCap(
-  headers: Headers,
-  maxBytes: number,
-): boolean {
+function declaredOverCap(headers: Headers, maxBytes: number): boolean {
   // Missing headers read as 0 and malformed ones as NaN; neither is > cap, so
   // those fall through to the streamed byte limit (auth/http, ai/http).
   return Number(headers.get("content-length") ?? 0) > maxBytes;
@@ -187,11 +187,10 @@ export function parseRetryAfter(
   if (value.length > MAX_RETRY_AFTER_CHARS) return RETRY_AFTER_PAUSE_SENTINEL;
   const numeric = /^\d+$/.test(value);
   if (!numeric && !HTTP_DATE.test(value)) return undefined;
-  const milliseconds = numeric
-    ? Number(value) * 1000
-    : Date.parse(value) - now;
+  const milliseconds = numeric ? Number(value) * 1000 : Date.parse(value) - now;
   if (!numeric && !Number.isFinite(milliseconds)) return undefined;
-  return Number.isSafeInteger(milliseconds) && milliseconds <= MAX_RETRY_AFTER_MS
+  return Number.isSafeInteger(milliseconds) &&
+    milliseconds <= MAX_RETRY_AFTER_MS
     ? Math.max(MIN_RETRY_AFTER_MS, milliseconds)
     : RETRY_AFTER_PAUSE_SENTINEL;
 }

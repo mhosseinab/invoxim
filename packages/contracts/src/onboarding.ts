@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { onboardingViewSchema } from "./designs";
 import {
-  MINOR_BOUND,
   dateSchema as date,
   generationSchema as generation,
   hasControlCharacters,
+  MINOR_BOUND,
   supportedCurrency,
   validTimezone,
 } from "./primitives";

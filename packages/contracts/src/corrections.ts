@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { extractionSchema } from "./designs";
 import {
-  MINOR_BOUND,
   dateSchema as date,
   hasControlCharacters,
+  MINOR_BOUND,
   supportedCurrency,
 } from "./primitives";
 

@@ -8,6 +8,7 @@ import type {
   SecretPayloads,
   SecretPurpose,
 } from "./types";
+
 export { decodeBase64url, encodeBase64url };
 export class CredentialError extends Error {
   constructor(
