@@ -63,3 +63,4 @@ spikes/
 
 # Private production bundle inventories
 .production/
+.worktrees/
