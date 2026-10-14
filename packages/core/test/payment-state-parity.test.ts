@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { PersistedAiRecord } from "../src/ai/types";
 import {
-  type CorrectionEventFact,
-  type CorrectionReviewFact,
-  hasCashProof,
-  restorationEligibility,
-} from "../src/corrections/validation";
-import {
   type CorrectionSettlement,
   type CorrectionSettlementEvent,
   evaluateCorrectionSettlement,
   settlementEvents,
 } from "../src/corrections/settlement";
+import {
+  type CorrectionEventFact,
+  type CorrectionReviewFact,
+  hasCashProof,
+  restorationEligibility,
+} from "../src/corrections/validation";
 import { planLedgerIngestion } from "../src/ledger/plan";
 import type {
   LedgerEvent,
