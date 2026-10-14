@@ -1,5 +1,6 @@
 import { createPagesEventContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+import { encodeBase64url } from "@invoxim/adapters";
 import { expect, it } from "vitest";
 import { onRequest } from "../../web/functions/api/[[path]]";
 
@@ -55,4 +56,47 @@ it("T29 public login capability follows validated server configuration without e
     AUTH_ALLOWED_EMAILS: "invalid",
   });
   expect(await disabled.json()).toMatchObject({ loginEnabled: false });
+});
+
+it("WRK-2 public feature flags follow each route's configuration when enabled", async () => {
+  const { default: worker } = await import("../src/index");
+  const bindings = {
+    DB: env.DB,
+    AUTH_ENABLED: "true",
+    AUTH_ORIGIN: "https://synthetic.example",
+    AUTH_SECRET: "synthetic-auth-secret-configuration-32",
+    AUTH_GOOGLE_CLIENT_ID: "synthetic-google-client",
+    AUTH_GOOGLE_CLIENT_SECRET: "synthetic-private-client-secret",
+    AUTH_ALLOWED_EMAILS: '["synthetic@example.invalid"]',
+    DRIVE_ENABLED: "true",
+    DRIVE_CLIENT_ID: "synthetic-drive.apps.googleusercontent.com",
+    DRIVE_CLIENT_SECRET: "synthetic-drive-secret",
+    CREDENTIAL_KEYRING: JSON.stringify({
+      activeVersion: 1,
+      keys: { 1: encodeBase64url(new Uint8Array(32).fill(6)) },
+    }),
+    RECURRING_ENABLED: "true",
+    TAGS_ENABLED: "true",
+  };
+  const request = new Request("https://synthetic.example/api/public-config");
+  const enabled = await worker.request(request, undefined, bindings);
+  expect(await enabled.json()).toMatchObject({
+    features: { driveArchive: true, recurring: true, useTags: true },
+  });
+  const off = await worker.request(request, undefined, {
+    DB: env.DB,
+    AUTH_ENABLED: "true",
+    AUTH_ORIGIN: "https://synthetic.example",
+    AUTH_SECRET: "synthetic-auth-secret-configuration-32",
+    AUTH_GOOGLE_CLIENT_ID: "synthetic-google-client",
+    AUTH_GOOGLE_CLIENT_SECRET: "synthetic-private-client-secret",
+    AUTH_ALLOWED_EMAILS: '["synthetic@example.invalid"]',
+  });
+  expect(await off.json()).toMatchObject({
+    features: {
+      driveArchive: false,
+      recurring: false,
+      useTags: false,
+    },
+  });
 });
