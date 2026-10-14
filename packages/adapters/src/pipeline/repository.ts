@@ -29,6 +29,8 @@ import {
   LIVE_FROM,
   PipelinePersistenceError,
   type Predicate,
+  processingSelectionSchema,
+  processingSelectionSql,
 } from "./repository-guards";
 
 export interface CachedExtractionCompatibility {
@@ -465,7 +467,7 @@ export function createPipelineRepository(
   const clock = options.clock ?? Date.now;
   const acceptedDigests = new Map<string, string>();
   const compatibleCaches = new Map<string, CachedExtractionCompatibility>();
-  const selectionProjection = `json_object('mode',a.mode,'settingsRevision',a.revision,'providerId',a.provider_id,'modelId',a.model_id,'configVersion',a.config_version,'policyVersion',a.consent_version,'acceptedDigest',pc.accepted_configuration_digest)`;
+  const selectionProjection = processingSelectionSql();
   function leaseKey(lease: JobLease) {
     return JSON.stringify([
       lease.context.userId,
@@ -477,20 +479,8 @@ export function createPipelineRepository(
   async function acceptSelection(lease: JobLease, encoded: string | undefined) {
     acceptedDigests.delete(leaseKey(lease));
     if (!encoded) return false;
-    const selection = z
-      .strictObject({
-        mode: z.enum(["hosted", "byok"]).nullable(),
-        settingsRevision: z.number().int().positive(),
-        providerId: z.string().nullable(),
-        modelId: z.string().nullable(),
-        configVersion: z.string().nullable(),
-        policyVersion: z.number().int().nonnegative(),
-        acceptedDigest: z
-          .string()
-          .regex(/^[a-f0-9]{64}$/)
-          .nullable(),
-      })
-      .parse(safeJson(encoded));
+    // P1: one selection schema shared with jobs/store and onboarding-recovery.
+    const selection = processingSelectionSchema.parse(safeJson(encoded));
     const expected = await options.processingDigest(selection);
     if (!expected || expected !== selection.acceptedDigest) return false;
     acceptedDigests.set(leaseKey(lease), expected);

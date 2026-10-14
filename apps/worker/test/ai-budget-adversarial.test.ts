@@ -103,7 +103,7 @@ async function owner(name: string, mode: "hosted" | "byok" = "hosted") {
     .run();
   await db
     .prepare(
-      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state) VALUES(?,?,'mailbox','gmail',?,?,'active')",
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,credential_ciphertext,credential_key_version) VALUES(?,?,'mailbox','gmail',?,?,'active','synthetic-envelope',1)",
     )
     .bind(
       `conn-${name}`,

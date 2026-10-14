@@ -52,7 +52,7 @@ beforeAll(async () => {
       .run();
     await db
       .prepare(
-        "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address) VALUES(?,?,'mailbox','gmail',?,?)",
+        "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,credential_ciphertext,credential_key_version) VALUES(?,?,'mailbox','gmail',?,?,'synthetic-envelope',1)",
       )
       .bind(
         `connection-${id}`,
@@ -134,7 +134,7 @@ async function tenant(name: string) {
     .run();
   await db
     .prepare(
-      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state) VALUES(?,?,'mailbox','gmail',?,?,'active')",
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,credential_ciphertext,credential_key_version) VALUES(?,?,'mailbox','gmail',?,?,'active','synthetic-envelope',1)",
     )
     .bind(
       `conn-${name}`,

@@ -1,4 +1,5 @@
 import type { JobLease } from "@invoxim/core";
+import { z } from "zod";
 import { sourceNotDiscardedSql } from "../corrections/source-decision";
 export class PipelinePersistenceError extends Error {
   constructor(
@@ -16,6 +17,44 @@ export interface Predicate {
   sql: string;
   values: (string | number | null)[];
 }
+/**
+ * P2: the single connection/consent "live" rule. Every job path must require
+ * an active mailbox connection whose credentials are present and a
+ * non-revoked background consent. Callers append `accepted_at<=?` with their
+ * own bind, because some sites share that placeholder with other predicates.
+ */
+export function connectionConsentLiveSql(
+  aliases: { connection?: string; profile?: string; consent?: string } = {},
+): string {
+  const c = aliases.connection ?? "c";
+  const p = aliases.profile ?? "p";
+  const pc = aliases.consent ?? "pc";
+  return `${c}.kind='mailbox' AND ${c}.state='connected' AND ${c}.scheduling_state='active' AND ${c}.credential_ciphertext IS NOT NULL AND ${p}.status='active' AND ${pc}.revoked_at IS NULL AND ${pc}.background_authorized=1`;
+}
+/**
+ * P1: the one consent-review selection shape (SQL `json_object` projection).
+ * Optional columns are nullable because the projection emits SQL NULL.
+ */
+export const processingSelectionSchema = z.strictObject({
+  mode: z.enum(["hosted", "byok"]).nullable(),
+  settingsRevision: z.number().int().positive(),
+  providerId: z.string().min(1).max(120).nullable(),
+  modelId: z.string().min(1).max(120).nullable(),
+  configVersion: z.string().min(1).max(120).nullable(),
+  policyVersion: z.number().int().nonnegative(),
+  acceptedDigest: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .nullable(),
+});
+/** P1: one projection for the owned processing-selection JSON. */
+export function processingSelectionSql(
+  aliases: { ai?: string; consent?: string } = {},
+): string {
+  const a = aliases.ai ?? "a";
+  const pc = aliases.consent ?? "pc";
+  return `json_object('mode',${a}.mode,'settingsRevision',${a}.revision,'providerId',${a}.provider_id,'modelId',${a}.model_id,'configVersion',${a}.config_version,'policyVersion',${a}.consent_version,'acceptedDigest',${pc}.accepted_configuration_digest)`;
+}
 export const LIVE_FROM = `jobs j JOIN profiles p ON p.user_id=j.user_id JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id JOIN ai_settings a ON a.user_id=j.user_id JOIN discovery_source_jobs dj ON dj.user_id=j.user_id AND dj.job_id=j.id JOIN source_messages sm ON sm.user_id=dj.user_id AND sm.id=dj.source_message_id`;
 export function liveWhere(lease: JobLease, now: number): Predicate {
   if (
@@ -30,7 +69,7 @@ export function liveWhere(lease: JobLease, now: number): Predicate {
   )
     throw new PipelinePersistenceError("INVALID_PIPELINE");
   return {
-    sql: `(j.user_id=? AND j.id=? AND j.status='leased' AND j.lease_id=?) AND (j.fence=? AND j.lease_expires_at>? AND j.connection_id=? AND j.connection_generation=?) AND (j.consent_id=? AND j.type IN ('source-extract','reprocess') AND p.status='active') AND (c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND c.credential_ciphertext IS NOT NULL) AND (pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version) AND (a.status='active' AND a.mode IS NOT NULL AND a.provider_id IS NOT NULL AND a.model_id IS NOT NULL AND a.config_version IS NOT NULL AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL)) AND (sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1) AND ${sourceNotDiscardedSql("sm")}`,
+    sql: `(j.user_id=? AND j.id=? AND j.status='leased' AND j.lease_id=?) AND (j.fence=? AND j.lease_expires_at>? AND j.connection_id=? AND j.connection_generation=?) AND (j.consent_id=? AND j.type IN ('source-extract','reprocess') AND c.generation=j.connection_generation) AND (${connectionConsentLiveSql()} AND pc.accepted_at<=?) AND (pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version) AND (a.status='active' AND a.mode IS NOT NULL AND a.provider_id IS NOT NULL AND a.model_id IS NOT NULL AND a.config_version IS NOT NULL AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL)) AND (sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1) AND ${sourceNotDiscardedSql("sm")}`,
     values: [
       lease.context.userId,
       lease.jobId,

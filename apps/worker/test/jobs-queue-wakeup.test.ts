@@ -41,7 +41,7 @@ async function seed() {
     .bind(user)
     .run();
   await env.DB.prepare(
-    "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,next_sync_at) VALUES(?,?,'mailbox','gmail',?,?,'active',9999999999999)",
+    "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scheduling_state,next_sync_at,credential_ciphertext,credential_key_version) VALUES(?,?,'mailbox','gmail',?,?,'active',9999999999999,'synthetic-envelope',1)",
   )
     .bind(`connection-${user}`, user, user, `${user}@example.invalid`)
     .run();
