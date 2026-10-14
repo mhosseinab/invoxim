@@ -172,6 +172,13 @@ export function ReviewImport({
       draft.endDate !== disclosure.endDate ||
       draft.timezone !== disclosure.timezone ||
       draft.reportingCurrency !== disclosure.reportingCurrency);
+  const startBlocked =
+    !disclosure ||
+    busy ||
+    stale ||
+    dirty ||
+    attempt !== null ||
+    !disclosure.canStartImport;
   async function sendStart(current: Attempt) {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -237,16 +244,7 @@ export function ReviewImport({
     }
   }
   function start() {
-    if (
-      !disclosure ||
-      !accepted ||
-      stale ||
-      dirty ||
-      busy ||
-      attempt ||
-      !disclosure.canStartImport
-    )
-      return;
+    if (startBlocked || !accepted) return;
     const result = onboardingStartRequestSchema.safeParse({
       connectionId: disclosure.connectionId,
       expectedConnectionGeneration: disclosure.connectionGeneration,
@@ -549,13 +547,7 @@ export function ReviewImport({
             <input
               type="checkbox"
               checked={accepted}
-              disabled={
-                busy ||
-                attempt !== null ||
-                stale ||
-                dirty ||
-                !disclosure.canStartImport
-              }
+              disabled={startBlocked}
               onChange={(event) => setAccepted(event.target.checked)}
             />
             {text.authorization}
@@ -564,14 +556,7 @@ export function ReviewImport({
             <button
               className="primary"
               type="button"
-              disabled={
-                !accepted ||
-                busy ||
-                stale ||
-                dirty ||
-                !!attempt ||
-                !disclosure.canStartImport
-              }
+              disabled={startBlocked || !accepted}
               onClick={start}
             >
               {data.progress && data.progress.connectionId === connectionId

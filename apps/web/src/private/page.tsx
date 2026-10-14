@@ -15,7 +15,7 @@ import {
   purchaseReviewsSchema,
   purchaseSummarySchema,
 } from "@invoxim/contracts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BrandMark, Icon } from "../icons";
 import {
   identityFailure,
@@ -32,6 +32,7 @@ import {
 } from "./copy";
 import { Corrections } from "./corrections";
 import { Reviews } from "./reviews";
+import { useFocusRefresh } from "./use-focus-refresh";
 import "./purchases.css";
 import "./workspace.css";
 
@@ -182,10 +183,12 @@ function Detail({
   detail,
   onReload,
   expectedUserId,
+  reloadKey,
 }: {
   detail: PurchaseDetail;
   onReload: () => void;
   expectedUserId: string;
+  reloadKey: number;
 }) {
   const purchase = detail.purchase;
   return (
@@ -346,6 +349,7 @@ function Detail({
         detail={detail}
         onReload={onReload}
         expectedUserId={expectedUserId}
+        reloadKey={reloadKey}
       />
     </div>
   );
@@ -451,27 +455,11 @@ export function PrivatePage({ displayName }: { displayName: string }) {
       controller.abort();
     };
   }, [revision, detailId, connectionPage, attentionPage]);
-  function refresh() {
-    setState({ kind: "loading" });
+  // Background refresh: keep the current view (and any open editor) until data lands.
+  const refresh = useCallback(() => {
     setRevision((value) => value + 1);
-  }
-  useEffect(() => {
-    function revalidate() {
-      setState({ kind: "loading" });
-      setRevision((value) => value + 1);
-    }
-    function visibility() {
-      if (document.visibilityState === "visible") revalidate();
-    }
-    window.addEventListener("focus", revalidate);
-    window.addEventListener("pageshow", revalidate);
-    document.addEventListener("visibilitychange", visibility);
-    return () => {
-      window.removeEventListener("focus", revalidate);
-      window.removeEventListener("pageshow", revalidate);
-      document.removeEventListener("visibilitychange", visibility);
-    };
   }, []);
+  useFocusRefresh(refresh);
   return (
     <div
       className={`app-frame private-app workspace-page${!detailId && !connectionPage && !attentionPage ? " purchase-list-page" : ""}`}
@@ -581,9 +569,11 @@ export function PrivatePage({ displayName }: { displayName: string }) {
               />
             ) : state.data.detail ? (
               <Detail
+                key={state.data.profile.user.id}
                 detail={state.data.detail}
                 onReload={refresh}
                 expectedUserId={state.data.profile.user.id}
+                reloadKey={revision}
               />
             ) : connectionPage ? (
               <>
