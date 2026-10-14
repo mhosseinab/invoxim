@@ -16,7 +16,7 @@ Updated 13 October 2026. **Not ready to deploy or launch.** This is an evolving 
 - [ ] Provision approved staging Pages/Worker/D1/Queue resources in the chosen account and plan. Use separate bindings/secrets from production; no R2 or operator original-file storage.
 - [ ] Configure Pages same-origin `/api/*` service binding to the modular Worker; confirm actual cookie, origin, redirect, cache and security-header behavior.
 - [ ] Configure a Queue consumer batch size of one for the shared invocation D1 budget, plus the reviewed dead-letter/retry policy and Cron triggers from the implemented runtime/runbooks; do not invent schedules or resource IDs.
-- [ ] Install server-only auth/mail/provider secrets and the validated encryption keyring through secret storage. No secret in public config, Vite variables, source control or logs.
+- [ ] Install server-only auth/mail/provider secrets (including login allowlist `AUTH_ALLOWED_EMAILS`) and the validated encryption keyring through secret storage. No secret in public config, Vite variables, source control or logs.
 - [ ] Apply reviewed migrations only after backup/rollback/recovery planning; record command, target resource and actual result.
 - [ ] Start with allowlisted identities and disabled capabilities. Enable each integration only after operator configuration, destination/disclosure/consent/readiness and live smoke evidence are complete.
 - [ ] Verify Google login versus mailbox/Drive identity separation, account mismatch/refusal/replay behavior and callback-without-content/scan.
@@ -113,7 +113,7 @@ Latest remote check: migrations list exited0 with no pending migrations; journal
 
 Verified runtime release on 2026-10-13: Worker `583847d3-f076-4dff-93fc-5331f5728682` and Pages `67b48d01` deployed after `pnpm verify` passed. Production sign-in initiation reaches Google; full account callback and authenticated processing smoke remain separate checks. See `evidence/implementation/release-runtime-20261013.md`. The subsequent AI registry/budget deployment is recorded above; background processing and live provider smoke remain pending.
 
-AI configuration now loads directly from the server JSON preset. Keep `AI_HOSTED_KEY` and `CREDENTIAL_KEYRING` in Wrangler secrets; no generator or copied provider/budget variables are required. Before deploying removal of legacy copies, compare remote plain-variable names and retain unrelated OAuth/runtime settings.
+AI configuration now loads directly from the server JSON preset. Keep `AI_HOSTED_KEY` and `CREDENTIAL_KEYRING` in Wrangler secrets; no generator or copied provider/budget variables are required. Before deploying removal of legacy copies, compare remote plain-variable names and retain unrelated OAuth/runtime settings. `AUTH_ALLOWED_EMAILS` is likewise a Wrangler secret, not a `wrangler.jsonc` var; set it with `pnpm --filter @invoxim/worker exec wrangler secret put AUTH_ALLOWED_EMAILS` before relying on login. The previously committed allowlist value remains in git history and was not rewritten.
 
 Final file-based AI deployment: Worker `f16337fc-4321-4f39-b0cd-6a36907a5080` serves 100% after full verification (1,214 native integration tests and 82 browser tests). The copied AI variables are removed and required secret names retained. Authenticated endpoint/provider smoke and background-import activation remain open; see `evidence/implementation/ai-runtime-activation-20261013.md`.
 
