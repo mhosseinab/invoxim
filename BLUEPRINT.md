@@ -1,6 +1,8 @@
 # Inbox Ledger: implementation blueprint
 
-Version 1.1 • October 11, 2026 • Planning package, not implemented software
+Version 1.1 • October 11, 2026 • Product scope and architecture control
+
+This repository contains the application implementation. This document remains the product-scope authority; it is not a claim that every milestone below is complete. Implementation status is in `.agents/backlog.json`.
 
 ## 1. Product definition
 
@@ -79,7 +81,7 @@ Browser
 
 Pages service bindings support this API proxy pattern. [S03] Use one Worker deployment initially, not a service per box. Domain/application logic is independent of providers and Cloudflare. Runtime functions are separate entry points into the same modules, not independent microservices.
 
-Proposed monorepo:
+Monorepo:
 
 ```text
 apps/web/                 React SPA + thin Pages /api function
@@ -172,4 +174,4 @@ The detailed commands, coverage thresholds, model-evaluation gates, and reviewer
 
 OAuth client credentials, provider approvals, a model’s capabilities, pricing, legal compliance, installed CLI versions, test outcomes, exact serverless capacity, real user consent, or confidence in undocumented financial evidence. Unknowns become a blocked task or a Needs Review item, not a confident guess.
 
-The next action is T00, followed by the smallest tested vertical slice. Apply the v1.1 presentation/onboarding tasks T27–T30 according to dependencies, not numeric order. `CHANGELOG.md` lists the revision; `docs/13-presentation-and-onboarding.md` controls detailed UX and `docs/14-market-validation.md` records evidence versus hypotheses. There is no need for another product-scope interview.
+Continue from `.agents/backlog.json` in dependency order, not numeric order, and apply the v1.1 presentation/onboarding tasks T27–T30 with their dependent implementation work. `CHANGELOG.md` lists specification revisions; `docs/13-presentation-and-onboarding.md` controls detailed UX and `docs/14-market-validation.md` records evidence versus hypotheses. There is no need for another product-scope interview.

@@ -1,6 +1,10 @@
 # Native coding-agent adapters
 
-Canonical content lives in `.agents/rules/`, `.agents/skills/` and `.agents/subagents/`. Root `AGENTS.md` sets the common contract. Native adapter files are deliberately thin so the instructions do not drift in three independent copies.
+Canonical content lives in `.agents/rules/`, `.agents/skills/` and `.agents/subagents/`. Root `AGENTS.md` sets the common contract. `.agents/skill-registry.json` is the role/skill catalog (names, descriptions, skill assignments).
+
+## Single source of truth for agent definitions
+
+Do not copy role instructions into native adapters. The only role bodies are `.agents/subagents/<role>.md`. Native adapter files are format shims: native metadata (name, description, tools/mode/sandbox) plus a pointer to the canonical role and registry. When a role's mission, write boundary, or return contract changes, edit `.agents/subagents/<role>.md` and the matching `skill-registry.json` description only. Keep the short description string identical in `skill-registry.json` and each native adapter; do not restate the role body in the adapter.
 
 ## Codex
 
