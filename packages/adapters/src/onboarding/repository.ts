@@ -12,6 +12,7 @@ import {
   RECEIPT_CLASSIFIER_NOTICE,
 } from "./configuration";
 import { createOnboardingReads, reviewRange, scopeReady } from "./read";
+import { canStartImport, inferenceReady } from "./read";
 import { commitOnboardingStart } from "./start";
 import { signReview, verifyReview } from "./token";
 import { readOnboardingView } from "./view";
@@ -47,33 +48,24 @@ export function createOnboardingRepository(
               !(options.mailboxProviders ?? ["gmail"]).includes(
                 connection.provider,
               ) ||
-              !selected.keyReady ||
-              !selected.noticesReady ||
+              !inferenceReady(selected) ||
               !connection.credential_ciphertext
             ? "configuration"
-            : allowance.cooldownActive
-              ? "rate-limit"
-              : allowance.dailyDocumentsRemaining <= 0 ||
-                  allowance.monthlyDocumentsRemaining <= 0 ||
-                  allowance.dailyUnitsRemaining <= 0 ||
-                  allowance.monthlyUnitsRemaining <= 0 ||
-                  (selected.mode === "hosted" &&
-                    !allowance.hostedFundingAvailable)
-                ? "budget"
-                : "ready";
+            : canStartImport(selected, allowance)
+              ? "ready"
+              : allowance.cooldownActive
+                ? "rate-limit"
+                : "budget";
     return { profile, connection, selected, allowance, availability } as const;
   }
   return {
     view: (session, connectionId) =>
-      readOnboardingView(
-        db,
-        reads,
-        session,
-        options.ready,
-        options.mailboxLimit,
+      readOnboardingView(db, reads, session, {
+        ready: options.ready,
+        mailboxLimit: options.mailboxLimit,
         connectionId,
-        options.mailboxProviders ?? ["gmail"],
-      ),
+        mailboxProviders: options.mailboxProviders ?? ["gmail"],
+      }),
     async disclosure(session, query) {
       const { profile, connection, selected, allowance, availability } =
           await context(session, query.connectionId),
@@ -152,7 +144,7 @@ export function createOnboardingRepository(
             selected.destination.noticeRefs.includes(notice.id),
           ),
           noticeRefs: selected.destination.noticeRefs,
-          ready: selected.keyReady && selected.noticesReady,
+          ready: inferenceReady(selected),
         },
         ...(options.ai?.classification?.enabled
           ? {

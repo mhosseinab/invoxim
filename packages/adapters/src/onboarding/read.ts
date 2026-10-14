@@ -5,6 +5,7 @@ import {
   OnboardingError,
   planDiscoveryRange,
 } from "@invoxim/core";
+import type { AiAllowance } from "../ai/budget";
 import { readAiAllowance } from "../ai/budget";
 import type {
   AiConfiguration,
@@ -51,6 +52,44 @@ export interface SelectedInference {
   configurationDigest: string;
   keyReady: boolean;
   noticesReady: boolean;
+}
+/** S8: notices are ready when every noticeRef resolves to a notice. */
+export function noticesReady(
+  destination: Pick<AiDestination, "noticeRefs" | "notices">,
+): boolean {
+  return destination.noticeRefs.every((ref) =>
+    destination.notices?.some((notice) => notice.id === ref),
+  );
+}
+/** S8: inference is ready when the key and the notices are ready. */
+export function inferenceReady(
+  selected: Pick<SelectedInference, "keyReady" | "noticesReady">,
+): boolean {
+  return selected.keyReady && selected.noticesReady;
+}
+type ImportAllowance = Pick<
+  AiAllowance,
+  | "cooldownActive"
+  | "dailyDocumentsRemaining"
+  | "monthlyDocumentsRemaining"
+  | "dailyUnitsRemaining"
+  | "monthlyUnitsRemaining"
+  | "hostedFundingAvailable"
+>;
+/** S4: the single can-start-import readiness rule. */
+export function canStartImport(
+  selected: Pick<SelectedInference, "keyReady" | "noticesReady" | "mode">,
+  allowance: ImportAllowance,
+): boolean {
+  return (
+    inferenceReady(selected) &&
+    !allowance.cooldownActive &&
+    allowance.dailyDocumentsRemaining > 0 &&
+    allowance.monthlyDocumentsRemaining > 0 &&
+    allowance.dailyUnitsRemaining > 0 &&
+    allowance.monthlyUnitsRemaining > 0 &&
+    (selected.mode !== "hosted" || allowance.hostedFundingAvailable)
+  );
 }
 export function scopeReady(connection: OnboardingConnection) {
   try {
@@ -213,9 +252,7 @@ export function createOnboardingReads(
       destination,
       model,
       keyReady,
-      noticesReady: destination.noticeRefs.every((ref) =>
-        destination.notices?.some((notice) => notice.id === ref),
-      ),
+      noticesReady: noticesReady(destination),
       configurationDigest: await selectedOnboardingConfigurationDigest({
         mode,
         settingsRevision: revision,

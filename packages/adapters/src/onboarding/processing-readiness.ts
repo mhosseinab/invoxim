@@ -4,6 +4,7 @@ import type {
 } from "@invoxim/core";
 import type { AiConfiguration } from "../ai/configuration";
 import { selectedOnboardingConfigurationDigest } from "./configuration";
+import { noticesReady } from "./read";
 export type ProcessingReviewMetadata = DiscoveryProcessingSelection;
 /** Pure configuration comparison; callers obtain metadata through their existing tenant/fence query. */
 export function createProcessingReviewResolver(configuration: AiConfiguration) {
@@ -23,9 +24,7 @@ export function createProcessingReviewResolver(configuration: AiConfiguration) {
       !model ||
       destination.configVersion !== input.configVersion ||
       destination.policyVersion !== input.policyVersion ||
-      !destination.noticeRefs.every((ref) =>
-        destination.notices?.some((notice) => notice.id === ref),
-      )
+      !noticesReady(destination)
     )
       return null;
     if (

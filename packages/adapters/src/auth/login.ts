@@ -148,7 +148,7 @@ export function createLoginAuth(db: D1Database, input: LoginConfiguration) {
               }>();
             if (
               owner?.emailVerified !== 1 ||
-              !allowed.has(owner.email.toLowerCase()) ||
+              !isAllowedEmail(owner.email, allowed) ||
               owner.status !== "active"
             )
               throw new APIError("FORBIDDEN", {
