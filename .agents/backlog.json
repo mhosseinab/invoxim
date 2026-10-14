@@ -1436,6 +1436,20 @@
         "evidence/implementation/compact-purchases-all-browser-final-20261014.log"
       ],
       "blockedBy": []
+    },
+    {
+      "id": "UX-WORKSPACE-01",
+      "title": "Compact Home, Connections, review queue and purchase detail",
+      "milestone": "Workspace UX",
+      "status": "in_progress",
+      "dependsOn": [],
+      "ownerRole": "frontend",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Four requested private pages, on-demand explanatory/management details, truthful operational states and unchanged financial/correction boundaries.",
+      "completionEvidence": [
+        "evidence/implementation/compact-workspace-plan-20261014.md"
+      ],
+      "blockedBy": []
     }
   ]
 }
