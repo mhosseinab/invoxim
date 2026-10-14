@@ -1,10 +1,12 @@
 import { extractionSchema, hasControlCharacters } from "@invoxim/contracts";
 import { parseMoney } from "../money";
-import type {
-  AiMissingField,
-  AiReason,
-  AiTextPart,
-  PersistableAiResult,
+import {
+  AI_MISSING_FIELDS,
+  AI_REASONS,
+  type AiMissingField,
+  type AiReason,
+  type AiTextPart,
+  type PersistableAiResult,
 } from "./types";
 
 /** Document types that cannot carry cash payment or refund evidence. */
@@ -48,9 +50,7 @@ export function validateExtraction(
     return { status: "needs-review", reason: "schema" };
   }
   const candidate = parsed.data;
-  const missingFields = (
-    ["merchant", "currency", "total", "documentDate"] as const
-  ).filter((field) =>
+  const missingFields = AI_MISSING_FIELDS.filter((field) =>
     candidate.records.some((record) => record[field] === null),
   );
   if (missingFields.length)
@@ -517,30 +517,12 @@ export function validatePersistableAiResult(
 ): PersistableAiResult | null {
   if (!object(value)) return null;
   if (value.status === "needs-review") {
-    const reasons = [
-      "schema",
-      "evidence",
-      "money",
-      "date",
-      "semantics",
-      "incomplete",
-      "input-limit",
-      "settings-changed",
-      "budget",
-      "in-progress",
-      "timeout",
-      "rate-limit",
-      "invalid-key",
-      "unsupported",
-      "refusal",
-      "outage",
-    ];
     if (
       Object.keys(value).some(
         (key) => !["status", "reason", "missingFields"].includes(key),
       ) ||
       typeof value.reason !== "string" ||
-      !reasons.includes(value.reason)
+      !(AI_REASONS as readonly string[]).includes(value.reason)
     )
       return null;
     if (Object.hasOwn(value, "missingFields")) {
@@ -554,7 +536,7 @@ export function validatePersistableAiResult(
         !fields.every(
           (field) =>
             typeof field === "string" &&
-            ["merchant", "currency", "total", "documentDate"].includes(field),
+            (AI_MISSING_FIELDS as readonly string[]).includes(field),
         )
       )
         return null;
@@ -806,9 +788,7 @@ export function validateModelExtraction(
     return { status: "needs-review", reason: "schema" };
   }
   const candidate = parsed.data;
-  const missingFields = (
-    ["merchant", "currency", "total", "documentDate"] as const
-  ).filter((field) =>
+  const missingFields = AI_MISSING_FIELDS.filter((field) =>
     candidate.records.some((record) => record[field] === null),
   );
   if (missingFields.length)

@@ -6,6 +6,7 @@ import { hashOnboardingValue } from "../onboarding/configuration";
 import type { PipelineClassificationFactory } from "../pipeline/types";
 import type { AiPriceSnapshot } from "./budget";
 import {
+  CLEF_DESTINATION_ID,
   CLEF_RECEIPT_POLICY_VERSION,
   type ClefBinding,
   createClefEmailClassifier,
@@ -75,7 +76,7 @@ export function createReceiptClassifierFactory(
         policyVersion: authorityPrice.policyVersion,
       });
       const config: ApprovedAiConfig = {
-        destinationId: "cloudflare-clef",
+        destinationId: CLEF_DESTINATION_ID,
         modelId: configuration.model,
         mode: "hosted",
         settingsRevision: work.settingsRevision,

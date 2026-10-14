@@ -9,6 +9,7 @@ import type { AuthBindings } from "../auth/configuration";
 import { createCredentialCipher } from "../security/cipher";
 import type { ClefBinding } from "./clef";
 import { receiptClassificationConfigurationSchema } from "./clef";
+import { aiPricingSchema } from "./pricing";
 import type { AiTracingBindings } from "./tracing";
 import { langsmithConfiguration } from "./tracing";
 
@@ -69,20 +70,6 @@ export const approvedEndpointSchema = z
       return false;
     }
   });
-const pricingSchema = z.strictObject({
-  version: identifier,
-  approved: z.literal(true),
-  currency: z.literal("USD"),
-  source: z
-    .string()
-    .url()
-    .max(2048)
-    .refine((value) => value.startsWith("https://")),
-  checkedAt: z.iso.datetime(),
-  inputUsdMicrosPerMillion: z.string().regex(/^[0-9]{1,15}$/),
-  outputUsdMicrosPerMillion: z.string().regex(/^[0-9]{1,15}$/),
-  otherUsdMicrosPerMillion: z.string().regex(/^[0-9]{1,15}$/),
-});
 export const aiModelSchema = z.strictObject({
   id: aiModelIdentifierSchema,
   capabilities: z.strictObject({
@@ -92,7 +79,7 @@ export const aiModelSchema = z.strictObject({
     usage: z.boolean(),
     idempotency: z.boolean(),
   }),
-  pricing: pricingSchema,
+  pricing: aiPricingSchema,
 });
 const noticeText = (max: number) =>
   z

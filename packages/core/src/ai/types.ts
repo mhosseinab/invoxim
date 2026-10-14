@@ -56,23 +56,26 @@ export interface InvoiceExtractor {
     signal?: AbortSignal,
   ): Promise<AiResponse>;
 }
-export type AiReason =
-  | "schema"
-  | "evidence"
-  | "money"
-  | "date"
-  | "semantics"
-  | "incomplete"
-  | "input-limit"
-  | "settings-changed"
-  | "budget"
-  | "in-progress"
-  | "timeout"
-  | "rate-limit"
-  | "invalid-key"
-  | "unsupported"
-  | "refusal"
-  | "outage";
+/** Review reasons (K8). The type union is derived from this one runtime array. */
+export const AI_REASONS = [
+  "schema",
+  "evidence",
+  "money",
+  "date",
+  "semantics",
+  "incomplete",
+  "input-limit",
+  "settings-changed",
+  "budget",
+  "in-progress",
+  "timeout",
+  "rate-limit",
+  "invalid-key",
+  "unsupported",
+  "refusal",
+  "outage",
+] as const;
+export type AiReason = (typeof AI_REASONS)[number];
 export type PersistedAiRecord = Omit<
   Extraction["records"][number],
   "evidence"
@@ -82,7 +85,14 @@ export type PersistedAiRecord = Omit<
     readonly inputPartId: string;
   }[];
 };
-export type AiMissingField = "merchant" | "currency" | "total" | "documentDate";
+/** Incomplete-extraction fields (K8). Type union derived from the runtime array. */
+export const AI_MISSING_FIELDS = [
+  "merchant",
+  "currency",
+  "total",
+  "documentDate",
+] as const;
+export type AiMissingField = (typeof AI_MISSING_FIELDS)[number];
 export type PersistableAiResult =
   | {
       readonly status: "accepted";

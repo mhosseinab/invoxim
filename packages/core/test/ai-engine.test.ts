@@ -1,4 +1,10 @@
 import { expect, it } from "vitest";
+import {
+  type ClassificationUsageStore,
+  createClassificationEngine,
+  EMAIL_CLASSIFICATION_VERSION,
+  type EmailClassifier,
+} from "../src/ai/classification";
 import { createInferenceEngine } from "../src/ai/engine";
 import type {
   AiUsageStore,
@@ -343,6 +349,55 @@ it("AI-04 preserves long cooldown sentinel for durable manual pause", async () =
     ),
   ).toEqual({ status: "needs-review", reason: "rate-limit" });
   expect(cooldown).toBe(Number.MAX_SAFE_INTEGER);
+});
+
+it("K3 classification settle forwards rate-limit retryAfterMs like extraction", async () => {
+  let settled: unknown;
+  const store: ClassificationUsageStore = {
+    async checkpoint() {
+      return { status: "ready" };
+    },
+    async reserve() {
+      return "reserved";
+    },
+    async authorize() {
+      return true;
+    },
+    async settle(_attempt, value) {
+      settled = value;
+    },
+    async complete() {
+      return true;
+    },
+  };
+  const classifier: EmailClassifier = {
+    async classify() {
+      return {
+        status: "failed",
+        reason: "rate-limit",
+        usage: null,
+        retryAfterMs: 90_000,
+      };
+    },
+  };
+  const classificationConfig: ApprovedAiConfig = {
+    ...config,
+    promptVersion: EMAIL_CLASSIFICATION_VERSION,
+    maxAttempts: 1,
+  };
+  expect(
+    await createClassificationEngine({ classifier, store }).classify(
+      tenant,
+      identity,
+      [{ id: "body", text: "synthetic" }],
+      classificationConfig,
+    ),
+  ).toEqual({ status: "needs-review", reason: "rate-limit" });
+  expect(settled).toEqual({
+    state: "uncertain",
+    usage: null,
+    retryAfterMs: 90_000,
+  });
 });
 
 it("AI-05 retains excessive individually safe usage whose exact combined total exceeds Number precision", async () => {
