@@ -32,9 +32,6 @@ export const aiSettingsRequestSchema = z.strictObject({
 });
 export const aiKeyDeleteRequestSchema = z.strictObject({ version });
 export const aiTestRequestSchema = z.strictObject({ version });
-export type AiSettingsRequest = z.infer<typeof aiSettingsRequestSchema>;
-export type AiKeyDeleteRequest = z.infer<typeof aiKeyDeleteRequestSchema>;
-export type AiTestRequest = z.infer<typeof aiTestRequestSchema>;
 
 export const aiSettingsResponseSchema = z.strictObject({
   mutationToken: z.string().min(1).max(2048).optional(),
@@ -95,4 +92,3 @@ export const aiTestResponseSchema = z.discriminatedUnion("status", [
     ]),
   }),
 ]);
-export type AiTestResponse = z.infer<typeof aiTestResponseSchema>;

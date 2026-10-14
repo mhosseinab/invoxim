@@ -66,7 +66,6 @@ export const archiveDisableRequestSchema = z.strictObject({
 export type StorageConnectionView = z.infer<typeof storageConnectionViewSchema>;
 export type ArchiveSettingsView = z.infer<typeof archiveSettingsViewSchema>;
 export type ArchiveEnableRequest = z.infer<typeof archiveEnableRequestSchema>;
-export type ArchiveDisableRequest = z.infer<typeof archiveDisableRequestSchema>;
 
 export const storageSettingsResponseSchema = z.strictObject({
   authorizationAvailable: z.boolean(),
@@ -76,6 +75,3 @@ export const storageSettingsResponseSchema = z.strictObject({
   settings: archiveSettingsViewSchema,
   mutationToken: z.string().min(1).max(2048),
 });
-export type StorageSettingsResponse = z.infer<
-  typeof storageSettingsResponseSchema
->;

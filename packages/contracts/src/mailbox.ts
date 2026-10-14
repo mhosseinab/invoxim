@@ -29,9 +29,3 @@ export const mailboxDisconnectRequestSchema = z.strictObject({
   generation,
   credentialVersion,
 });
-
-export type MailboxStartRequest = z.infer<typeof mailboxStartRequestSchema>;
-export type MailboxConnectionView = z.infer<typeof mailboxConnectionViewSchema>;
-export type MailboxDisconnectRequest = z.infer<
-  typeof mailboxDisconnectRequestSchema
->;

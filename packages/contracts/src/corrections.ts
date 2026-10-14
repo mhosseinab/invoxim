@@ -120,7 +120,6 @@ export const reviewResolutionRequestSchema = z.discriminatedUnion("action", [
     purchaseVersion: version,
   }),
 ]);
-export type PurchaseChanges = z.infer<typeof purchaseChangesSchema>;
 export type EventChanges = z.infer<typeof eventChangesSchema>;
 export type CashConfirmationRequest = z.infer<
   typeof cashConfirmationRequestSchema
