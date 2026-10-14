@@ -75,10 +75,12 @@ export function createAiRoutes() {
     ).current(request.headers);
     if (!current) throw new AiSettingsError("UNAUTHORIZED");
     const mutation = request.method !== "GET" && request.method !== "HEAD";
+    const createdAtMs = current.session.createdAt.getTime();
     if (
       mutation &&
-      (Date.now() - current.session.createdAt.getTime() > 3600000 ||
-        current.session.createdAt.getTime() > Date.now())
+      (!Number.isSafeInteger(createdAtMs) ||
+        createdAtMs > Date.now() ||
+        Date.now() - createdAtMs > 3600000)
     )
       return { denied: true } as const;
     if (

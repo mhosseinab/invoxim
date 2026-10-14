@@ -112,8 +112,13 @@ export function createLifecycleRoutes() {
     if (!current) return { response: error(401, "unauthorized") } as const;
     if (bindings.LIFECYCLE_ENABLED !== "true")
       throw new LifecycleError("UNAVAILABLE");
-    const age = Date.now() - current.session.createdAt.getTime();
-    if (mutation && (age < 0 || age > 3600000))
+    const createdAtMs = current.session.createdAt.getTime();
+    if (
+      mutation &&
+      (!Number.isSafeInteger(createdAtMs) ||
+        createdAtMs > Date.now() ||
+        Date.now() - createdAtMs > 3600000)
+    )
       return { response: error(403, "recent_auth_required") } as const;
     const identity = {
       userId: current.tenant.userId,
