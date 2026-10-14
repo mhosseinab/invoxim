@@ -7,13 +7,8 @@ import {
   type recurringRecordSchema,
   recurringWriteResponseSchema,
 } from "@invoxim/contracts";
-import { useEffect, useRef, useState } from "react";
-import {
-  assertPrivateIdentity,
-  identityFailure,
-  PrivateLoadError,
-} from "../api";
 import { amount } from "../components";
+import { useRetryableMutation } from "../mutations";
 import { PaymentPicker } from "./picker";
 import "./styles.css";
 
@@ -25,73 +20,30 @@ type Props = {
   refresh: () => void;
 };
 export function RecurringWorkspace({ userId, list, detail, refresh }: Props) {
-  const [message, setMessage] = useState("");
-  const [locked, setLocked] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const request = useRef<AbortController | null>(null);
-  const inFlight = useRef(false);
-  useEffect(() => () => request.current?.abort(), []);
   const token = list?.mutationToken ?? detail?.mutationToken ?? "";
-  async function save(path: string, method: "POST" | "PATCH", body: unknown) {
-    if (inFlight.current || locked || !token) return;
-    inFlight.current = true;
-    setBusy(true);
-    setMessage("");
-    const controller = new AbortController();
-    request.current = controller;
-    try {
-      await assertPrivateIdentity(userId, controller.signal);
-      const response = await fetch(path, {
-        method,
-        signal: controller.signal,
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-Workspace-Token": token,
-          "Idempotency-Key": crypto.randomUUID(),
-        },
-        body: JSON.stringify(body),
-      });
-      await assertPrivateIdentity(userId, controller.signal);
-      if (identityFailure(response.status)) {
-        refresh();
-        return;
-      }
-      if (!response.ok) {
-        if (response.status === 409) throw new PrivateLoadError(409);
-        if (response.status === 503) throw new PrivateLoadError(503);
-        if (response.status >= 500) throw new PrivateLoadError(502);
-        setMessage(
-          "The selection could not be accepted. Check the payment evidence, service identity and dates.",
-        );
-        return;
-      }
-      if (
-        !recurringWriteResponseSchema.safeParse(await response.json()).success
-      )
-        throw new PrivateLoadError(502);
-      refresh();
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      if (identityFailure(error)) {
-        refresh();
-        return;
-      }
-      setLocked(true);
-      setMessage(
-        error instanceof PrivateLoadError && error.status === 409
-          ? "The series or payment evidence changed. Refresh and review before submitting a new decision."
-          : error instanceof PrivateLoadError && error.status === 503
-            ? "Recurring payments are unavailable in this workspace. Refresh before continuing."
-            : "The request result is unknown. Refresh to check the saved records before making another decision.",
-      );
-    } finally {
-      inFlight.current = false;
-      if (!controller.signal.aborted) setBusy(false);
-    }
-  }
+  const mutation = useRetryableMutation({
+    schema: recurringWriteResponseSchema,
+    expectedUserId: userId,
+    getWorkspaceToken: () => token,
+    onSuccess: refresh,
+    messages: {
+      conflict:
+        "The series or payment evidence changed. Refresh and review before submitting a new decision.",
+      unavailable:
+        "Recurring payments are unavailable in this workspace. Refresh before continuing.",
+      retryable:
+        "The request result is unknown. Refresh to check the saved records before making another decision.",
+      rejected:
+        "The selection could not be accepted. Check the payment evidence, service identity and dates.",
+      invalid:
+        "Check the service identity, anchor date and selection of 1 to 20 payments.",
+    },
+    actions: {
+      retry: null,
+      reload: "Refresh and review latest evidence",
+    },
+    confirmAfter: true,
+  });
   return (
     <>
       <p className="notice">
@@ -99,20 +51,11 @@ export function RecurringWorkspace({ userId, list, detail, refresh }: Props) {
         confirm their service identity yourself. Saving or canceling a series
         does not change historical spending or contact the service provider.
       </p>
-      {message && (
-        <p id="recurring-error" role="alert">
-          {message}
-        </p>
-      )}
-      {locked && (
-        <button type="button" onClick={refresh}>
-          Refresh and review latest evidence
-        </button>
-      )}
+      {mutation.notice}
       <fieldset
         className="recurring-controls"
-        disabled={busy || locked}
-        aria-describedby={message ? "recurring-error" : undefined}
+        disabled={mutation.locked}
+        aria-describedby={mutation.errorId}
       >
         <legend>Saved recurring records</legend>
         {(detail ? [detail.record] : (list?.records ?? [])).map((record) => (
@@ -124,7 +67,7 @@ export function RecurringWorkspace({ userId, list, detail, refresh }: Props) {
                 expectedVersion: record.series.version,
                 state,
               };
-              void save(
+              mutation.submit(
                 `/api/recurring/${encodeURIComponent(record.series.id)}`,
                 "PATCH",
                 body,
@@ -171,17 +114,15 @@ export function RecurringWorkspace({ userId, list, detail, refresh }: Props) {
                 entries,
               });
               if (!input.success) {
-                setMessage(
-                  "Check the service identity, anchor date and selection of 1 to 20 payments.",
-                );
+                mutation.invalid();
                 return;
               }
-              void save("/api/recurring", "POST", input.data);
+              mutation.submit("/api/recurring", "POST", input.data);
             }}
           />
         )}
       </fieldset>
-      {busy && <p role="status">Saving recurring decision…</p>}
+      {mutation.busy && <p role="status">Saving recurring decision…</p>}
     </>
   );
 }

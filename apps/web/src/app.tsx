@@ -1,11 +1,11 @@
-import { type PublicConfig, publicConfigSchema } from "@invoxim/contracts";
+import type { PublicConfig } from "@invoxim/contracts";
 import { useEffect, useRef, useState } from "react";
 import { copy } from "./copy";
 import type { DemoPurchase } from "./demo";
 import { demo, money, totals } from "./demo";
 import { BrandMark, Icon } from "./icons";
 import { OnboardingPage } from "./onboarding/page";
-import { readPrivate } from "./private/api";
+import { readLoginEnabled } from "./private/api";
 import { PrivatePage } from "./private/page";
 import { RecurringPage } from "./private/recurring/page";
 
@@ -15,13 +15,9 @@ function Availability() {
   const [loginAvailable, setLoginAvailable] = useState(false);
   useEffect(() => {
     const request = new AbortController();
-    void readPrivate("/api/public-config", publicConfigSchema, request.signal)
-      .then((config) => {
-        if (!request.signal.aborted) setLoginAvailable(config.loginEnabled);
-      })
-      .catch(() => {
-        if (!request.signal.aborted) setLoginAvailable(false);
-      });
+    void readLoginEnabled(request.signal).then((enabled) => {
+      if (!request.signal.aborted) setLoginAvailable(enabled);
+    });
     return () => request.abort();
   }, []);
   if (loginAvailable)

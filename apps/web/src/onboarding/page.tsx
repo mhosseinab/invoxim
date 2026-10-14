@@ -4,13 +4,13 @@ import {
   onboardingResponseSchema,
   type ProfileView,
   profileViewSchema,
-  publicConfigSchema,
 } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandMark, Icon } from "../icons";
 import {
   assertPrivateIdentity,
   PrivateLoadError,
+  readLoginEnabled,
   readPrivate,
 } from "../private/api";
 import {
@@ -87,16 +87,8 @@ export function OnboardingPage({
             setWorkspace(null);
             setAcceptedRunId(null);
             setError(text.signedOut);
-            try {
-              const config = await readPrivate(
-                "/api/public-config",
-                publicConfigSchema,
-                request.signal,
-              );
-              if (!request.signal.aborted) setLoginReady(config.loginEnabled);
-            } catch {
-              setLoginReady(false);
-            }
+            const enabled = await readLoginEnabled(request.signal);
+            if (!request.signal.aborted) setLoginReady(enabled);
           } else setError(text.unavailable);
         }
       } finally {
