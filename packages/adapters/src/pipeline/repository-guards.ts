@@ -1,4 +1,4 @@
-import type { JobLease } from "@invoxim/core";
+import type { JobLease, LedgerPlan } from "@invoxim/core";
 import { z } from "zod";
 import { sourceNotDiscardedSql } from "../corrections/source-decision";
 export class PipelinePersistenceError extends Error {
@@ -16,6 +16,22 @@ export class PipelinePersistenceError extends Error {
 export interface Predicate {
   sql: string;
   values: (string | number | null)[];
+}
+export function json(value: unknown): string {
+  const encoded = JSON.stringify(value);
+  if (
+    encoded === undefined ||
+    new TextEncoder().encode(encoded).length > 262144
+  )
+    throw new PipelinePersistenceError("PIPELINE_LIMIT");
+  return encoded;
+}
+export function safeJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new PipelinePersistenceError("PIPELINE_CONFLICT");
+  }
 }
 /**
  * P2: the single connection/consent "live" rule. Every job path must require
@@ -238,4 +254,36 @@ export async function executeBatch(
       throw new PipelinePersistenceError("PIPELINE_CONFLICT");
     throw new PipelinePersistenceError("PIPELINE_UNAVAILABLE");
   }
+}
+/**
+ * Single source-status derivation shared by `commit` and `skipDocument`
+ * (P3/P0.5). A document whose parse_state is outside {ready, extracted} is
+ * unresolved content and keeps the source at 'review', so a non-purchase skip
+ * cannot discard a source that a financial commit would leave reviewable.
+ */
+export const SOURCE_STATUS_CASE = `CASE WHEN EXISTS(SELECT 1 FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id WHERE r.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND r.status='open') OR EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state NOT IN('ready','extracted')) THEN 'review' WHEN EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state='ready') THEN 'discovered' WHEN EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state='extracted') THEN 'processed' ELSE 'unsupported' END`;
+/**
+ * Optimistic-concurrency guard over the plan's expected purchase versions.
+ * `advanced` accounts for the version bump applied by the payment-state
+ * UPDATE in the same batch.
+ */
+export function versionGuard(
+  guard: Predicate,
+  lease: JobLease,
+  plan: LedgerPlan,
+  advanced = false,
+): Predicate {
+  const expected = plan.expectedPurchases.map((purchase) => ({
+    id: purchase.id,
+    version:
+      purchase.version +
+      (advanced &&
+      plan.paymentStates.some((state) => state.purchaseId === purchase.id)
+        ? 1
+        : 0),
+  }));
+  return {
+    sql: `${guard.sql} AND NOT EXISTS(SELECT 1 FROM json_each(?) expected WHERE NOT EXISTS(SELECT 1 FROM purchases WHERE user_id=? AND id=json_extract(expected.value,'$.id') AND version=json_extract(expected.value,'$.version') AND lifecycle_delete_connection_id IS NULL AND lifecycle_recompute_connection_id IS NULL))`,
+    values: [...guard.values, json(expected), lease.context.userId],
+  };
 }
