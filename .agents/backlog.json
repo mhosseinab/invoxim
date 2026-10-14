@@ -1456,13 +1456,14 @@
       "id": "OPS-GMAIL-BATCH-01",
       "title": "Repair exhausted Gmail multipart parse jobs",
       "milestone": "Production repair",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [],
       "ownerRole": "orchestrator",
       "reviewerRole": "principal-reviewer",
       "scope": "Content-free diagnostics, bounded MIME compatibility repair, regression verification, Worker rollout and fenced recovery of58 failed parse jobs. Preserve budgets and existing records.",
       "completionEvidence": [
-        "evidence/implementation/gmail-failed-jobs-repair-20261014.md"
+        "evidence/implementation/gmail-failed-jobs-repair-20261014.md",
+        "evidence/implementation/gmail-recovery-aggregate-20261014.json"
       ],
       "blockedBy": []
     },
@@ -1470,7 +1471,7 @@
       "id": "UX-REVIEW-DISCARD-01",
       "title": "Source-first review and audited false-positive dismissal",
       "milestone": "Workspace UX",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "UX-WORKSPACE-01"
       ],
@@ -1478,8 +1479,23 @@
       "reviewerRole": "principal-reviewer",
       "scope": "Explicit source-level Not a purchase, bounded identifying metadata/attachments, focused manual entry, durable processing guards and truthful review grouping. PDF byte preview deferred.",
       "completionEvidence": [
-        "evidence/implementation/review-discard-plan-20261014.md"
+        "evidence/implementation/review-discard-plan-20261014.md",
+        "evidence/implementation/review-discard-completion-20261014.md"
       ],
+      "blockedBy": []
+    },
+    {
+      "id": "UX-PDF-PREVIEW-01",
+      "title": "On-demand PDF preview for source review",
+      "milestone": "Workspace UX follow-up",
+      "status": "not_started",
+      "dependsOn": [
+        "UX-REVIEW-DISCARD-01"
+      ],
+      "ownerRole": "frontend/backend",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Requested nice-to-have. Assess an authenticated bounded transient PDF preview using existing mailbox authorization; no original storage or implicit Drive archiving. Current release supplies metadata and original-email access.",
+      "completionEvidence": [],
       "blockedBy": []
     }
   ]

@@ -1,0 +1,32 @@
+{
+  "capturedAtUtc": "2026-10-14T07:18:55.781502+00:00",
+  "recoveredParseJobs": {
+    "documents_staged": 18,
+    "byte_limit_review": 17,
+    "text_limit_review": 21,
+    "invalid_mime_review": 2
+  },
+  "finalJobGroups": [
+    {
+      "type": "source-extract",
+      "status": "paused_budget",
+      "outcome_code": "budget",
+      "jobs": 24
+    },
+    {
+      "type": "sync",
+      "status": "completed",
+      "outcome_code": "discovery_staged",
+      "jobs": 5
+    }
+  ],
+  "integrity": [
+    {
+      "foreign_key_violations": 0
+    }
+  ],
+  "notes": [
+    "No source bytes, subjects, sender data or provider transcripts retained.",
+    "Paused inference is allowance admission, not an exhausted retry."
+  ]
+}
