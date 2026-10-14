@@ -2,10 +2,7 @@ import { createInvocationDatabase } from "../../src/invocation-database";
 
 export interface RouteRequestOptions {
   /** Fetch handler: the composed worker or a sub-app router. */
-  fetch: (
-    request: Request,
-    env: never,
-  ) => Response | Promise<Response>;
+  fetch: (request: Request, env: never) => Response | Promise<Response>;
   /** Bindings passed to the handler; DB is replaced by the statement meter. */
   bindings: Record<string, unknown>;
   /** Origin used for the request URL and the Origin header. */
@@ -44,10 +41,7 @@ export async function routeRequest(
     headers = {},
     limit = 40,
   } = options;
-  const meter = createInvocationDatabase(
-    bindings.DB as D1Database,
-    limit,
-  );
+  const meter = createInvocationDatabase(bindings.DB as D1Database, limit);
   const response = await handler(
     new Request(origin + path, {
       method,

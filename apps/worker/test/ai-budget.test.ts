@@ -94,7 +94,7 @@ beforeAll(async () => {
     )
     .bind(tenant.userId)
     .run();
-  
+
   upgradedVault = await db
     .prepare(
       "SELECT encrypted_key,key_version,generation,credential_version FROM ai_settings WHERE user_id=?",

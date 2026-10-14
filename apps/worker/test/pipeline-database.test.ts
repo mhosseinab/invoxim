@@ -47,16 +47,12 @@ beforeAll(async () => {
       "INSERT INTO observations(id,user_id,document_id,segment_index,extraction_fingerprint,extraction_version,evidence_code,normalized_fields,review_state) VALUES('o','upgrade','d',0,'v1',1,'unknown','{\"schemaVersion\":1,\"totalMinor\":\"100\"}','accepted')",
     )
     .run();
-  
+
   await db
     .prepare(
       "INSERT INTO review_items(id,user_id,document_id,reason,blocking_scope,created_at) VALUES('legacy','upgrade','d','document-review','operational',0)",
     )
     .run();
-  
-  
-  
-  
 });
 it("T12 DB populated upgrade preserves original observations and adds financial review ownership", async () => {
   expect(

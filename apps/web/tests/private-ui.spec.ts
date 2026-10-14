@@ -465,7 +465,9 @@ test("UI labels render hyphenated category, payment state and source reason from
   await expect(card).toContainText("business services");
   await expect(card).toContainText("Partially paid");
   await expect(card.getByText("business-services")).toHaveCount(0);
-  await card.getByRole("link", { name: "Synthetic Audio", exact: true }).click();
+  await card
+    .getByRole("link", { name: "Synthetic Audio", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Synthetic Audio", exact: true }),
   ).toBeVisible();

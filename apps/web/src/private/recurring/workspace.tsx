@@ -8,7 +8,11 @@ import {
   recurringWriteResponseSchema,
 } from "@invoxim/contracts";
 import { useEffect, useRef, useState } from "react";
-import { assertPrivateIdentity, identityFailure, PrivateLoadError } from "../api";
+import {
+  assertPrivateIdentity,
+  identityFailure,
+  PrivateLoadError,
+} from "../api";
 import { amount } from "../components";
 import { PaymentPicker } from "./picker";
 import "./styles.css";
