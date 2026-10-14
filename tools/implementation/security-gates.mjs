@@ -85,7 +85,7 @@ const environmentAssignment =
 function fixture(file) {
   return (
     ["apps/worker/test/onboarding-qa-fixture.ts"].includes(file) ||
-    /(?:\.(?:test|spec)\.[cm]?[jt]sx?$|\.example$|(?:^|\/)testkit\/|^evidence\/implementation\/)/.test(
+    /(?:\.(?:test|spec)\.[cm]?[jt]sx?$|\.example$|(?:^|\/)testkit\/|^evidence\/implementation\/|^spikes\/)/.test(
       file,
     )
   );
