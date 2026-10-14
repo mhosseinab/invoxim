@@ -64,21 +64,23 @@ export interface LedgerEvent {
   readonly eligible: boolean;
   readonly version: number;
 }
-export type LedgerReviewReason =
-  | "extraction-review"
-  | "incomplete-financial-facts"
-  | "unknown-payment"
-  | "payment-allocation-review"
-  | "ambiguous-event"
-  | "event-conflict"
-  | "invoice-conflict"
-  | "purchase-conflict"
-  | "possible-duplicate"
-  | "unmatched-refund"
-  | "refund-exceeds-payment"
-  | "refund-currency-mismatch"
-  | "credit-note-completion"
-  | "mixed-tender";
+export const LEDGER_REVIEW_REASONS = [
+  "extraction-review",
+  "incomplete-financial-facts",
+  "unknown-payment",
+  "payment-allocation-review",
+  "ambiguous-event",
+  "event-conflict",
+  "invoice-conflict",
+  "purchase-conflict",
+  "possible-duplicate",
+  "unmatched-refund",
+  "refund-exceeds-payment",
+  "refund-currency-mismatch",
+  "credit-note-completion",
+  "mixed-tender",
+] as const satisfies readonly string[];
+export type LedgerReviewReason = (typeof LEDGER_REVIEW_REASONS)[number];
 export interface LedgerReview {
   readonly missingFields?: readonly AiMissingField[];
   readonly id: string;

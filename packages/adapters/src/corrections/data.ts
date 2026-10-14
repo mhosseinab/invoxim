@@ -1,4 +1,8 @@
-import type { CorrectionEventFact, CorrectionReviewFact } from "@invoxim/core";
+import type {
+  CorrectionEventFact,
+  CorrectionReviewFact,
+  CorrectionReviewReason,
+} from "@invoxim/core";
 import { CorrectionError } from "@invoxim/core";
 import type { VersionCheck } from "./transaction";
 export interface PurchaseRow {
@@ -110,7 +114,7 @@ export function reviewFact(row: ReviewRow): CorrectionReviewFact {
     id: row.id,
     observationId: row.observation_id,
     documentId: row.document_id,
-    reason: row.reason,
+    reason: row.reason as CorrectionReviewReason,
     blockingScope: row.blocking_scope,
     status: row.status,
     purchaseId: row.purchase_id,
