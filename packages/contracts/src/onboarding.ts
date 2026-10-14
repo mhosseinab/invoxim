@@ -2,9 +2,10 @@ import { z } from "zod";
 import { onboardingViewSchema } from "./designs";
 import {
   MINOR_BOUND,
+  dateSchema as date,
+  generationSchema as generation,
   hasControlCharacters,
   supportedCurrency,
-  validCalendarDate,
   validTimezone,
 } from "./primitives";
 
@@ -13,9 +14,7 @@ const id = z
   .min(1)
   .max(120)
   .refine((value) => value.trim().length > 0 && !hasControlCharacters(value));
-const date = z.string().refine(validCalendarDate);
 const version = z.number().int().min(0).max(2147483646);
-const generation = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const count = z.number().int().min(0).max(Number(MINOR_BOUND));
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const timezone = z.string().max(80).refine(validTimezone);

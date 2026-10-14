@@ -1,16 +1,16 @@
 import { z } from "zod";
+import {
+  connectionIdSchema as connectionId,
+  connectionStartRequestSchema,
+  connectionStartResponseSchema,
+  generationSchema as generation,
+} from "./primitives";
 
-const connectionId = z.string().min(1).max(120);
-const generation = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const version = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const archiveVersion = z.number().int().min(0).max(2147483646);
 const acceptedAt = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
-export const storageStartRequestSchema = z.strictObject({
-  connectionId: connectionId.optional(),
-});
-export const storageStartResponseSchema = z.strictObject({
-  authorizationUrl: z.url().max(4096),
-});
+export const storageStartRequestSchema = connectionStartRequestSchema;
+export const storageStartResponseSchema = connectionStartResponseSchema;
 export const storageConnectionViewSchema = z
   .strictObject({
     id: connectionId,

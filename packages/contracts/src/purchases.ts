@@ -2,12 +2,10 @@ import { z } from "zod";
 import { extractionSchema } from "./designs";
 import {
   MINOR_BOUND,
+  dateSchema as date,
   hasControlCharacters,
   supportedCurrency,
-  validCalendarDate,
 } from "./primitives";
-
-const date = z.string().refine(validCalendarDate);
 const id = z
   .string()
   .min(1)

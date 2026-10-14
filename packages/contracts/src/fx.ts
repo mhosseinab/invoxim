@@ -1,16 +1,15 @@
 import { z } from "zod";
 import {
   MINOR_BOUND,
+  dateSchema as date,
   fxRateDecimal,
   hasControlCharacters,
   supportedCurrency,
-  validCalendarDate,
 } from "./primitives";
 
 export const fxCalculationVersion = "fx-v1" as const;
 export const fxMaxConvertedMinor = "9223372036854775807";
 export const fxCurrencySchema = supportedCurrency;
-const date = z.string().refine(validCalendarDate);
 const identifier = z
   .string()
   .min(1)

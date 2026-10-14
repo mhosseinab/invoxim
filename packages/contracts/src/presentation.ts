@@ -3,14 +3,14 @@ import type { AppConfig } from "./designs";
 import { configSchema } from "./designs";
 import {
   MINOR_BOUND,
+  connectionIdSchema,
+  dateSchema as date,
+  generationSchema as revision,
   supportedCurrency,
-  validCalendarDate,
   validTimezone,
 } from "./primitives";
 
-const identifier = z.string().min(1).max(120);
-const revision = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
-const date = z.string().refine(validCalendarDate, "Invalid calendar date");
+const identifier = connectionIdSchema;
 const timezone = z
   .string()
   .min(1)
