@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "datasetVersion": "clef-invoice-focus-20261014-v1",
+  "notice": "Holdout labels frozen before live model calls; no tuning against held-out outcomes. Synthetic data cannot establish population accuracy.",
+  "partitions": {
+    "development": {
+      "cases": 80,
+      "sha256": "eba6c4b38655283d10dea731e9bb1bd6d6d1bdb0560ed129b399ebe9ad925b5e"
+    },
+    "holdout": {
+      "cases": 40,
+      "sha256": "6e8aff941a9dbd798080b45a1443b8103c1712bf77ae85157b5121aac90ae9a0"
+    }
+  }
+}
