@@ -314,7 +314,7 @@ graph LR
 
 | ID | Task (refs) | Write-set | Depends | Size |
 |---|---|---|---|---|
-| INT-1 | Delete `outlook-coordinator.ts`, its test and its barrel export (G6 ✓). Delete `GMAIL_QUERY_VERSION` (✓) and the unused Outlook type re-exports (G12). | discovery/**, adapters/src/index.ts | — | S |
+| INT-1 | **WITHDRAWN (owner: Outlook module is required — do not delete `outlook-coordinator.ts` or Outlook types).** Leave G6/G12 dead-code notes as documentation only. | discovery/**, adapters/src/index.ts | — | S |
 | INT-2 [T] | **P1.3** one Google OAuth client; ID-token verification no longer diverges (D2). Shared `providerJson` (G8). `refreshSealedCredential()` (mailbox/service.ts, drive/refresh.ts:109, ext#10). One credential open/refresh for the 4 provider factories, a single 30000 ms skew constant, one `requireOutlookConnection` (G9, ext#11). **T17 additions:** move the module-level `liveMailboxSession()` in mailbox/service.ts into PIPE-3's session/live fragment (O6). Merge the two `row()` readers, in `createMailboxManagement` and `createMailboxService`, into one (O7). | mailbox/**, drive/authorization.ts, drive/refresh.ts, provider factories | SEC-2, SEC-4, CON-2, PIPE-3 (O6), OD-12 (mailbox/service.ts) | L |
 | INT-3 | **P1.7** Drive (feature off): one upload-plan schema with the 16 MiB cap (D3), one scope check (D4), one transport wrapper (D1), one 5 MiB constant (D7; also core/archive/workflow.ts:11, which CORE clears). Migrate to SEC-2 helpers. | drive/** | SEC-2 | M |
 | INT-4 | Drive SQL: migrate the drive.file scope (D5), the recent-session SQL (D6) and the backfill batch SQL (D14) to PIPE-5's fragments | drive/** | PIPE-5, INT-3 | S |
