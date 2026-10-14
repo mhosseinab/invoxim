@@ -190,10 +190,15 @@ export function createDriveResumableTransport(
         offset >= plan.size
       )
         throw new DriveArchiveError("invalid_input");
-      const bytes = new Uint8Array(originalBytes);
-      const hash = await sha256Hex(bytes);
-      if (hash !== plan.sha256) throw new DriveArchiveError("invalid_input");
       const end = Math.min(offset + DRIVE_RESUMABLE_CHUNK_BYTES, plan.size);
+      // Snapshot the slice first so the bytes sent are exactly what was hashed.
+      const chunk = originalBytes.slice(offset, end);
+      // D15: full-buffer digest runs once at upload start; later chunks skip the
+      // rehash. Completion still checks the remote sha256Checksum before success.
+      if (offset === 0) {
+        const hash = await sha256Hex(originalBytes);
+        if (hash !== plan.sha256) throw new DriveArchiveError("invalid_input");
+      }
       try {
         const result = await request(
           accessToken,
@@ -205,7 +210,7 @@ export function createDriveResumableTransport(
               "Content-Length": String(end - offset),
               "Content-Range": `bytes ${offset}-${end - 1}/${plan.size}`,
             },
-            body: bytes.subarray(offset, end),
+            body: chunk,
           },
           plan.size,
         );
