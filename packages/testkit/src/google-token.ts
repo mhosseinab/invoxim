@@ -110,15 +110,24 @@ export async function signIdToken(
   );
   const jwt = `${message}.${base64url(new Uint8Array(signature))}`;
   if (!options.publicKey) return { jwt, claims: options.claims, kid };
-  const jwk = await crypto.subtle.exportKey("jwk", options.publicKey);
-  if (!jwk.kty || !jwk.n || !jwk.e)
+  const exported = await crypto.subtle.exportKey("jwk", options.publicKey);
+  if (!("kty" in exported) || !exported.kty || !exported.n || !exported.e)
     throw new Error("Synthetic RSA JWK export failed");
   return {
     jwt,
     claims: options.claims,
     kid,
     jwks: {
-      keys: [{ kty: jwk.kty, n: jwk.n, e: jwk.e, kid, alg: "RS256", use: "sig" }],
+      keys: [
+        {
+          kty: exported.kty,
+          n: exported.n,
+          e: exported.e,
+          kid,
+          alg: "RS256",
+          use: "sig",
+        },
+      ],
     },
   };
 }
