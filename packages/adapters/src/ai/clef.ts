@@ -4,7 +4,7 @@ import {
   buildClefRequest,
   CLEF_RECEIPT_POLICY_VERSION,
   parseClefResponse,
-  routeClefReceipt,
+  routeClefDocument,
 } from "./clef-protocol";
 
 export { CLEF_RECEIPT_POLICY_VERSION } from "./clef-protocol";
@@ -16,6 +16,7 @@ export const receiptClassificationConfigurationSchema = z.strictObject({
   timeoutMs: z.number().int().min(100).max(30000),
   negativeThreshold: z.number().min(0).max(0.1),
   positiveThreshold: z.number().min(0.5).max(1).optional(),
+  uncertainAction: z.enum(["review", "extract"]).optional(),
   categoryThreshold: z.number().min(0.5).max(1),
   pricing: z.strictObject({
     version: z.string().min(1).max(120),
@@ -99,7 +100,7 @@ export function createClefEmailClassifier(
             destinationId: "cloudflare-clef",
             modelId: "@cf/cloudflare/clef",
           });
-        const outcome = routeClefReceipt(receiptProbability, options);
+        const outcome = routeClefDocument(parsed, options);
         const uncertain = outcome === "uncertain";
         console.info("ai_classification_decision", {
           policyVersion: CLEF_RECEIPT_POLICY_VERSION,
@@ -117,7 +118,7 @@ export function createClefEmailClassifier(
               ? { status: "needs-review", reason: "uncertain" }
               : {
                   status: "classified",
-                  isReceipt: receiptProbability >= positiveThreshold,
+                  isReceipt: outcome === "candidate",
                   category:
                     chosenProbability >= (options.categoryThreshold ?? 0.5)
                       ? answer.choice

@@ -8,7 +8,7 @@ import {
   buildClefRequest,
   CLEF_RECEIPT_POLICY_VERSION,
   parseClefResponse,
-  routeClefReceipt,
+  routeClefDocument,
 } from "../../packages/adapters/src/ai/clef-protocol.ts";
 
 const MAX_REQUEST_BYTES = 8192;
@@ -111,6 +111,22 @@ export function summarizeClefResults(rows) {
     ),
   };
 }
+function routeSavedDecision(row, options) {
+  const parsed = parseClefResponse({
+    model: "clef",
+    answers: {
+      receipt: { type: "noul", noul: row.receiptProbability },
+      documentType: row.documentType,
+      category: {
+        type: "choice",
+        choice: "uncategorized",
+        probabilities: { uncategorized: 1 },
+        confidence: 1,
+      },
+    },
+  });
+  return parsed ? routeClefDocument(parsed, options) : "uncertain";
+}
 export function analyzeDevelopmentThresholds(rows) {
   const development = rows.filter((row) => row.partition === "development");
   return [0.5, 0.6, 0.7, 0.8, 0.9, 0.95].map((positiveThreshold) => ({
@@ -124,7 +140,7 @@ export function analyzeDevelopmentThresholds(rows) {
         outcome:
           typeof row.receiptProbability === "number" &&
           Number.isFinite(row.receiptProbability)
-            ? routeClefReceipt(row.receiptProbability, {
+            ? routeSavedDecision(row, {
                 positiveThreshold,
                 negativeThreshold:
                   classificationConfiguration.negativeThreshold,
@@ -181,7 +197,7 @@ function validateDevelopmentFreeze(report, base, cases) {
     )
       fail();
     const expectedOutcome = source.parts.length
-      ? routeClefReceipt(row.receiptProbability, report.thresholds)
+      ? routeSavedDecision(row, report.thresholds)
       : "review";
     if (row.outcome !== expectedOutcome) fail();
   }
@@ -420,11 +436,9 @@ export async function runClefEvaluation(options = {}) {
       }
       results.push({
         ...row,
-        outcome: routeClefReceipt(
-          answer.answers.receipt.noul,
-          classificationConfiguration,
-        ),
+        outcome: routeClefDocument(answer, classificationConfiguration),
         receiptProbability: answer.answers.receipt.noul,
+        documentType: answer.answers.documentType,
         category: answer.answers.category.choice,
         usage: usage ?? null,
         latencyMs: Date.now() - began,

@@ -1,8 +1,8 @@
 import { EXTRACTION_PROMPT_VERSION } from "@invoxim/contracts";
 import { EMAIL_CLASSIFICATION_VERSION } from "@invoxim/core";
 import { expect, it } from "vitest";
-import { computeClassificationFingerprint } from "../src/ai/classifier-factory";
 import { computeRunFingerprint } from "../src/ai/budget";
+import { computeClassificationFingerprint } from "../src/ai/classifier-factory";
 import { computeAiFingerprint } from "../src/ai/configuration";
 
 /**

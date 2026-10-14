@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "model": "@cf/cloudflare/clef",
-  "version": "document-classification-v3",
+  "version": "document-classification-v4",
   "maxInputBytes": 24000,
   "timeoutMs": 30000,
   "negativeThreshold": 0.1,
@@ -16,5 +16,6 @@
     "inputUsdMicrosPerMillion": "240000",
     "outputUsdMicrosPerMillion": "0",
     "otherUsdMicrosPerMillion": "0"
-  }
+  },
+  "uncertainAction": "extract"
 }

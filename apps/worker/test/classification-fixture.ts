@@ -9,6 +9,12 @@ export const syntheticClassificationBindings = {
       return {
         model: "clef",
         answers: {
+          documentType: {
+            type: "choice",
+            choice: "invoice",
+            probabilities: { invoice: 1 },
+            confidence: 1,
+          },
           receipt: { type: "noul", noul: 0.9 },
           category: {
             type: "choice",

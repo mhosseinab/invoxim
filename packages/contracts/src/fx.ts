@@ -1,10 +1,10 @@
 import { z } from "zod";
 import {
-  MINOR_BOUND,
   currencyCode,
   dateSchema as date,
   fxRateDecimal,
   hasControlCharacters,
+  MINOR_BOUND,
   supportedCurrency,
 } from "./primitives";
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MINOR_BOUND, hasControlCharacters } from "./primitives";
+import { hasControlCharacters, MINOR_BOUND } from "./primitives";
 
 const version = z.number().int().min(0).max(2147483646);
 const identifier = z

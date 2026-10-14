@@ -8,4 +8,3 @@ export const connectionsResponseSchema = z.strictObject({
     .max(10),
   hasMore: z.boolean(),
 });
-

@@ -89,15 +89,23 @@ it("safe rethrows kept errors and wraps the rest", async () => {
       (cause) => cause instanceof Known,
     ),
   ).rejects.toMatchObject({ message: "wrapped" });
-  await expect(safe(async () => 7, () => new Wrapped("w"), () => false)).resolves.toBe(
-    7,
-  );
+  await expect(
+    safe(
+      async () => 7,
+      () => new Wrapped("w"),
+      () => false,
+    ),
+  ).resolves.toBe(7);
 });
 
 it("abortable races the promise against the signal", async () => {
   class Timeout extends Error {}
   await expect(
-    abortable(Promise.resolve(1), new AbortController().signal, () => new Timeout("timeout")),
+    abortable(
+      Promise.resolve(1),
+      new AbortController().signal,
+      () => new Timeout("timeout"),
+    ),
   ).resolves.toBe(1);
   const controller = new AbortController();
   const pending = abortable(

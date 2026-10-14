@@ -31,14 +31,17 @@ export function decodeBase64url(value: unknown): Uint8Array<ArrayBuffer> {
   } catch {
     throw new Error("decode");
   }
-  const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+  const bytes = Uint8Array.from(decoded, (character) =>
+    character.charCodeAt(0),
+  );
   if (encodeBase64url(bytes) !== value) throw new Error("decode");
   return bytes;
 }
 
 /** SHA-256 lowercase hex of UTF-8 text or raw bytes. Collapses `digest`/`hash`. */
 export async function sha256Hex(value: string | Uint8Array): Promise<string> {
-  const data = typeof value === "string" ? new TextEncoder().encode(value) : value;
+  const data =
+    typeof value === "string" ? new TextEncoder().encode(value) : value;
   return Array.from(
     new Uint8Array(await crypto.subtle.digest("SHA-256", data)),
     (byte) => byte.toString(16).padStart(2, "0"),

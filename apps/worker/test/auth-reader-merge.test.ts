@@ -96,14 +96,16 @@ it("login configuration is parsed once; createLoginAuth trusts LoginConfiguratio
   };
   const configuration = loginConfiguration(bindings);
   expect(configuration).not.toBeNull();
+  if (!configuration || !bindings.DB)
+    throw new Error("Synthetic login configuration unavailable");
   // S11: the second configured rule was loginConfigurationSchema.parse inside
   // createLoginAuth. A strictObject probe rejects the extra own property that
   // the type boundary already excludes, so the typed value must be trusted.
   const typed = {
-    ...configuration!,
+    ...configuration,
     extra: "type-boundary-only",
   } as LoginConfiguration;
-  expect(() => createLoginAuth(bindings.DB!, typed)).not.toThrow();
+  expect(() => createLoginAuth(bindings.DB, typed)).not.toThrow();
   // The single schema probe remains loginConfiguration's.
   expect(
     loginConfigurationSchema.safeParse({

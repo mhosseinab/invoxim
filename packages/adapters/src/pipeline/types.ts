@@ -34,6 +34,7 @@ export interface PipelineClassificationFactory {
   ): Promise<{
     config: ApprovedAiConfig;
     classifier: EmailClassifier;
+    uncertainAction?: "review" | "extract";
     pricing: ReadonlyMap<string, AiPriceSnapshot>;
     authorization: { config: ApprovedAiConfig; price: AiPriceSnapshot };
   }>;

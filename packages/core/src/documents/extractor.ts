@@ -1,3 +1,4 @@
+import { selectBodyText } from "./body-selection";
 import { inertHtmlText } from "./html";
 import { binarySignature } from "./signatures";
 import type {
@@ -199,6 +200,7 @@ async function directModelInput(
   const documents: DocumentResult[] = [];
   let characters = 0;
   let pageCount = 0;
+  let partialCode: DocumentCode | undefined;
   for (const group of groups) {
     if (context.signal?.aborted)
       return {
@@ -280,13 +282,11 @@ async function directModelInput(
           : characters >= limits.textCharacters
             ? "text_limit"
             : null;
-      if (exhausted)
-        return {
-          status: "incomplete",
-          code: exhausted,
-          documents: [],
-          ignoredPartIds: [],
-        };
+      if (exhausted) {
+        documents.push({ ...base, status: "incomplete", code: exhausted });
+        partialCode ??= exhausted;
+        continue;
+      }
       let converted: PdfTextResult;
       try {
         converted = pdf
@@ -311,14 +311,12 @@ async function directModelInput(
           parserVersion: "unavailable",
         };
       }
-      if (converted.status === "incomplete")
-        return {
-          status: "incomplete",
-          code: converted.code,
-          documents: [],
-          ignoredPartIds: [],
-        };
       const parserVersion = `documents-direct-pdf-v2/${converted.parserVersion}`;
+      if (converted.status === "incomplete") {
+        documents.push({ ...base, ...converted, parserVersion });
+        partialCode ??= converted.code;
+        continue;
+      }
       if (converted.status !== "ready") {
         documents.push({ ...base, ...converted, parserVersion });
         continue;
@@ -344,13 +342,11 @@ async function directModelInput(
           : characters > limits.textCharacters
             ? "text_limit"
             : null;
-      if (code)
-        return {
-          status: "incomplete",
-          code,
-          documents: [],
-          ignoredPartIds: [],
-        };
+      if (code) {
+        documents.push({ ...base, status: "incomplete", code });
+        partialCode ??= code;
+        continue;
+      }
       documents.push({
         ...base,
         status: "ready",
@@ -385,44 +381,103 @@ async function directModelInput(
       mimeType: "text/plain" | "text/html";
     }[] = [];
     let invalidEncoding = false;
+    let truncated = false;
+    let selected = false;
+    const decoded: {
+      part: MimePart;
+      text: string;
+      mimeType: "text/plain" | "text/html";
+    }[] = [];
     for (const part of group) {
       try {
         const text = new TextDecoder(part.charset ?? "utf-8", {
           fatal: true,
           ignoreBOM: false,
         }).decode(part.bytes);
-        characters += text.length;
-        if (characters > limits.textCharacters)
-          return {
-            status: "incomplete",
-            code: "text_limit",
-            documents: [],
-            ignoredPartIds: [],
-          };
-        const textMime = part.mimeType.toLowerCase().split(";")[0]?.trim();
-        if (textMime !== "text/plain" && textMime !== "text/html")
+        const mimeType = part.mimeType.toLowerCase().split(";")[0]?.trim();
+        if (mimeType !== "text/plain" && mimeType !== "text/html")
           throw new Error("INVALID_TEXT_MIME");
-        textParts.push({
-          page: null,
-          text,
-          partId: part.partId,
-          mimeType: textMime,
-        });
+        decoded.push({ part, text, mimeType });
       } catch {
         invalidEncoding = true;
         break;
       }
     }
+    const isBody = base.role === "body";
+    const rawCharacters = decoded.reduce(
+      (sum, item) => sum + item.text.length,
+      0,
+    );
+    let remaining = isBody
+      ? limits.textCharacters
+      : limits.textCharacters - characters;
+    selected = isBody && rawCharacters > remaining;
+    for (const [index, item] of decoded.entries()) {
+      if (invalidEncoding) break;
+      if (selected) {
+        const maximum = Math.floor(remaining / (decoded.length - index));
+        const selection = selectBodyText(
+          item.text,
+          item.mimeType === "text/html",
+          maximum,
+        );
+        if (!selection.complete) {
+          invalidEncoding = true;
+          break;
+        }
+        truncated ||= selection.truncated;
+        for (const span of selection.spans) {
+          if (textParts.length >= 64) {
+            truncated = true;
+            break;
+          }
+          textParts.push({
+            page: null,
+            text: span.text,
+            partId: `${item.part.partId}@${span.start}:${span.end}`,
+            mimeType: item.mimeType,
+          });
+          remaining -= span.text.length;
+        }
+      } else {
+        if (item.text.length > remaining) {
+          truncated = true;
+          break;
+        }
+        textParts.push({
+          page: null,
+          text: item.text,
+          partId: item.part.partId,
+          mimeType: item.mimeType,
+        });
+        remaining -= item.text.length;
+      }
+    }
+    if (!isBody) characters = limits.textCharacters - remaining;
+    if (truncated) partialCode ??= "text_limit";
     documents.push(
       invalidEncoding
         ? { ...base, status: "unreadable", code: "invalid_encoding" }
-        : { ...base, status: "ready", textParts, pageCount: null },
+        : truncated && !isBody
+          ? { ...base, status: "incomplete", code: "text_limit" }
+          : {
+              ...base,
+              parserVersion: selected
+                ? "documents-direct-selected-v2"
+                : base.parserVersion,
+              status: "ready",
+              textParts,
+              pageCount: null,
+              ...(truncated ? { truncated: true as const } : {}),
+            },
     );
   }
   return {
-    status: documents.every((document) => document.status === "ready")
-      ? "ready"
-      : "needs_review",
+    ...(partialCode ? { code: partialCode } : {}),
+    status:
+      !partialCode && documents.every((document) => document.status === "ready")
+        ? "ready"
+        : "needs_review",
     documents,
     ignoredPartIds,
   };

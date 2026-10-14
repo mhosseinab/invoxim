@@ -1813,6 +1813,36 @@
       "blockedBy": [
         "Paid synthetic Clef evaluation awaits explicit owner authorization for the requested $0.30 total / 240-call cap. Offline implementation and verification passed; live precision/recall and threshold calibration remain unmeasured."
       ]
+    },
+    {
+      "id": "AI-CLASSIFICATION-IMPROVEMENTS-03",
+      "title": "Improve bounded invoice content and uncertain classification verification",
+      "milestone": "M1",
+      "status": "review",
+      "dependsOn": [
+        "T11",
+        "T12",
+        "AI-CLEF-PRECISION-01"
+      ],
+      "ownerRole": "ai",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Standalone worktree: bounded HTML/attachment preservation and narrow PDF compatibility, explicit Clef document type, same-selected-provider metered uncertainty verification, safe response compatibility; minimal evaluation using current outcome aggregates. No production rollout or new processor.",
+      "acceptanceCaseIds": [
+        "CLEF-DOCUMENT-ROUTING",
+        "PDF-PROCESSING",
+        "AI-SCHEMA",
+        "AI-CACHE-AUTHORITY"
+      ],
+      "localProgressEvidence": [
+        "evidence/implementation/classification-improvements-plan-20261014.md"
+      ],
+      "completionEvidence": [
+        "evidence/implementation/classification-improvements-completion-20261014.md",
+        "evidence/implementation/classification-improvements-review-20261014.md"
+      ],
+      "blockedBy": [
+        "Full pnpm verify remains failed: initial Drive UNAVAILABLE; rerun7failures across PDF headroom, Drive and Outlook. Controlled focused29test rerun passed without code changes; initiating stall unresolved. Browser113/114: unchanged CAD correction view unavailable. Build/publication guard passed. No rollout or live model accuracy claim."
+      ]
     }
   ]
 }

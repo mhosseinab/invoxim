@@ -184,3 +184,9 @@ zero, two and eight attachments using the real lease, content, AI usage and
 financial-write adapters. `jobs-bounded-parallel` verifies overlapping independent
 invocations, concurrency caps and cooldown fencing. These are synthetic runtime
 checks, not live provider latency or model-quality benchmarks.
+
+### Clef document type and uncertain routing
+
+`config/ai.classification.production.json` now uses document-classification-v4 with `uncertainAction: "extract"`. This setting verifies plausible uncertain documents using the user's already-selected hosted/BYOK financial provider, under existing budget and consent checks. `"review"` retains review-only behavior; absent settings default to review for custom configurations. The classifier remains mandatory, and known negatives, invalid output, outages and oversized input do not silently bypass it. The 0.1/0.9 thresholds remain unchanged because current observations lack human labels. The new notice/policy digest requires renewed Review/Start after rollout. Credentials remain in Wrangler secrets; no new environment variable or provider is needed.
+
+Extraction prompt v6 adds an explicit JSON example; response handling tolerates null optional tool fields but rejects actual tool calls. Safe diagnostic logs include validation codes only, never field values or transcripts. Oversized complete HTML can normalize into the existing text bound; truly truncated text remains review-only. Independent attachment budgets preserve readable invoices, but source-byte failures, scanned PDFs and unsupported PDF codecs remain limitations.

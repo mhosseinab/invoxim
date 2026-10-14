@@ -1,13 +1,13 @@
 import { expect, it } from "vitest";
-import { fxRateQuoteSchema, fxEntrySchema } from "../src/fx";
+import { preferencesRequestSchema } from "../src/auth";
+import { purchaseChangesSchema } from "../src/corrections";
+import { fxEntrySchema, fxRateQuoteSchema } from "../src/fx";
+import { processingDisclosureQuerySchema } from "../src/onboarding";
 import {
-  purchaseFiltersSchema,
   currencyTotalsSchema,
+  purchaseFiltersSchema,
   purchaseViewSchema,
 } from "../src/purchases";
-import { preferencesRequestSchema } from "../src/auth";
-import { processingDisclosureQuerySchema } from "../src/onboarding";
-import { purchaseChangesSchema } from "../src/corrections";
 
 // ---------------------------------------------------------------------------
 // ext#5 — FX-rate integer-digit count must match core (money-conversion.ts:15).
@@ -36,9 +36,9 @@ it("CON-1 FX rate accepts 13 integer digits (match core) and rejects 14", () => 
   expect(
     fxRateQuoteSchema.safeParse(rateQuote(thirteenDigitRate)).success,
   ).toBe(true);
-  expect(fxRateQuoteSchema.safeParse(rateQuote(fourteenDigitRate)).success).toBe(
-    false,
-  );
+  expect(
+    fxRateQuoteSchema.safeParse(rateQuote(fourteenDigitRate)).success,
+  ).toBe(false);
 });
 
 // ---------------------------------------------------------------------------

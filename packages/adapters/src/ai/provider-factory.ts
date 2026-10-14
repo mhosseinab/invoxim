@@ -138,7 +138,8 @@ export function createAiProviderFactory(
     async function recheckSettingsAndConsent() {
       return verifyConsentAgainstRow(await settings.current(tenant));
     }
-    if (!(await verifyInitialSelection())) throw new AiSettingsError("CONFLICT");
+    if (!(await verifyInitialSelection()))
+      throw new AiSettingsError("CONFLICT");
     const configurationDigest = await selectedAiConfigurationDigest(
       destination,
       model,

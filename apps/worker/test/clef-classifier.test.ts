@@ -21,6 +21,12 @@ const config: ApprovedAiConfig = {
 const response = (probability: number, choice = "software") => ({
   model: "clef",
   answers: {
+    documentType: {
+      type: "choice",
+      choice: probability <= 0.1 ? "delivery" : "invoice",
+      probabilities: { [probability <= 0.1 ? "delivery" : "invoice"]: 1 },
+      confidence: 1,
+    },
     receipt: { type: "noul", noul: probability },
     category: {
       type: "choice",
@@ -52,7 +58,11 @@ it("CLEF-01 one typed query returns receipt decision and category without extrac
   expect(run.mock.calls[0]?.[0]).toBe("@cf/cloudflare/clef");
   expect(run.mock.calls[0]?.[1]).toMatchObject({
     model: "clef",
-    questions: { receipt: { type: "noul" }, category: { type: "choice" } },
+    questions: {
+      documentType: { type: "choice" },
+      receipt: { type: "noul" },
+      category: { type: "choice" },
+    },
   });
 });
 it("AI-CLEF-PRECISION-01 ambiguous scores never become positive purchase decisions", async () => {
@@ -101,6 +111,7 @@ it("AI-CLEF-PRECISION-01 invoice-focused criteria distinguish documents from rel
       expect(input).toMatchObject({
         state: [{ id: "body", text }],
         questions: {
+          documentType: { type: "choice" },
           receipt: {
             type: "noul",
             instructions: expect.stringContaining("financial document"),
@@ -228,7 +239,7 @@ it("AI-CLEF-PRECISION-01 custom positive policy is applied without changing the 
     if (result.status === "ok")
       expect(JSON.parse(result.output).isReceipt).toBe(expected);
   }
-  const uncertain = await classify(0.1);
+  const uncertain = await classify(0.1001);
   expect(uncertain.status).toBe("ok");
   if (uncertain.status === "ok")
     expect(JSON.parse(uncertain.output)).toEqual({
@@ -253,7 +264,7 @@ it("AI-CLEF-PRECISION-01 decision diagnostics contain scores and sizes without e
     );
     expect(info).toHaveBeenCalledTimes(1);
     expect(info).toHaveBeenCalledWith("ai_classification_decision", {
-      policyVersion: "document-invoice-classification-v3",
+      policyVersion: "document-type-classification-v4",
       partCount: 1,
       inputBytes: expect.any(Number),
       receiptProbability: 0.45,
@@ -285,4 +296,101 @@ it("AI-CLEF-PRECISION-01 invalid receipt scores are not coerced into decisions",
         reason: "schema",
       });
   }
+});
+
+it("CLEF-TYPE explicit document type is requested and contradictions stay uncertain", async () => {
+  for (const [score, type, expected] of [
+    [0.99, "delivery", "uncertain"],
+    [0.01, "invoice", "uncertain"],
+    [0.99, "invoice", "candidate"],
+    [0.01, "marketing", "non-document"],
+    [0.45, "delivery", "non-document"],
+    [0.45, "unknown", "uncertain"],
+  ] as const) {
+    const raw = response(score);
+    const run = vi.fn(async (_model: string, input: unknown) => {
+      expect(input).toMatchObject({
+        questions: { documentType: { type: "choice" } },
+      });
+      return {
+        ...raw,
+        answers: {
+          ...raw.answers,
+          documentType: {
+            type: "choice",
+            choice: type,
+            probabilities: { [type]: 1 },
+            confidence: 1,
+          },
+        },
+      };
+    });
+    const result = await createClefEmailClassifier({ run }).classify(
+      [{ id: "body", text: "Synthetic document" }],
+      config,
+    );
+    expect(result.status).toBe("ok");
+    if (result.status === "ok")
+      expect(JSON.parse(result.output)).toMatchObject(
+        expected === "uncertain"
+          ? { status: "needs-review", reason: "uncertain" }
+          : { status: "classified", isReceipt: expected === "candidate" },
+      );
+  }
+});
+it("CLEF-TYPE malformed document distributions fail closed", async () => {
+  for (const documentType of [
+    undefined,
+    {
+      type: "choice",
+      choice: "invoice",
+      probabilities: { invoice: 0.2, delivery: 0.8 },
+      confidence: 1,
+    },
+    {
+      type: "choice",
+      choice: "invoice",
+      probabilities: { invoice: 0.9 },
+      confidence: 1,
+    },
+    {
+      type: "choice",
+      choice: "tools",
+      probabilities: { tools: 1 },
+      confidence: 1,
+    },
+  ]) {
+    const raw = response(0.99);
+    const result = await createClefEmailClassifier({
+      run: async () => ({ ...raw, answers: { ...raw.answers, documentType } }),
+    }).classify([{ id: "body", text: "Synthetic document" }], config);
+    if (result.status !== "ok") throw new Error("Expected typed review");
+    expect(JSON.parse(result.output)).toEqual({
+      status: "needs-review",
+      reason: "schema",
+    });
+  }
+});
+
+it("CLEF-TYPE weak financial type distribution cannot authorize candidate", async () => {
+  const raw = response(0.99);
+  const result = await createClefEmailClassifier({
+    run: async () => ({
+      ...raw,
+      answers: {
+        ...raw.answers,
+        documentType: {
+          type: "choice",
+          choice: "invoice",
+          probabilities: { invoice: 0.6, unknown: 0.4 },
+          confidence: 1,
+        },
+      },
+    }),
+  }).classify([{ id: "body", text: "Synthetic ambiguous document" }], config);
+  if (result.status !== "ok") throw new Error("Expected typed result");
+  expect(JSON.parse(result.output)).toEqual({
+    status: "needs-review",
+    reason: "uncertain",
+  });
 });

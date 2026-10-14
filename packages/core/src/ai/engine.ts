@@ -10,11 +10,30 @@ import type {
   PersistableAiResult,
 } from "./types";
 import { validateExtraction, validateModelExtraction } from "./validation";
+export function verifyFinancialDocumentResult(
+  result: PersistableAiResult,
+): PersistableAiResult {
+  return result.status === "accepted" &&
+    !(result.documentType === "non-purchase" && result.records.length === 0) &&
+    (!["invoice", "receipt", "credit-note", "refund"].includes(
+      result.documentType,
+    ) ||
+      (result.documentType === "refund" &&
+        result.records.some((record) => record.refundEvidence !== "completed")))
+    ? { status: "needs-review", reason: "semantics" }
+    : result;
+}
+
 export function createInferenceEngine(dependencies: {
   extractor: InvoiceExtractor;
   store: AiUsageStore;
+  financialDocumentsOnly?: boolean;
 }) {
   const { extractor, store } = dependencies;
+  const verifyDocument = (result: PersistableAiResult) =>
+    dependencies.financialDocumentsOnly
+      ? verifyFinancialDocumentResult(result)
+      : result;
   return {
     async extract(
       tenant: TenantContext,
@@ -69,7 +88,7 @@ export function createInferenceEngine(dependencies: {
       };
       for (let number = 1; number <= config.maxAttempts; number++) {
         const state = await store.checkpoint(checkpoint);
-        if (state.status === "completed") return state.result;
+        if (state.status === "completed") return verifyDocument(state.result);
         if (state.status !== "ready" || signal?.aborted)
           return { status: "needs-review", reason: "settings-changed" };
         const attempt = {
@@ -140,6 +159,7 @@ export function createInferenceEngine(dependencies: {
         )
           break;
       }
+      result = verifyDocument(result);
       if (!(await store.complete(checkpoint, result)))
         return { status: "needs-review", reason: "settings-changed" };
       return result;

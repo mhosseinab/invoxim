@@ -78,10 +78,7 @@ export const connectionIdSchema = z.string().min(1).max(120);
  */
 export const keyringSchema = z.strictObject({
   activeVersion: z.number().int().positive().max(2147483647),
-  keys: z.record(
-    z.string().regex(/^[1-9][0-9]*$/),
-    z.string().min(1).max(100),
-  ),
+  keys: z.record(z.string().regex(/^[1-9][0-9]*$/), z.string().min(1).max(100)),
 });
 
 const oauthTokenText = z
