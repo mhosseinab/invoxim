@@ -113,9 +113,8 @@ it("P2: a non-mailbox connection is never live", async () => {
 });
 
 it("P2: shared live SQL rejects a credential-less connection row", async () => {
-  const { connectionConsentLiveSql } = await import(
-    "../../../packages/adapters/src/pipeline/repository-guards"
-  );
+  const { connectionConsentLiveSql } =
+    await import("../../../packages/adapters/src/pipeline/repository-guards");
   await seedMailbox({
     userId: "live-sql",
     connectionId: "conn-sql",
@@ -133,9 +132,8 @@ it("P2: shared live SQL rejects a credential-less connection row", async () => {
 });
 
 it("P1: one processing-selection schema accepts owned metadata with nullable fields", async () => {
-  const { processingSelectionSchema } = await import(
-    "../../../packages/adapters/src/pipeline/repository-guards"
-  );
+  const { processingSelectionSchema } =
+    await import("../../../packages/adapters/src/pipeline/repository-guards");
   // SQL json_object emits nulls for absent optional columns; both former
   // schemas (store strict, repository nullable) must collapse to this shape.
   const parsed = processingSelectionSchema.parse({
