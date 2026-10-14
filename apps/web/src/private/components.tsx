@@ -5,7 +5,12 @@ import type {
 } from "@invoxim/contracts";
 import { formatMinor } from "@invoxim/core";
 import { Icon } from "../icons";
-import { reviewQuestions, privateCopy as text } from "./copy";
+import {
+  categoryLabel,
+  paymentStateLabel,
+  reviewQuestions,
+  privateCopy as text,
+} from "./copy";
 export function amount(minor: string, currency: string) {
   try {
     return `${currency} ${formatMinor(minor, currency)}`;
@@ -69,16 +74,10 @@ export function PurchaseCard({ purchase }: { purchase: PurchaseView }) {
             <a href={historyUrl}>{purchase.merchant}</a>
           </h3>
           <p className="compact-purchase-meta">
-            {purchase.date} · {purchase.category.replaceAll("_", " ")}
+            {purchase.date} · {categoryLabel(purchase.category)}
           </p>
           <span className="status">
-            {purchase.paymentState === "paid"
-              ? text.paymentDocumented
-              : purchase.paymentState === "unpaid"
-                ? text.unpaidInvoice
-                : purchase.paymentState === "partially_paid"
-                  ? text.partiallyPaid
-                  : text.paymentUnconfirmed}
+            {paymentStateLabel(purchase.paymentState)}
           </span>
         </div>
         <div className="compact-purchase-amount">

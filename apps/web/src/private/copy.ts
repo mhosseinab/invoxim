@@ -88,6 +88,30 @@ export const privateCopy = {
     "Opening originals is not available yet. No archived copy is provided on this screen.",
   pendingRefund: "Refund pending. Not deducted from recorded spending.",
 } as const;
+export function categoryLabel(category: string): string {
+  return category.replaceAll("-", " ");
+}
+const paymentStateLabels = {
+  paid: privateCopy.paymentDocumented,
+  unpaid: privateCopy.unpaidInvoice,
+  partially_paid: privateCopy.partiallyPaid,
+} as const;
+export function paymentStateLabel(paymentState: string): string {
+  return (
+    paymentStateLabels[paymentState as keyof typeof paymentStateLabels] ??
+    privateCopy.paymentUnconfirmed
+  );
+}
+const sourceReasonLabels = {
+  source_deleted: privateCopy.sourceDeleted,
+  mailbox_disconnected: privateCopy.sourceDisconnected,
+} as const;
+export function sourceReasonLabel(reason: string): string {
+  return (
+    sourceReasonLabels[reason as keyof typeof sourceReasonLabels] ??
+    privateCopy.sourceNotImplemented
+  );
+}
 export const reviewQuestions: Record<string, string> = {
   "incomplete-financial-facts":
     "Which required financial details are missing from this evidence?",

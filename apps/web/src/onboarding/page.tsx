@@ -21,7 +21,7 @@ import {
   OnboardingRequestError,
   sendOnboarding,
 } from "./api";
-import { onboardingCopy as text } from "./copy";
+import { onboardingCopy as text, providerInboxLabels } from "./copy";
 import { ImportProgress } from "./progress";
 import { ReviewImport } from "./review";
 import "./signin.css";
@@ -359,9 +359,7 @@ export function OnboardingPage({
                         disabled={busy}
                         onClick={() => void authorize(provider)}
                       >
-                        {provider === "gmail"
-                          ? text.pageConnectGmailInbox
-                          : text.connectOutlookInbox}
+                        {providerInboxLabels[provider]}
                       </button>
                     ))}
                   </div>

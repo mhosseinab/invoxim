@@ -20,7 +20,12 @@ import { useEffect, useState } from "react";
 import { BrandMark, Icon } from "../icons";
 import { identityFailure, PrivateLoadError, readPrivate } from "./api";
 import { amount, Coverage, isPaused, PurchaseCard, Totals } from "./components";
-import { privateCopy as text } from "./copy";
+import {
+  categoryLabel,
+  paymentStateLabel,
+  privateCopy as text,
+  sourceReasonLabel,
+} from "./copy";
 import { Corrections } from "./corrections";
 import { Reviews } from "./reviews";
 import "./purchases.css";
@@ -125,7 +130,7 @@ function Search({ coverage }: { coverage: PurchaseCoverage }) {
               {extractionSchema.shape.records.element.shape.category.options.map(
                 (category) => (
                   <option key={category} value={category}>
-                    {category.replaceAll("-", " ")}
+                    {categoryLabel(category)}
                   </option>
                 ),
               )}
@@ -192,19 +197,13 @@ function Detail({
           </p>
           <h1>{purchase.merchant}</h1>
           <p>
-            {purchase.category.replaceAll("_", " ")}
+            {categoryLabel(purchase.category)}
             {purchase.invoiceReference &&
               ` · Invoice ${purchase.invoiceReference}`}
             {purchase.orderReference && ` · Order ${purchase.orderReference}`}
           </p>
           <span className="status">
-            {purchase.paymentState === "paid"
-              ? text.paymentDocumented
-              : purchase.paymentState === "partially_paid"
-                ? text.partiallyPaid
-                : purchase.paymentState === "unpaid"
-                  ? text.unpaidInvoice
-                  : text.paymentUnconfirmed}
+            {paymentStateLabel(purchase.paymentState)}
           </span>
         </div>
         {purchase.documentTotalMinor !== null && purchase.currency && (
@@ -277,11 +276,7 @@ function Detail({
                   <strong>{text["purchase.originalUnavailable"]}</strong>
                 </p>
                 <p className="muted">
-                  {evidence.source.reason === "source_deleted"
-                    ? text.sourceDeleted
-                    : evidence.source.reason === "mailbox_disconnected"
-                      ? text.sourceDisconnected
-                      : text.sourceNotImplemented}
+                  {sourceReasonLabel(evidence.source.reason)}
                 </p>
               </li>
             ))}
@@ -318,11 +313,7 @@ function Detail({
                 <details>
                   <summary>{text["purchase.why"]}</summary>
                   <p className="muted">
-                    {item.source.reason === "source_deleted"
-                      ? text.sourceDeleted
-                      : item.source.reason === "mailbox_disconnected"
-                        ? text.sourceDisconnected
-                        : text.sourceNotImplemented}
+                    {sourceReasonLabel(item.source.reason)}
                   </p>
 
                   <p>
