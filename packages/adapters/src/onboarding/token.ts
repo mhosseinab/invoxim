@@ -1,7 +1,7 @@
 import { OnboardingError } from "@invoxim/core";
 import { z } from "zod";
+import { signToken, type TokenDomain, verifyToken } from "../security/token";
 import { hashOnboardingValue } from "./configuration";
-import { signToken, verifyToken, type TokenDomain } from "../security/token";
 
 /** Historical review domain: signs the decoded JSON payload (S2). */
 const reviewDomain: TokenDomain = {

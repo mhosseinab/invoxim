@@ -5,6 +5,7 @@ import { createPurchaseRepository } from "@invoxim/adapters";
 import type { TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import { useCurrentSchema } from "./support/db";
+
 const db = env.DB;
 
 beforeAll(async () => {

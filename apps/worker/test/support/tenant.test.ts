@@ -1,9 +1,9 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, expect, it } from "vitest";
 import worker from "../../src/index";
-import { onboardingSession, seedTenant, signedSession } from "./tenant";
-import { routeRequest } from "./route";
 import { useCurrentSchema } from "./db";
+import { routeRequest } from "./route";
+import { onboardingSession, seedTenant, signedSession } from "./tenant";
 
 const db = env.DB;
 
@@ -66,7 +66,7 @@ it("signedSession builds a stable HMAC-signed session cookie (X4)", async () => 
   const [token, signature] = decoded.split(".");
   expect(token).toBe("token-a");
   expect(signature).toBeDefined();
-  expect(signature!.length).toBeGreaterThan(0);
+  expect(signature?.length).toBeGreaterThan(0);
   const again = await signedSession("synthetic-secret-1234567890", "token-a");
   expect(again).toBe(cookie);
   const other = await signedSession("synthetic-secret-1234567890", "token-b");

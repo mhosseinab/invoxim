@@ -2,8 +2,8 @@ import { expect, it } from "vitest";
 import { encodeBase64url } from "../../../packages/adapters/src/security/helpers";
 import {
   signToken,
-  verifyToken,
   type TokenDomain,
+  verifyToken,
 } from "../../../packages/adapters/src/security/token";
 
 const secret = "synthetic-token-module-secret-000000";
@@ -73,13 +73,13 @@ it("decode is canonical: a non-canonical body is rejected", async () => {
 
 it("rejects malformed shapes and non-32-byte signatures", async () => {
   const token = await signToken(bodyDomain, "{}", secret);
-  const [body, signature] = token.split(".");
-  expect(await verifyToken(bodyDomain, body!, secret)).toBe(null);
+  const [body = "", signature = ""] = token.split(".");
+  expect(await verifyToken(bodyDomain, body, secret)).toBe(null);
   expect(await verifyToken(bodyDomain, `${body}.${signature}.x`, secret)).toBe(
     null,
   );
   expect(await verifyToken(bodyDomain, `.${signature}`, secret)).toBe(null);
-  const shortSig = signature!.slice(0, -4);
+  const shortSig = signature.slice(0, -4);
   expect(await verifyToken(bodyDomain, `${body}.${shortSig}`, secret)).toBe(
     null,
   );

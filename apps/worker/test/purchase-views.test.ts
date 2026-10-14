@@ -5,6 +5,7 @@ import type { TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import { createPurchaseViewReader } from "../../../packages/adapters/src/purchase-views";
 import { useCurrentSchema } from "./support/db";
+
 const db = env.DB;
 
 const tenant = { userId: "views-a", authority: "session" } as TenantContext;

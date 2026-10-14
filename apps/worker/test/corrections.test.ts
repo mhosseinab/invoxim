@@ -17,6 +17,7 @@ import { createLifecycleCleanup } from "../../../packages/adapters/src/lifecycle
 import { cleanupConnection } from "../../../packages/adapters/src/lifecycle/connection-cleanup";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { useCurrentSchema } from "./support/db";
+
 const db = env.DB;
 
 const tenant = {

@@ -1,5 +1,5 @@
+import { signToken, type TokenDomain, verifyToken } from "../security/token";
 import type { FxPeriodSigning } from "./period";
-import { signToken, verifyToken, type TokenDomain } from "../security/token";
 
 /** Historical fx period domain: signs the encoded body (S2). */
 const fxDomain: TokenDomain = {

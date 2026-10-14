@@ -12,6 +12,7 @@ import {
 } from "../../../packages/adapters/src/ai/budget";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { useCurrentSchema } from "./support/db";
+
 const db = env.DB;
 
 const now = Date.UTC(2026, 9, 12);

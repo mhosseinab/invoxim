@@ -8,6 +8,7 @@ import { beforeAll, expect, it } from "vitest";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createPurchaseRoutes } from "../src/purchase-routes";
 import { useCurrentSchema } from "./support/db";
+
 const db = env.DB;
 
 const config: LoginConfiguration = {

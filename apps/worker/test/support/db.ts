@@ -49,8 +49,8 @@ export function splitSqlStatements(sql: string): string[] {
   const statements: string[] = [];
   const triggerRe = /CREATE TRIGGER[\s\S]*?END;/gi;
   let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = triggerRe.exec(cleaned)) !== null) {
+  let match = triggerRe.exec(cleaned);
+  while (match !== null) {
     const before = cleaned.slice(lastIndex, match.index);
     for (const part of before.split(";")) {
       const trimmed = part.trim();
@@ -59,6 +59,7 @@ export function splitSqlStatements(sql: string): string[] {
     const trigger = match[0].trim();
     if (trigger) statements.push(trigger);
     lastIndex = match.index + match[0].length;
+    match = triggerRe.exec(cleaned);
   }
   for (const part of cleaned.slice(lastIndex).split(";")) {
     const trimmed = part.trim();

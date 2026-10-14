@@ -5,8 +5,9 @@ import type { MailboxSession, TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
 import { createArchiveConsentRepository } from "../../../packages/adapters/src/drive/archive-consent";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { faultingDatabase } from "./support/faults";
 import { useCurrentSchema } from "./support/db";
+import { faultingDatabase } from "./support/faults";
+
 const db = env.DB;
 
 const now = Date.UTC(2026, 9, 13, 12);

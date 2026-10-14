@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { signToken, verifyToken, type TokenDomain } from "../security/token";
+import { signToken, type TokenDomain, verifyToken } from "../security/token";
 
 /**
  * Historical workspace mutation domain: signs the encoded body and carries

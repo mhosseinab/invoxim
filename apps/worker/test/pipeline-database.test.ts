@@ -11,6 +11,7 @@ import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createPipelineRepository } from "../../../packages/adapters/src/pipeline/repository";
 import { createPurchaseViewReader } from "../../../packages/adapters/src/purchase-views";
 import { useCurrentSchema } from "./support/db";
+
 const db = env.DB;
 
 beforeAll(async () => {

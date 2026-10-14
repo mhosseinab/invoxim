@@ -6,6 +6,7 @@ import { beforeAll, beforeEach, expect, it } from "vitest";
 import { createFxValuationRepository } from "../../../packages/adapters/src/fx/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { useCurrentSchema } from "./support/db";
+
 const db = env.DB;
 
 const tenant = { userId: "fx-a", authority: "session" } as TenantContext;

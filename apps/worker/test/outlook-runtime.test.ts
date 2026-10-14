@@ -18,9 +18,9 @@ import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { syntheticClassificationBindings } from "./classification-fixture";
 import { owner, startBody } from "./onboarding-qa-fixture";
+import { useCurrentSchema } from "./support/db";
 import { routeRequest } from "./support/route";
 import { signedSession as signedSessionCookie } from "./support/tenant";
-import { useCurrentSchema } from "./support/db";
 
 const db = env.DB;
 beforeAll(async () => {

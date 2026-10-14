@@ -6,8 +6,8 @@ import { beforeAll, expect, it } from "vitest";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import { createOAuthStateStore } from "../../../packages/adapters/src/security/oauth-state";
 import { createCredentialVault } from "../../../packages/adapters/src/security/vault";
-import { faultingDatabase } from "./support/faults";
 import { useCurrentSchema } from "./support/db";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
