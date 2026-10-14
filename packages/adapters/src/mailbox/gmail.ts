@@ -1,32 +1,10 @@
-import type {
-  MailboxAuthorizationPort,
-  MailboxCredentials,
-  MailboxIdentity,
-} from "@invoxim/core";
+import type { MailboxAuthorizationPort, MailboxIdentity } from "@invoxim/core";
 import { MailboxError } from "@invoxim/core";
-import { google, verifyGoogleIdToken } from "better-auth/social-providers";
 import { z } from "zod";
+import { createGoogleOAuthClient } from "./google-oauth";
 
 const MAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const scopes = ["openid", "email", "profile", MAIL_SCOPE];
-const identitySchema = z.object({
-  sub: z.string().min(1).max(254),
-  email: z.email().max(254),
-  email_verified: z.literal(true),
-});
-const tokenText = z
-  .string()
-  .min(1)
-  .max(8192)
-  .regex(/^[\x21-\x7e]+$/);
-const responseSchema = z.object({
-  access_token: tokenText,
-  refresh_token: tokenText.optional(),
-  expires_in: z.number().int().min(1).max(86400),
-  token_type: z.string().refine((value) => value.toLowerCase() === "bearer"),
-  scope: z.string().max(4096).optional(),
-  id_token: z.string().min(1).max(16384).optional(),
-});
 function checkScopes(value: string | undefined, required: boolean) {
   if (value === undefined) {
     if (required) throw new MailboxError("MISSING_PERMISSION");
@@ -48,7 +26,10 @@ function checkScopes(value: string | undefined, required: boolean) {
   )
     throw new MailboxError("MISSING_PERMISSION");
 }
-async function providerJson(url: string, init: RequestInit): Promise<unknown> {
+async function providerJson(
+  url: string,
+  init: RequestInit = {},
+): Promise<unknown> {
   const signal = AbortSignal.timeout(10000);
   const deadline = Date.now() + 10000;
   let response: Response;
@@ -130,88 +111,31 @@ export function createGmailAuthorization(configuration: {
   clientId: string;
   clientSecret: string;
 }): MailboxAuthorizationPort {
-  const provider = google({
+  const google = createGoogleOAuthClient({
     clientId: configuration.clientId,
     clientSecret: configuration.clientSecret,
-    disableDefaultScope: true,
-    scope: scopes,
-    includeGrantedScopes: false,
-    accessType: "offline",
-    prompt: "select_account consent",
+    scopes,
+    json: providerJson,
+    fail: (code) => new MailboxError(code),
+    owns: (error) => error instanceof MailboxError,
   });
-  async function token(parameters: Record<string, string>) {
-    const parsed = responseSchema.safeParse(
-      await providerJson("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          ...parameters,
-          client_id: configuration.clientId,
-          client_secret: configuration.clientSecret,
-        }),
-      }),
-    );
-    if (!parsed.success) throw new MailboxError("UNAVAILABLE");
-    return parsed.data;
-  }
   async function accessIdentity(accessToken: string): Promise<MailboxIdentity> {
-    const parsed = identitySchema.safeParse(
-      await providerJson("https://openidconnect.googleapis.com/v1/userinfo", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }),
-    );
-    if (!parsed.success) throw new MailboxError("ACCOUNT_MISMATCH");
-    return {
-      subject: parsed.data.sub,
-      address: parsed.data.email.toLowerCase(),
-    };
+    const identity = await google.userinfo(accessToken);
+    return { subject: identity.sub, address: identity.email.toLowerCase() };
   }
   async function identityToken(
     idToken: string | undefined,
     nonce?: string,
   ): Promise<MailboxIdentity> {
-    if (!idToken) throw new MailboxError("ACCOUNT_MISMATCH");
-    const claims = await verifyGoogleIdToken({
-      token: idToken,
-      audience: configuration.clientId,
-      ...(nonce ? { nonce } : {}),
-    });
-    const parsed = identitySchema
-      .extend({ exp: z.number().int().positive() })
-      .safeParse(claims);
-    if (
-      !parsed.success ||
-      parsed.data.exp <= Math.floor(Date.now() / 1000) ||
-      (nonce && claims?.nonce !== nonce)
-    )
-      throw new MailboxError("ACCOUNT_MISMATCH");
-    return {
-      subject: parsed.data.sub,
-      address: parsed.data.email.toLowerCase(),
-    };
-  }
-  function credentials(
-    result: z.infer<typeof responseSchema>,
-  ): MailboxCredentials {
-    return {
-      accessToken: result.access_token,
-      expiresAt: Date.now() + result.expires_in * 1000,
-      ...(result.refresh_token ? { refreshToken: result.refresh_token } : {}),
-    };
+    const claims = await google.verifyIdToken(idToken, nonce);
+    return { subject: claims.sub, address: claims.email.toLowerCase() };
   }
   return {
     async authorize(input) {
-      const url = await provider.createAuthorizationURL({
-        state: input.state,
-        codeVerifier: input.verifier,
-        redirectURI: input.callback,
-      });
-      url.searchParams.set("nonce", input.nonce);
-      return url.toString();
+      return (await google.authorizationUrl(input)).toString();
     },
     async exchange(input) {
-      const result = await token({
+      const result = await google.token({
         grant_type: "authorization_code",
         code: input.code,
         code_verifier: input.verifier,
@@ -227,13 +151,13 @@ export function createGmailAuthorization(configuration: {
         throw new MailboxError("ACCOUNT_MISMATCH");
       return {
         identity,
-        credentials: credentials(result),
+        credentials: google.credentials(result),
         canReadMessages: true,
       };
     },
     async refresh(current, expectedIdentity) {
       if (!current.refreshToken) throw new MailboxError("RECONNECT_REQUIRED");
-      const result = await token({
+      const result = await google.token({
         grant_type: "refresh_token",
         refresh_token: current.refreshToken,
       });
@@ -250,7 +174,7 @@ export function createGmailAuthorization(configuration: {
           throw new MailboxError("ACCOUNT_MISMATCH");
       }
       return {
-        ...credentials(result),
+        ...google.credentials(result),
         refreshToken: result.refresh_token ?? current.refreshToken,
       };
     },
