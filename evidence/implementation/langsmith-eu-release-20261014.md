@@ -16,3 +16,9 @@ Public HTTP smoke checks at `/api/health`, `/api/public-config`, `/api/me` and `
 No D1 schema/data write or Pages frontend deployment performed. Remote migration listing reports `0007_archive_document_order.sql` pending; it is an archive-backfill migration, unrelated to this release, and Drive remains disabled. It was left pending deliberately. Existing AI limits and mandatory Clef stay unchanged; private imports remain metadata-only despite the content flag (synthetic probes alone may include content).
 
 Previous production version for rollback reference: `87c03a8c-f89c-4cbf-a5ce-4445b0462194`. Connected resource data is not reverted by a Worker rollback. Local command captures: `/tmp/invoxim-release-{deploy,tests,build,active}.log`; version metadata in `/tmp/invoxim-release-{before,after}.json`. Repository evidence records operational summaries only, with no raw provider responses or credentials.
+
+## Authorized migration follow-up
+
+The owner subsequently explicitly requested applying the migration. `pnpm --filter @invoxim/worker exec vitest run test/archive-backfill-migration.test.ts test/drive-backfill.test.ts` passed 32 tests across two files, exit 0. Preflight confirmed only `0007_archive_document_order.sql` pending and 24 document metadata rows to backfill.
+
+`WRANGLER_LOG_PATH=/tmp/invoxim-0007-apply-wrangler.log pnpm --filter @invoxim/worker exec wrangler d1 migrations apply invoxim-db --remote` exited 0, applying nine commands in 10.22 ms. Subsequent `migrations list invoxim-db --remote` reports no migrations to apply. Aggregate integrity checks confirm no missing document-order entries, no foreign-key violations, and all three archive-backfill columns present. No original content was read, exported or persisted by verification; no imports started and no queues cleared. Command evidence: `/tmp/invoxim-0007-{tests,apply}.log` and `/tmp/invoxim-0007-integrity.json`.
