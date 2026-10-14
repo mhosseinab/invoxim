@@ -355,9 +355,9 @@ export function PrivatePage({ displayName }: { displayName: string }) {
   const detailId = path.startsWith("/purchases/")
     ? path.slice("/purchases/".length)
     : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: revision is a re-fetch trigger, not a value read in the body
   useEffect(() => {
     const controller = new AbortController();
-    const requestRevision = revision;
     let active = true;
     async function load() {
       try {
@@ -426,8 +426,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
         if (currentProfile.user.id !== profile.user.id)
           throw new PrivateLoadError(401);
         data.profile = currentProfile;
-        if (active && requestRevision === revision)
-          setState({ kind: "ready", data });
+        if (active) setState({ kind: "ready", data });
       } catch (error) {
         const status = error instanceof PrivateLoadError ? error.status : 502;
         let loginReady = false;
@@ -443,11 +442,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
             // Unavailable or invalid capabilities cannot enable login.
           }
         }
-        if (
-          active &&
-          !controller.signal.aborted &&
-          requestRevision === revision
-        )
+        if (active && !controller.signal.aborted)
           setState({
             kind: "error",
             status,
