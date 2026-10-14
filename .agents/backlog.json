@@ -1316,6 +1316,34 @@
         "evidence/implementation/langsmith-adapter-tracing-20261014.md"
       ],
       "blockedBy": []
+    },
+    {
+      "id": "AI-LANGCHAIN-01",
+      "title": "Refactor OpenAI-compatible inference through LangChain Chat Completions",
+      "milestone": "Runtime AI",
+      "status": "done",
+      "dependsOn": [
+        "AI-TRACE-01"
+      ],
+      "ownerRole": "ai",
+      "reviewerRole": "principal-reviewer",
+      "read": [
+        "docs/05-ai-and-evaluations.md",
+        "docs/06-security-and-privacy.md"
+      ],
+      "scope": "Use LangChain at the existing inference boundary while preserving exact approved wire requests, deadlines, original usage validation, no retries/fallback and opt-in redacted tracing. No LangGraph or Clef replacement.",
+      "acceptanceCaseIds": [
+        "LC-01",
+        "LC-02",
+        "LC-03",
+        "LC-04"
+      ],
+      "redFirst": "Public invocation missing in original adapter; hostile output-version regression reproduces valid paid response incorrectly becoming outage.",
+      "deliverableEvidence": "Native transport/privacy regression suites, independent review and full clean-checkout verification.",
+      "completionEvidence": [
+        "evidence/implementation/langchain-ai-refactor-20261014.md"
+      ],
+      "blockedBy": []
     }
   ]
 }
