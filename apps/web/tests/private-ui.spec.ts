@@ -255,6 +255,10 @@ test("HOME-03 unpaid invoice remains useful without invented spending and servic
     }),
   );
   await page.goto("/home");
+  await page
+    .getByRole("article", { name: "Synthetic Audio purchase" })
+    .getByText("Needs attention", { exact: true })
+    .click();
   await expect(
     page.getByText("Not counted as spending", { exact: true }),
   ).toBeVisible();
@@ -583,4 +587,88 @@ test("HOME-05 deleted review source stays identifiable without offering a broken
       ["critical", "serious"].includes(violation.impact ?? ""),
     ),
   ).toEqual([]);
+});
+
+test("UX-PURCHASES-01 three unconfirmed records fit desktop without exposing questions or implying payments", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await fixtures(page);
+  const rows = ["Synthetic Transit", "Synthetic Store", "Synthetic Books"].map(
+    (merchant, index) => ({
+      ...purchase,
+      id: `compact-${index}`,
+      merchant,
+      paymentState: index === 1 ? "unpaid" : "unknown",
+      lifecycle: [],
+      period: [],
+      reviewReasons: ["unknown-payment"],
+    }),
+  );
+  await page.route("**/api/purchases?*", (route) =>
+    route.fulfill({
+      json: { rows, nextCursor: null, dateBasis: "document-or-event" },
+    }),
+  );
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({
+      json: { ...coverage, readyPurchaseCount: 3, openReviewCount: 3 },
+    }),
+  );
+  await page.route("**/api/purchases/summary?*", (route) =>
+    route.fulfill({
+      json: {
+        totals: [],
+        dateBasis: "event",
+        recordCount: 3,
+        unpaidCount: 1,
+        unknownCount: 2,
+        reviewCount: 3,
+        excludedEntryCount: 0,
+        missingCurrencyCount: 0,
+        conversion: "not_configured",
+      },
+    }),
+  );
+  await page.goto("/purchases");
+  const last = page.getByRole("article", { name: "Synthetic Books purchase" });
+  await expect(last).toBeVisible();
+  await page.screenshot({
+    path: "/tmp/ux-purchases-desktop.png",
+    fullPage: true,
+  });
+  await expect(last).toBeInViewport({ ratio: 1 });
+  const first = page.getByRole("article", {
+    name: "Synthetic Transit purchase",
+  });
+  await expect(
+    first.getByText("Document total", { exact: true }),
+  ).toBeVisible();
+  await expect(first.getByText("EUR 120.00", { exact: true })).toBeVisible();
+  await expect(
+    first.getByText("Was this invoice paid?", { exact: true }),
+  ).not.toBeVisible();
+  await first.getByText("Needs attention", { exact: true }).click();
+  await expect(
+    first.getByText("Was this invoice paid?", { exact: true }),
+  ).toBeVisible();
+  await first.getByText("Needs attention", { exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    first.getByText("Was this invoice paid?", { exact: true }),
+  ).not.toBeVisible();
+  console.log("UX-PURCHASES desktop last row", await last.boundingBox());
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: "/tmp/ux-purchases-mobile.png",
+    fullPage: true,
+  });
 });

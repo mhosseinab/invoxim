@@ -50,63 +50,101 @@ export function Totals({
   );
 }
 export function PurchaseCard({ purchase }: { purchase: PurchaseView }) {
+  const historyUrl = `/purchases/${encodeURIComponent(purchase.id)}`;
+  const useDocumentTotal =
+    purchase.paymentState === "unpaid" ||
+    purchase.paymentState === "unknown" ||
+    purchase.lifecycle.length === 0;
   return (
     <article
-      className="purchase private-purchase"
+      className="purchase private-purchase compact-purchase"
       aria-label={`${purchase.merchant} purchase`}
     >
-      <div className="purchase-heading">
+      <div className="compact-purchase-main">
         <span className="merchant-mark">
           <Icon name="document" />
         </span>
-        <div>
-          <p className="eyebrow">
+        <div className="compact-purchase-identity">
+          <h3>
+            <a href={historyUrl}>{purchase.merchant}</a>
+          </h3>
+          <p className="compact-purchase-meta">
             {purchase.date} · {purchase.category.replaceAll("_", " ")}
           </p>
-          <h3>
-            <a href={`/purchases/${encodeURIComponent(purchase.id)}`}>
-              {purchase.merchant}
-            </a>
-          </h3>
+          <span className="status">
+            {purchase.paymentState === "paid"
+              ? text.paymentDocumented
+              : purchase.paymentState === "unpaid"
+                ? text.unpaidInvoice
+                : purchase.paymentState === "partially_paid"
+                  ? text.partiallyPaid
+                  : text.paymentUnconfirmed}
+          </span>
         </div>
-        <span className="status">
-          {purchase.paymentState === "paid"
-            ? "Payment documented"
-            : purchase.paymentState === "unpaid"
-              ? "Unpaid invoice"
-              : purchase.paymentState === "partially_paid"
-                ? "Partially paid"
-                : "Payment unconfirmed"}
-        </span>
+        <div className="compact-purchase-amount">
+          <span>
+            {useDocumentTotal
+              ? text["purchase.documentTotal"]
+              : text.historyNet}
+          </span>
+          {useDocumentTotal ? (
+            purchase.documentTotalMinor !== null && purchase.currency ? (
+              <strong>
+                {amount(purchase.documentTotalMinor, purchase.currency)}
+              </strong>
+            ) : (
+              <strong>{text.amountUnavailable}</strong>
+            )
+          ) : (
+            purchase.lifecycle.map((value) => (
+              <strong key={value.currency}>
+                {amount(value.netMinor, value.currency)}
+              </strong>
+            ))
+          )}
+        </div>
       </div>
-      <Totals values={purchase.lifecycle} label={text.lifecycle} />
-      {purchase.documentTotalMinor !== null && purchase.currency && (
-        <p className="muted">
-          {text["purchase.documentTotal"]}:{" "}
-          {amount(purchase.documentTotalMinor, purchase.currency)}
-        </p>
-      )}
-      {purchase.paymentState === "unpaid" && (
-        <p className="notice">{text["purchase.unpaid"]}</p>
-      )}
-      {purchase.reviewReasons.length > 0 && (
-        <div className="notice">
-          <strong>Needs attention</strong>
-          <ul>
-            {purchase.reviewReasons.map((reason) => (
-              <li key={reason}>
-                {reviewQuestions[reason] ??
-                  "Some source details need review. Uncertain events are excluded from spending."}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div className="private-card-bottom">
-        <span>{purchase.evidenceCount} supporting documents</span>
-        <a href={`/purchases/${encodeURIComponent(purchase.id)}`}>
+      <div className="compact-purchase-footer">
+        <span>
+          {purchase.evidenceCount}{" "}
+          {purchase.evidenceCount === 1
+            ? text.supportingDocument
+            : text.supportingDocuments}
+        </span>
+        <a href={historyUrl}>
           View purchase history <span aria-hidden="true">→</span>
         </a>
+        <details className="compact-purchase-details">
+          <summary>
+            {purchase.reviewReasons.length > 0
+              ? text.needsAttention
+              : text.paymentDetails}
+          </summary>
+          <Totals values={purchase.lifecycle} label={text.lifecycle} />
+          {!useDocumentTotal &&
+            purchase.documentTotalMinor !== null &&
+            purchase.currency && (
+              <p>
+                {text["purchase.documentTotal"]}:{" "}
+                {amount(purchase.documentTotalMinor, purchase.currency)}
+              </p>
+            )}
+          {purchase.paymentState === "unpaid" && (
+            <p>{text["purchase.unpaid"]}</p>
+          )}
+          {purchase.reviewReasons.length > 0 && (
+            <ul>
+              {purchase.reviewReasons.map((reason) => (
+                <li key={reason}>
+                  {reviewQuestions[reason] ?? text.unsupportedQuestion}
+                </li>
+              ))}
+            </ul>
+          )}
+          {purchase.reviewReasons.length > 0 && (
+            <a href="/needs-attention">{text.reviewQuestions}</a>
+          )}
+        </details>
       </div>
     </article>
   );
@@ -128,11 +166,38 @@ export function Coverage({
       connection.pendingJobs > 0 ||
       connection.imports.some((run) => run.completedAt === null),
   );
+  if (!full)
+    return (
+      <section
+        className="private-coverage compact-coverage"
+        aria-label="Inbox coverage"
+      >
+        <div>
+          <strong>
+            {
+              coverage.connections.filter(
+                (connection) => connection.state === "connected",
+              ).length
+            }{" "}
+            {text.connectedInboxes}
+          </strong>
+          {paused ? (
+            <span>{text.coveragePaused}</span>
+          ) : (
+            pending && <span>{text.partial}</span>
+          )}
+          {coverage.connections.length === 0 && <span>{text.noMailbox}</span>}
+          {coverage.openReviewCount > 0 && (
+            <a href="/needs-attention">
+              {coverage.openReviewCount} {text.itemsNeedAttention}
+            </a>
+          )}
+        </div>
+        <a href="/connections">View coverage details →</a>
+      </section>
+    );
   return (
-    <section
-      className={full ? "private-connection-list" : "private-coverage"}
-      aria-label="Inbox coverage"
-    >
+    <section className="private-connection-list" aria-label="Inbox coverage">
       <div>
         <strong>
           {

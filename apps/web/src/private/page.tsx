@@ -23,6 +23,7 @@ import { amount, Coverage, PurchaseCard, Totals } from "./components";
 import { reviewQuestions, privateCopy as text } from "./copy";
 import { Corrections } from "./corrections";
 import { Reviews } from "./reviews";
+import "./purchases.css";
 
 type Data = {
   profile: ProfileView;
@@ -488,7 +489,9 @@ export function PrivatePage({ displayName }: { displayName: string }) {
     };
   }, []);
   return (
-    <div className="app-frame private-app">
+    <div
+      className={`app-frame private-app${!detailId && !connectionPage && !attentionPage ? " purchase-list-page" : ""}`}
+    >
       <a className="skip" href="#content">
         Skip to content
       </a>
@@ -548,7 +551,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
             role="status"
             aria-live="polite"
             aria-atomic="true"
-            className="private-load-status"
+            className={`private-load-status${state.kind === "ready" && !detailId && !connectionPage && !attentionPage ? " purchase-ready-status" : ""}`}
           >
             {state.kind === "loading"
               ? text.loading
@@ -610,13 +613,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
             ) : (
               <>
                 <section className="private-heading">
-                  <p className="eyebrow">
-                    Purchase records · supporting evidence
-                  </p>
                   <h1>{path === "/home" ? text.home : text.purchases}</h1>
-                  <p>
-                    Find the receipt. Understand the payment and refund history.
-                  </p>
                 </section>
                 <Search coverage={state.data.coverage} />
                 <Coverage coverage={state.data.coverage} />
@@ -634,10 +631,6 @@ export function PrivatePage({ displayName }: { displayName: string }) {
                       {state.data.list?.rows.length ?? 0} records on this page
                     </span>
                   </div>
-                  <p className="muted">
-                    Purchase dates or financial events match the selected range.
-                    Amounts below cover each purchase history.
-                  </p>
                   {state.data.list?.rows.map((purchase) => (
                     <PurchaseCard key={purchase.id} purchase={purchase} />
                   ))}
@@ -673,16 +666,21 @@ export function PrivatePage({ displayName }: { displayName: string }) {
                     className="private-panel private-summary"
                   >
                     <h2>{text["home.spendingLabel"]}</h2>
-                    <p>{text["home.spendingCaption"]}</p>
-                    <p>
-                      {text.period}{" "}
-                      {new URLSearchParams(window.location.search).get(
-                        "from",
-                      ) ?? "All available dates"}{" "}
-                      —{" "}
-                      {new URLSearchParams(window.location.search).get("to") ??
-                        "present"}
-                    </p>
+                    <details className="compact-spending-details">
+                      <summary>{text.spendingDetails}</summary>
+                      <p>{text["home.spendingCaption"]}</p>
+                      <p>
+                        {text.period}{" "}
+                        {new URLSearchParams(window.location.search).get(
+                          "from",
+                        ) ?? "All available dates"}{" "}
+                        —{" "}
+                        {new URLSearchParams(window.location.search).get(
+                          "to",
+                        ) ?? "present"}
+                      </p>
+                      <p className="muted">{text.notConverted}</p>
+                    </details>
                     {state.data.summary.totals.length > 0 ? (
                       <Totals
                         values={state.data.summary.totals}
@@ -691,8 +689,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
                     ) : (
                       <p>{text.noEvents}</p>
                     )}
-                    <p className="muted">{text.notConverted}</p>
-                    <p>
+                    <p className="compact-spending-counts">
                       {state.data.summary.unpaidCount} unpaid ·{" "}
                       {state.data.summary.unknownCount} unconfirmed ·{" "}
                       {state.data.summary.reviewCount} need attention ·{" "}

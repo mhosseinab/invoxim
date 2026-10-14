@@ -10,6 +10,10 @@ test("HOME-05 known payment uncertainty asks the exact question rather than full
   await expect(
     page.getByRole("heading", { name: "Your purchase records", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("article", { name: "QA question invoice purchase" })
+    .getByText("Needs attention", { exact: true })
+    .click();
   await expect(
     page.getByText("Was this invoice paid?", { exact: true }),
   ).toBeVisible();
