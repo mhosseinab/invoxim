@@ -1,0 +1,19 @@
+RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+▲ [WARNING] AI bindings always access remote resources, and so may incur usage charges even in local dev. To suppress this warning, set `remote: true` for the binding definition in your configuration file.
+
+
+stdout | test/direct-model-native-headroom.test.ts > direct-model real job engine with 0 attachments reaches one paid purchase within forty shared statements
+BOUNDED_NATIVE_COUNTERS {"attachmentCount":0,"trace":[{"stage":"parse","statements":15,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"documents_staged"},{"stage":"infer","statements":32,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"pipeline_staged"},{"stage":"infer","statements":35,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"pipeline_staged"},{"stage":"reconcile","statements":23,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"ledger_committed"}]}
+
+stdout | test/direct-model-native-headroom.test.ts > direct-model real job engine with 2 attachments reaches one paid purchase within forty shared statements
+BOUNDED_NATIVE_COUNTERS {"attachmentCount":2,"trace":[{"stage":"parse","statements":16,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"documents_staged"},{"stage":"infer","statements":33,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"pipeline_staged"},{"stage":"infer","statements":36,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"pipeline_staged"},{"stage":"reconcile","statements":25,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"ledger_committed"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":16,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"}]}
+
+stdout | test/direct-model-native-headroom.test.ts > direct-model real job engine with 8 attachments reaches one paid purchase within forty shared statements
+BOUNDED_NATIVE_COUNTERS {"attachmentCount":8,"trace":[{"stage":"parse","statements":16,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"documents_staged"},{"stage":"infer","statements":33,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"pipeline_staged"},{"stage":"infer","statements":36,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"pipeline_staged"},{"stage":"reconcile","statements":25,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"ledger_committed"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":18,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"},{"stage":"infer","statements":16,"remainingAtHandler":37,"outcome":"ack","jobStatus":"completed","code":"document_review"}]}
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  06:05:06
+   Duration  9.69s (tests 99%)

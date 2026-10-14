@@ -1,0 +1,10 @@
+RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+▲ [WARNING] AI bindings always access remote resources, and so may incur usage charges even in local dev. To suppress this warning, set `remote: true` for the binding definition in your configuration file.
+
+
+
+ Test Files  1 passed (1)
+      Tests  39 passed (39)
+   Start at  06:14:10
+   Duration  1.77s (transform 71%, import 20%, tests 8%, worker 1%)

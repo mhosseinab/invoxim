@@ -1,0 +1,16 @@
+RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+▲ [WARNING] AI bindings always access remote resources, and so may incur usage charges even in local dev. To suppress this warning, set `remote: true` for the binding definition in your configuration file.
+
+
+▲ [WARNING] AI bindings always access remote resources, and so may incur usage charges even in local dev. To suppress this warning, set `remote: true` for the binding definition in your configuration file.
+
+
+
+ Test Files  2 passed (2)
+      Tests  12 passed (12)
+   Start at  06:22:33
+   Duration  3.30s (transform 71%, import 21%, tests 6%, worker 1%)
+
+    Isolate  2 workers spawned · ~561ms startup each (spawn + environment, per file)
+             at least ~561ms faster with isolate: false — reuses workers across files instead of one per file

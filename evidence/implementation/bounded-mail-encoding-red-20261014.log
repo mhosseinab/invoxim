@@ -1,0 +1,141 @@
+RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
+
+▲ [WARNING] AI bindings always access remote resources, and so may incur usage charges even in local dev. To suppress this warning, set `remote: true` for the binding definition in your configuration file.
+
+
+ ❯ test/gmail-attachment-batch.test.ts (37 tests | 3 failed) 89ms
+   × unsupported inner encoding after Content-Type: application/http
+ cannot pass as decoded JSON 12ms
+   × unsupported inner encoding after HTTP/1.1 200 Synthetic
+ cannot pass as decoded JSON 3ms
+   × unsupported inner encoding after HTTP/1.1 200 Synthetic
+ cannot pass as decoded JSON 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/gmail-attachment-batch.test.ts > unsupported inner encoding after Content-Type: application/http
+ cannot pass as decoded JSON
+ FAIL  test/gmail-attachment-batch.test.ts > unsupported inner encoding after HTTP/1.1 200 Synthetic
+ cannot pass as decoded JSON
+ FAIL  test/gmail-attachment-batch.test.ts > unsupported inner encoding after HTTP/1.1 200 Synthetic
+ cannot pass as decoded JSON
+AssertionError: promise resolved "{ status: 'ready', input: { …(3) } }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "input": {
++     "connectionId": "mailbox",
++     "providerMessageId": "message",
++     "root": {
++       "children": [
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-0",
++         },
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-1",
++         },
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-2",
++         },
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-3",
++         },
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-4",
++         },
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-5",
++         },
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-6",
++         },
++         {
++           "bytes": Uint8Array [
++             116,
++             101,
++             115,
++             116,
++           ],
++           "mimeType": "text/plain",
++           "partId": "part-7",
++         },
++       ],
++       "mimeType": "multipart/mixed",
++       "partId": "root",
++     },
++   },
++   "status": "ready",
+  }
+
+ ❯ test/gmail-attachment-batch.test.ts:348:33
+    346|       return new Response(text, response);
+    347|     });
+    348|     await expect(current.load()).rejects.toMatchObject({
+       |                                 ^
+    349|       code: "CONTENT_UNAVAILABLE",
+    350|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 34 passed (37)
+   Start at  06:13:47
+   Duration  1.76s (transform 71%, import 19%, tests 9%, worker 1%)
+
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /home/geek/workspace/invoxim/apps/worker

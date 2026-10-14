@@ -1349,7 +1349,7 @@
       "id": "MAIL-PERF-01",
       "title": "Batch bounded Gmail attachment fetching and process messages concurrently",
       "milestone": "Runtime performance",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "AI-LANGCHAIN-01"
       ],
@@ -1371,7 +1371,9 @@
       "redFirst": "Port real-engine zero/two/eight-attachment regression before runtime fixes; prove bounded stage progress and one financial result.",
       "deliverableEvidence": "Native query/request counters, multipart/admission/cooldown adversarial tests, independent review and clean full gate.",
       "completionEvidence": [
-        "evidence/implementation/bounded-mail-processing-plan-20261014.md"
+        "evidence/implementation/bounded-mail-processing-plan-20261014.md",
+        "evidence/implementation/bounded-mail-processing-completion-20261014.md",
+        "evidence/implementation/bounded-mail-full-gate-final-20261014.log"
       ],
       "blockedBy": []
     }
