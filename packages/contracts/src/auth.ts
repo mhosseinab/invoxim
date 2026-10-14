@@ -30,5 +30,4 @@ export const profileViewSchema = z.strictObject({
   valuation: z.strictObject({ status: z.literal("not_configured") }),
 });
 
-export type PreferencesRequest = z.infer<typeof preferencesRequestSchema>;
 export type ProfileView = z.infer<typeof profileViewSchema>;

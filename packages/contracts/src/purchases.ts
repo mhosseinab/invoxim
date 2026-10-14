@@ -308,9 +308,6 @@ export const purchaseExportSnapshotSchema = z.strictObject({
     )
     .max(2000),
 });
-export type PurchaseExportSnapshot = z.infer<
-  typeof purchaseExportSnapshotSchema
->;
 
 export const reviewSourceContextSchema = z.strictObject({
   mailboxAddress: z.string().max(254),

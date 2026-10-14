@@ -400,4 +400,3 @@ export const onboardingViewSchema = z
   });
 export type AppConfig = z.infer<typeof configSchema>;
 export type Extraction = z.infer<typeof extractionSchema>;
-export type OnboardingView = z.infer<typeof onboardingViewSchema>;
