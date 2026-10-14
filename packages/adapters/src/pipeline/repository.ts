@@ -442,6 +442,15 @@ async function continuationKey(
 }
 
 export type PipelineProcessingSelection = ProcessingReviewMetadata;
+
+/**
+ * Single source-status derivation shared by `commit` and `skipDocument`
+ * (P3/P0.5). A document whose parse_state is outside {ready, extracted} is
+ * unresolved content and keeps the source at 'review', so a non-purchase skip
+ * cannot discard a source that a financial commit would leave reviewable.
+ */
+const SOURCE_STATUS_CASE = `CASE WHEN EXISTS(SELECT 1 FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id WHERE r.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND r.status='open') OR EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state NOT IN('ready','extracted')) THEN 'review' WHEN EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state='ready') THEN 'discovered' WHEN EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state='extracted') THEN 'processed' ELSE 'unsupported' END`;
+
 export function createPipelineRepository(
   db: D1Database,
   options: {
@@ -1151,7 +1160,7 @@ export function createPipelineRepository(
       );
     else
       add(
-        `UPDATE source_messages SET processing_status=CASE WHEN EXISTS(SELECT 1 FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id WHERE r.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND r.status='open') THEN 'review' WHEN EXISTS(SELECT 1 FROM documents WHERE user_id=source_messages.user_id AND source_message_id=source_messages.id AND parse_state='ready') THEN 'discovered' WHEN EXISTS(SELECT 1 FROM documents WHERE user_id=source_messages.user_id AND source_message_id=source_messages.id AND parse_state='extracted') THEN 'processed' ELSE 'unsupported' END WHERE user_id=? AND id=(SELECT source_message_id FROM discovery_source_jobs WHERE user_id=? AND job_id=?) AND ${guard.sql}`,
+        `UPDATE source_messages SET processing_status=${SOURCE_STATUS_CASE} WHERE user_id=? AND id=(SELECT source_message_id FROM discovery_source_jobs WHERE user_id=? AND job_id=?) AND ${guard.sql}`,
         [userId, userId, lease.jobId],
       );
     statements.push(importProjection(lease, guard));
@@ -1229,7 +1238,7 @@ export function createPipelineRepository(
       ),
       ...follow,
       stmt(
-        `UPDATE source_messages SET processing_status=CASE WHEN EXISTS(SELECT 1 FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id WHERE r.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND r.status='open') OR EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state NOT IN('ready','extracted')) THEN 'review' WHEN EXISTS(SELECT 1 FROM documents d WHERE d.user_id=source_messages.user_id AND d.source_message_id=source_messages.id AND d.parse_state='ready') THEN 'discovered' ELSE 'processed' END WHERE user_id=? AND id=(SELECT source_message_id FROM discovery_source_jobs WHERE user_id=? AND job_id=?) AND ${guard.sql}`,
+        `UPDATE source_messages SET processing_status=${SOURCE_STATUS_CASE} WHERE user_id=? AND id=(SELECT source_message_id FROM discovery_source_jobs WHERE user_id=? AND job_id=?) AND ${guard.sql}`,
         [lease.context.userId, lease.context.userId, lease.jobId],
         guard,
       ),
