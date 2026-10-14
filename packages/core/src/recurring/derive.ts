@@ -83,6 +83,21 @@ function scheduleMatches(
   return start;
 }
 
+/**
+ * Recurring eligibility (C15): two layers, intentionally not one rule.
+ *
+ * SQL (adapters/recurring/service.ts) pre-filters database rows at query time:
+ * active profile, active purchase record, no pending lifecycle deletion/recompute,
+ * plus `kind='payment' AND eligible=1`. It also computes the `installment` flag
+ * (`partially_paid` OR more than one cash payment on the purchase).
+ *
+ * This TS layer validates the derivation basis independently so the pure
+ * function stays correct for callers that supply payments without the SQL
+ * pre-filter (tests, future non-D1 sources). It re-checks kind/eligible,
+ * drops `installment`, and excludes multi-payment purchases — the latter is
+ * redundant with the SQL `installment` computation when rows come from the
+ * adapter, but is the only guard otherwise.
+ */
 function eligiblePayments(input: RecurringInput): RecurringPayment[] {
   const entries = new Map<string, RecurringPayment>();
   for (const payment of input.payments) {
