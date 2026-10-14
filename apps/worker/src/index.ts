@@ -214,6 +214,19 @@ function configuredJobs(
   });
 }
 
+function invocationBudget(bindings: WorkerBindings) {
+  const started = Date.now();
+  const observer = configuredOperationalObserver(bindings);
+  const database = bindings.DB
+    ? createInvocationDatabase(bindings.DB, QUERY_LIMIT)
+    : undefined;
+  const measurements = () => ({
+    consumedQueryCount: database?.executedStatements() ?? 0,
+    wallDurationMs: Math.max(0, Date.now() - started),
+  });
+  return { observer, database, measurements };
+}
+
 // Preserve the established Hono API while adding the platform event entry points.
 const handleRequest = app.fetch;
 const worker = Object.assign(app, {
@@ -228,15 +241,7 @@ const worker = Object.assign(app, {
     _controller: ScheduledController,
     bindings: WorkerBindings,
   ): Promise<void> {
-    const started = Date.now();
-    const observer = configuredOperationalObserver(bindings);
-    const database = bindings.DB
-      ? createInvocationDatabase(bindings.DB, QUERY_LIMIT)
-      : undefined;
-    const measurements = () => ({
-      consumedQueryCount: database?.executedStatements() ?? 0,
-      wallDurationMs: Math.max(0, Date.now() - started),
-    });
+    const { observer, database, measurements } = invocationBudget(bindings);
     try {
       if (bindings.LIFECYCLE_ENABLED === "true" && database) {
         const { journal } = lifecycleDependencies(database.db, bindings);
@@ -287,15 +292,7 @@ const worker = Object.assign(app, {
     batch: MessageBatch<unknown>,
     bindings: WorkerBindings,
   ): Promise<void> {
-    const started = Date.now();
-    const observer = configuredOperationalObserver(bindings);
-    const database = bindings.DB
-      ? createInvocationDatabase(bindings.DB, QUERY_LIMIT)
-      : undefined;
-    const measurements = () => ({
-      consumedQueryCount: database?.executedStatements() ?? 0,
-      wallDurationMs: Math.max(0, Date.now() - started),
-    });
+    const { observer, database, measurements } = invocationBudget(bindings);
     try {
       const runtime = configuredJobs(bindings, database);
       if (!runtime) {
