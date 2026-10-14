@@ -18,6 +18,7 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
+import { hashJsonValue } from "../hash";
 import {
   mapFxEntry,
   type OwnedEntry,
@@ -76,15 +77,7 @@ export type FxRevaluationPage =
   | { status: "stale" }
   | { status: "current"; processed: number; nextCursor: string | null };
 async function fingerprint(value: unknown): Promise<string> {
-  return Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(JSON.stringify(value)),
-      ),
-    ),
-    (byte) => byte.toString(16).padStart(2, "0"),
-  ).join("");
+  return hashJsonValue(value);
 }
 function encodeCursor(entryId: string, key: string): string {
   return btoa(

@@ -5,9 +5,9 @@ import {
 import type { OnboardingRepository, OnboardingSession } from "@invoxim/core";
 import { OnboardingError } from "@invoxim/core";
 import type { AiConfiguration } from "../ai/configuration";
+import { hashJsonValue } from "../hash";
 import { readActiveOnboardingRun } from "./active-run";
 import {
-  hashOnboardingValue,
   LOCAL_PARSER_POLICY,
   RECEIPT_CLASSIFIER_NOTICE,
 } from "./configuration";
@@ -81,7 +81,7 @@ export function createOnboardingRepository(
         sessionId: session.sessionId,
         connectionId: connection.id,
         provider: connection.provider,
-        scopeDigest: await hashOnboardingValue(connection.scopes),
+        scopeDigest: await hashJsonValue(connection.scopes),
         generation: connection.generation,
         credentialVersion: connection.credential_version,
         profileVersion: profile.version,
@@ -179,8 +179,8 @@ export function createOnboardingRepository(
       });
     },
     async prepareStart(session, input, key) {
-      const keyHash = await hashOnboardingValue(["onboarding.start", key]),
-        bodyHash = await hashOnboardingValue(input);
+      const keyHash = await hashJsonValue(["onboarding.start", key]),
+        bodyHash = await hashJsonValue(input);
       const command = await db
         .prepare(
           "SELECT body_hash,result_json FROM onboarding_commands WHERE user_id=? AND key_hash=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
@@ -213,7 +213,7 @@ export function createOnboardingRepository(
         token.endDate !== input.endDate ||
         token.timezone !== input.timezone ||
         token.reportingCurrency !== input.reportingCurrency ||
-        (await hashOnboardingValue(token)) !== input.acceptedDisclosureVersion
+        (await hashJsonValue(token)) !== input.acceptedDisclosureVersion
       )
         throw new OnboardingError("PROCESSING_REVIEW_REQUIRED");
       const { profile, connection, selected, availability } = await context(
@@ -226,7 +226,7 @@ export function createOnboardingRepository(
         token.credentialVersion !== connection.credential_version ||
         token.generation !== connection.generation ||
         token.provider !== connection.provider ||
-        token.scopeDigest !== (await hashOnboardingValue(connection.scopes))
+        token.scopeDigest !== (await hashJsonValue(connection.scopes))
       )
         throw new OnboardingError("PROCESSING_REVIEW_REQUIRED");
       const active = await readActiveOnboardingRun(db, session, connection.id);
@@ -277,7 +277,7 @@ export function createOnboardingRepository(
               ? "AUTH_REQUIRED"
               : "UNAVAILABLE",
         );
-      const intervalKey = await hashOnboardingValue([
+      const intervalKey = await hashJsonValue([
         connection.id,
         connection.generation,
         token.startDate,
@@ -326,7 +326,7 @@ export function createOnboardingRepository(
           keyHash,
           bodyHash,
           intervalKey,
-          fingerprint: await hashOnboardingValue([keyHash, bodyHash]),
+          fingerprint: await hashJsonValue([keyHash, bodyHash]),
         },
       };
     },

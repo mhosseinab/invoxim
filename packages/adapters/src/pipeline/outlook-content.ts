@@ -1,6 +1,7 @@
 import type { MimePart } from "@invoxim/core";
 import { DOCUMENT_LIMITS } from "@invoxim/core";
 import { z } from "zod";
+import { hashJsonValue } from "../hash";
 import type { ContentLoadInput, TransientContentReader } from "./gmail-content";
 import { ContentError } from "./gmail-content";
 
@@ -51,12 +52,8 @@ function decode(value: string): Uint8Array | null {
   }
 }
 async function attachmentKey(messageId: string, attachmentId: string) {
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(JSON.stringify([messageId, attachmentId])),
-  );
   // Graph IDs may occupy all 256 characters; a deterministic key remains within part limits.
-  return `attachment:${Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  return `attachment:${await hashJsonValue([messageId, attachmentId])}`;
 }
 /** Graph-supplied body/files only; external references never become fetch destinations. */
 export function createOutlookContentReader(

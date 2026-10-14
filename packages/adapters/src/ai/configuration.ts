@@ -6,6 +6,7 @@ import {
 import { EMAIL_CLASSIFICATION_VERSION } from "@invoxim/core";
 import { z } from "zod";
 import type { AuthBindings } from "../auth/configuration";
+import { hashJsonValue } from "../hash";
 import { createCredentialCipher } from "../security/cipher";
 import type { ClefBinding } from "./clef";
 import { receiptClassificationConfigurationSchema } from "./clef";
@@ -212,16 +213,7 @@ export async function selectedAiConfigurationDigest(
     maxOutputBytes: destination.maxOutputBytes,
     maxOutputTokens: destination.maxOutputTokens,
   };
-  return hashAiValue({ destination: selectedDestination, model });
-}
-async function hashAiValue(value: unknown) {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(JSON.stringify(value)),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  return hashJsonValue({ destination: selectedDestination, model });
 }
 /**
  * AI run fingerprint tuple (A1). The single recipe behind extraction,
@@ -261,7 +253,7 @@ export async function computeAiFingerprint(input: {
   policyVersion: number;
   consentId: string;
 }) {
-  return hashAiValue(
+  return hashJsonValue(
     buildFingerprintTuple({
       ...input,
       promptVersion: EXTRACTION_PROMPT_VERSION,

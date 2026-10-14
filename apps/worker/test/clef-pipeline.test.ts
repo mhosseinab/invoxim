@@ -1280,12 +1280,12 @@ async function interruptedFinancial(
   unfinished = false,
   paidReceipt?: { content: DocumentInput; output: string },
 ) {
-  const { hashOnboardingValue } =
-    await import("../../../packages/adapters/src/onboarding/configuration");
+  const { hashJsonValue } =
+    await import("../../../packages/adapters/src/hash");
   config = {
     ...config,
     promptVersion: version,
-    fingerprint: await hashOnboardingValue([
+    fingerprint: await hashJsonValue([
       config.mode,
       price.configurationDigest,
       1,
@@ -1608,8 +1608,8 @@ it("AI-CLEF-PRECISION-01 uncertain classification is metered and never invokes f
   ).toBe("known");
 });
 it("AI-CLEF-PRECISION-01 policy identity invalidates custom configuration cache fingerprints", async () => {
-  const { hashOnboardingValue } =
-    await import("../../../packages/adapters/src/onboarding/configuration");
+  const { hashJsonValue } =
+    await import("../../../packages/adapters/src/hash");
   const { CLEF_RECEIPT_POLICY_VERSION } =
     await import("../../../packages/adapters/src/ai/clef");
   const repository = createPipelineRepository(db, {
@@ -1630,11 +1630,11 @@ it("AI-CLEF-PRECISION-01 policy identity invalidates custom configuration cache 
     contentHash: document.contentHash,
     parserVersion: document.parserVersion,
   }));
-  const previousDigest = await hashOnboardingValue({
+  const previousDigest = await hashJsonValue({
     classification,
     sourceDocuments,
   });
-  const currentDigest = await hashOnboardingValue({
+  const currentDigest = await hashJsonValue({
     classification,
     classifierPolicyVersion: CLEF_RECEIPT_POLICY_VERSION,
     sourceDocuments,

@@ -10,6 +10,7 @@ import {
   MailboxError,
   requireRecentMailboxSession,
 } from "@invoxim/core";
+import { stateHash } from "../security/helpers";
 import { createOAuthStateStore } from "../security/oauth-state";
 import { createCredentialVault } from "../security/vault";
 import type { MailboxServiceConfiguration } from "./types";
@@ -34,15 +35,6 @@ interface Intent {
 const MAX = Number.MAX_SAFE_INTEGER;
 const fields =
   "id,provider,provider_subject,display_address,state,scheduling_state,generation,credential_version,credential_key_version,credential_ciphertext";
-async function stateHash(state: string) {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(state),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
 function verifier() {
   return btoa(
     String.fromCharCode(...crypto.getRandomValues(new Uint8Array(64))),

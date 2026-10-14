@@ -1,6 +1,7 @@
 import { hasControlCharacters } from "@invoxim/contracts";
 import type { DeletionJournal, DeletionMarker } from "@invoxim/core";
 import { LifecycleError } from "@invoxim/core";
+import { sha256Hex } from "../hash";
 /** Operator-managed independently durable service; this application never provisions it. */
 export function createDeletionJournal(
   binding: Fetcher | undefined,
@@ -22,15 +23,7 @@ export function createDeletionJournal(
         marker.requestId,
         marker.deletedAt,
       ]);
-      const requestKey = Array.from(
-        new Uint8Array(
-          await crypto.subtle.digest(
-            "SHA-256",
-            new TextEncoder().encode(identity),
-          ),
-        ),
-        (byte) => byte.toString(16).padStart(2, "0"),
-      ).join("");
+      const requestKey = await sha256Hex(identity);
       const response = await binding.fetch(
         "https://deletion-journal.invalid/v1/deletions",
         {

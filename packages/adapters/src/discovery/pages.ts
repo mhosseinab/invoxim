@@ -9,6 +9,7 @@ import type {
 } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
+import { sourceKey } from "../hash";
 import type { DiscoveryServiceOptions } from "./service";
 
 interface State {
@@ -77,18 +78,6 @@ const metadataSchema = z.object({
   excluded: z.boolean(),
   candidate: z.enum(["matched", "unknown"]),
 });
-async function sourceKey(
-  userId: string,
-  connectionId: string,
-  messageId: string,
-  generation: number,
-) {
-  const bytes = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(JSON.stringify([userId, connectionId, messageId])),
-  );
-  return `source:${Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}:${generation}`;
-}
 export function createDiscoveryPages(
   db: D1Database,
   options: DiscoveryServiceOptions,

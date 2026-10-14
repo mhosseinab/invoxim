@@ -9,6 +9,7 @@ import {
   fxRateQuoteSchema,
 } from "@invoxim/contracts";
 import { convertFxEntry } from "@invoxim/core";
+import { hashJsonValue } from "../hash";
 import type { FxValuationRead } from "./repository";
 export interface OwnedEntry {
   id: string;
@@ -84,15 +85,7 @@ export function valuationJoin(profileAlias: string, entryAlias = "e"): string {
   return `LEFT JOIN entry_valuations v ON v.user_id=${entryAlias}.user_id AND v.entry_id=${entryAlias}.id AND v.profile_version=${profileAlias}.version AND v.entry_version=${entryAlias}.version AND v.reporting_currency=${profileAlias}.reporting_currency AND v.calculation_version=? AND v.policy_hash=? AND v.policy_source=? AND v.max_prior_age_days=? AND v.original_kind=${entryAlias}.kind AND v.original_minor=${entryAlias}.amount_minor AND v.original_currency=${entryAlias}.currency AND v.original_event_date=${entryAlias}.event_date LEFT JOIN fx_rates r ON r.id=v.rate_id`;
 }
 export async function fxSnapshotHash(value: unknown): Promise<string> {
-  return Array.from(
-    new Uint8Array(
-      await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(JSON.stringify(value)),
-      ),
-    ),
-    (byte) => byte.toString(16).padStart(2, "0"),
-  ).join("");
+  return hashJsonValue(value);
 }
 export function fxQuoteIdentity(quote: FxRateQuote): unknown[] {
   return [

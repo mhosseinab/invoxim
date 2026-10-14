@@ -8,6 +8,7 @@ import {
   selectedAiConfigurationDigest,
 } from "../ai/configuration";
 import { LOCAL_PDF_PARSER_VERSION } from "../documents/pdf-preflight";
+import { hashJsonValue } from "../hash";
 
 /** Code-owned local parser policy: transient in-Worker processing, no remote converter. */
 export const LOCAL_PARSER_POLICY = Object.freeze({
@@ -42,7 +43,7 @@ export type ConfigDigestInputs = z.infer<typeof configDigestInputsSchema>;
 export async function onboardingConfigurationDigest(
   input: ConfigDigestInputs,
 ): Promise<string> {
-  return hashOnboardingValue(configDigestInputsSchema.parse(input));
+  return hashJsonValue(configDigestInputsSchema.parse(input));
 }
 export async function selectedOnboardingConfigurationDigest(input: {
   mode: "hosted" | "byok";
@@ -67,16 +68,6 @@ export async function selectedOnboardingConfigurationDigest(input: {
     parser: LOCAL_PARSER_POLICY,
   });
 }
-export async function hashOnboardingValue(value: unknown): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(JSON.stringify(value)),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
 export const RECEIPT_CLASSIFIER_NOTICE = Object.freeze({
   id: "cloudflare-clef-v4",
   displayName: "Cloudflare Workers AI — Clef email classification",
