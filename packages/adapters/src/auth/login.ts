@@ -4,15 +4,12 @@ import { APIError } from "better-auth/api";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../auth-schema";
 import type { LoginConfiguration } from "./configuration";
-import {
-  allowedEmailSet,
-  isAllowedEmail,
-  loginConfigurationSchema,
-} from "./configuration";
+import { allowedEmailSet, isAllowedEmail } from "./configuration";
 import { verifiedGoogleIdentity } from "./google-verification";
 import { protectedLoginState } from "./state-adapter";
+/** `input` is already validated by `loginConfiguration`; one configured rule. */
 export function createLoginAuth(db: D1Database, input: LoginConfiguration) {
-  const configuration = loginConfigurationSchema.parse(input);
+  const configuration = input;
   const allowed = allowedEmailSet(configuration.allowedEmails);
   const discardedTokens = {
     accessToken: null,

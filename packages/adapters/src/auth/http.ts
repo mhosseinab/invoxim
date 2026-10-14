@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BoundedJsonError, readJsonRequestBody } from "../http";
 import type { LoginAuth } from "./login";
 export class AuthRequestError extends Error {
   constructor(
@@ -8,53 +9,28 @@ export class AuthRequestError extends Error {
     super(code);
   }
 }
+function authFailure(reason: BoundedJsonError["reason"]): AuthRequestError {
+  switch (reason) {
+    case "content-type":
+      return new AuthRequestError(415, "unsupported_media_type");
+    case "content-length":
+    case "too-large":
+      return new AuthRequestError(413, "request_too_large");
+    default:
+      return new AuthRequestError(400, "invalid_request");
+  }
+}
 export async function readAuthJson(
   request: Request,
   maxBytes = 4096,
 ): Promise<unknown> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 40960)
     throw new AuthRequestError(400, "invalid_request");
-  if (
-    request.headers.get("content-type")?.split(";")[0]?.trim() !==
-    "application/json"
-  )
-    throw new AuthRequestError(415, "unsupported_media_type");
-  if (Number(request.headers.get("content-length") ?? 0) > maxBytes)
-    throw new AuthRequestError(413, "request_too_large");
-  const reader = request.body?.getReader();
-  if (!reader) throw new AuthRequestError(400, "invalid_request");
-  const bytes = new Uint8Array(maxBytes);
-  let length = 0;
-  let dataChunks = 0;
-  let emptyChunks = 0;
   try {
-    while (true) {
-      const item = await reader.read();
-      if (item.done) break;
-      if (item.value.byteLength === 0) {
-        if (++emptyChunks > 32)
-          throw new AuthRequestError(413, "request_too_large");
-        continue;
-      }
-      if (++dataChunks > 4096 || length + item.value.byteLength > bytes.length)
-        throw new AuthRequestError(413, "request_too_large");
-      bytes.set(item.value, length);
-      length += item.value.byteLength;
-    }
-  } catch (error) {
-    void reader.cancel().catch(() => {});
-    throw error;
-  } finally {
-    reader.releaseLock();
-  }
-  try {
-    return JSON.parse(
-      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
-        bytes.subarray(0, length),
-      ),
-    );
-  } catch {
-    throw new AuthRequestError(400, "invalid_request");
+    return await readJsonRequestBody(request, maxBytes);
+  } catch (cause) {
+    if (cause instanceof BoundedJsonError) throw authFailure(cause.reason);
+    throw cause;
   }
 }
 export const signInSchema = z.strictObject({
