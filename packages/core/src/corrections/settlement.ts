@@ -1,7 +1,7 @@
+import { derivePaymentState } from "../ledger/payment-state";
 import {
   type CorrectionEventFact,
   type CorrectionReviewFact,
-  hasCashProof,
   restorationEligibility,
 } from "./validation";
 
@@ -32,7 +32,7 @@ export function settlementEvents(
     amountMinor: entry.amountMinor,
     currency: entry.currency,
     origin: entry.origin,
-    supported: hasCashProof(entry) && restorationEligibility(entry, reviews),
+    supported: restorationEligibility(entry, reviews),
   }));
 }
 export function evaluateCorrectionSettlement(
@@ -78,15 +78,15 @@ export function evaluateCorrectionSettlement(
       credit = minor;
   }
   const settled = cash + credit;
-  const paymentState =
-    settled === 0n
-      ? purchase.paymentState === "unpaid" &&
-        !events.some((entry) => entry.supported && entry.kind === "refund")
+  const paymentState = derivePaymentState({
+    totalMinor: gross,
+    settledMinor: settled,
+    zeroPaymentState:
+      purchase.paymentState === "unpaid" &&
+      !events.some((entry) => entry.supported && entry.kind === "refund")
         ? "unpaid"
-        : "unknown"
-      : settled >= gross
-        ? "paid"
-        : "partially_paid";
+        : "unknown",
+  });
   return {
     paymentState,
     supportedMinor: String(settled),
