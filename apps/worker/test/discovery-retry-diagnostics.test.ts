@@ -72,3 +72,23 @@ it("never logs provider network exception content", async () => {
   });
   expect(JSON.stringify(warn.mock.calls)).not.toContain("PRIVATE");
 });
+
+it("identifies elapsed Gmail deadline even before the abort timer callback", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const clock = vi.spyOn(Date, "now").mockReturnValue(0);
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    clock.mockReturnValue(10001);
+    return Response.json({});
+  });
+  await expect(
+    createGmailDiscovery("synthetic").list({
+      range: { startMs: 1, cutoffMs: 1000, timezone: "UTC" },
+      queryMode: "filtered",
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toMatchObject({ code: "UNAVAILABLE" });
+  expect(warn).toHaveBeenCalledWith("gmail_discovery_transport_failure", {
+    operation: "list",
+    reason: "timeout",
+  });
+});

@@ -170,13 +170,16 @@ export function createGmailDiscovery(
     const aborted = () => controller.abort();
     signal.addEventListener("abort", aborted, { once: true });
     const timer = setTimeout(aborted, 10000);
+    let failureReason = "invalid-response-or-network";
     function ensureActive() {
       if (
         signal.aborted ||
         controller.signal.aborted ||
         Date.now() >= deadlineAt
-      )
+      ) {
+        failureReason = "timeout";
         throw new DiscoveryError("UNAVAILABLE");
+      }
     }
     try {
       const response = await fetch(url, {
@@ -238,7 +241,10 @@ export function createGmailDiscovery(
       if (!response.ok || (response.status >= 300 && response.status < 400))
         throw new DiscoveryError("UNAVAILABLE");
       const reader = response.body?.getReader();
-      if (!reader) throw new DiscoveryError("UNAVAILABLE");
+      if (!reader) {
+        failureReason = "response-body";
+        throw new DiscoveryError("UNAVAILABLE");
+      }
       const bytes = new Uint8Array(65536);
       let length = 0;
       let chunks = 0;
@@ -255,8 +261,10 @@ export function createGmailDiscovery(
             chunks > 4096 ||
             emptyChunks > 32 ||
             length + item.value.byteLength > bytes.length
-          )
+          ) {
+            failureReason = "response-limit";
             throw new DiscoveryError("UNAVAILABLE");
+          }
           bytes.set(item.value, length);
           length += item.value.byteLength;
         }
@@ -273,7 +281,11 @@ export function createGmailDiscovery(
         ),
       );
     } catch (cause) {
-      if (!(cause instanceof DiscoveryError) || controller.signal.aborted)
+      if (
+        !(cause instanceof DiscoveryError) ||
+        controller.signal.aborted ||
+        failureReason !== "invalid-response-or-network"
+      )
         console.warn("gmail_discovery_transport_failure", {
           operation:
             path === "profile"
@@ -283,11 +295,7 @@ export function createGmailDiscovery(
                 : path === "history"
                   ? "history"
                   : "metadata",
-          reason: controller.signal.aborted
-            ? "timeout"
-            : cause instanceof DiscoveryError
-              ? cause.code
-              : "invalid-response-or-network",
+          reason: controller.signal.aborted ? "timeout" : failureReason,
         });
       if (cause instanceof DiscoveryError) throw cause;
       throw new DiscoveryError("UNAVAILABLE");
