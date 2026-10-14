@@ -1441,13 +1441,44 @@
       "id": "UX-WORKSPACE-01",
       "title": "Compact Home, Connections, review queue and purchase detail",
       "milestone": "Workspace UX",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [],
       "ownerRole": "frontend",
       "reviewerRole": "principal-reviewer",
       "scope": "Four requested private pages, on-demand explanatory/management details, truthful operational states and unchanged financial/correction boundaries.",
       "completionEvidence": [
-        "evidence/implementation/compact-workspace-plan-20261014.md"
+        "evidence/implementation/compact-workspace-plan-20261014.md",
+        "evidence/implementation/compact-workspace-completion-20261014.md"
+      ],
+      "blockedBy": []
+    },
+    {
+      "id": "OPS-GMAIL-BATCH-01",
+      "title": "Repair exhausted Gmail multipart parse jobs",
+      "milestone": "Production repair",
+      "status": "in_progress",
+      "dependsOn": [],
+      "ownerRole": "orchestrator",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Content-free diagnostics, bounded MIME compatibility repair, regression verification, Worker rollout and fenced recovery of58 failed parse jobs. Preserve budgets and existing records.",
+      "completionEvidence": [
+        "evidence/implementation/gmail-failed-jobs-repair-20261014.md"
+      ],
+      "blockedBy": []
+    },
+    {
+      "id": "UX-REVIEW-DISCARD-01",
+      "title": "Source-first review and audited false-positive dismissal",
+      "milestone": "Workspace UX",
+      "status": "in_progress",
+      "dependsOn": [
+        "UX-WORKSPACE-01"
+      ],
+      "ownerRole": "frontend/backend",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Explicit source-level Not a purchase, bounded identifying metadata/attachments, focused manual entry, durable processing guards and truthful review grouping. PDF byte preview deferred.",
+      "completionEvidence": [
+        "evidence/implementation/review-discard-plan-20261014.md"
       ],
       "blockedBy": []
     }
