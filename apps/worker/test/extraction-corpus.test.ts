@@ -4,7 +4,10 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
-import { createLocalPdfTextExtractor } from "../../../packages/adapters/src/documents/pdf";
+import {
+  createLocalPdfTextExtractor,
+  LOCAL_PDF_PARSER_VERSION,
+} from "../../../packages/adapters/src/documents/pdf";
 import cleanPdf from "../../../packages/testkit/src/extraction-corpus/assets/clean-two-page.pdf?inline";
 import compressedPdf from "../../../packages/testkit/src/extraction-corpus/assets/compressed-text.pdf?inline";
 import jpeg from "../../../packages/testkit/src/extraction-corpus/assets/probe.jpg?inline";
@@ -112,7 +115,7 @@ it("T22/DOCUMENT-02 actual compressed corpus PDF preserves exact readable text, 
     mimeType: "application/pdf",
     contentHash:
       "f3acd279ba8909669ddce61690dc44f11d30cf9b0effb19b1869260e6bcb9b08",
-    parserVersion: "unpdf-1.8.1/bounded-flate-v2",
+    parserVersion: LOCAL_PDF_PARSER_VERSION,
     status: "ready",
     pageCount: 1,
     textParts: [

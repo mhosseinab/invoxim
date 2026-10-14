@@ -81,7 +81,7 @@ export const RECEIPT_CLASSIFIER_NOTICE = Object.freeze({
   id: "cloudflare-clef-v4",
   displayName: "Cloudflare Workers AI — Clef email classification",
   dataUseSummary:
-    "Each readable document, including locally converted text PDFs, is sent to Cloudflare Clef to identify its document type, detect financial documents and suggest a category. An attachment does not qualify its covering email. Plausible uncertain documents may be verified and extracted by your selected financial provider; known nonfinancial documents are excluded. Financial extraction uses your selected provider. Cloudflare states it does not train on this content without explicit consent.",
+    "Each readable document, including locally converted PDF text, is sent to Cloudflare Clef to identify financial document type and category. An attachment does not qualify its covering email. Plausible uncertain documents may be verified by your selected financial provider. Cloudflare states it does not train on this content without explicit consent.",
   retentionSummary:
     "This app does not store email text or model transcripts. Cloudflare processes classification content under its Workers AI terms; this app does not enable remote content storage or assert a fixed retention period.",
   privacyUrl:

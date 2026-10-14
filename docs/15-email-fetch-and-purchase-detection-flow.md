@@ -15,9 +15,10 @@ flowchart TD
     Outlook --> Source
     Source --> Fetch[Fetch source bytes transiently]
     Fetch --> Convert[Bounded MIME handling and local PDF text conversion]
-    Convert --> Clef[Mandatory Clef decision and category per readable document]
+    Convert --> Clef[Mandatory Clef decision, document type and category per readable document]
     Clef -->|Strong negative| Skip[Skip this document without financial extraction]
-    Clef -->|Uncertain or unsupported| Review[Needs attention]
+    Clef -->|Invalid, unavailable or input limited| Review[Needs attention]
+    Clef -->|Plausible uncertain and configured verification| Model
     Clef -->|Invoice or receipt candidate| Model[Selected hosted or BYOK financial model]
     Model --> Validate[Validate structured fields and source evidence]
     Validate -->|Incomplete or invalid| Review
@@ -51,3 +52,5 @@ Processing is staged as parse, infer and reconcile, with durable continuations a
 AI defaults are read directly from versioned `config/` files at the Worker composition root. Keys remain Wrangler secrets. The financial destination is explicit and never silently switched. Clef has no tools, mailbox access or database access. Persisted results contain validated fields, hashes and structured provenance, not full source text, evidence quotes or model transcripts.
 
 For broader contracts see [architecture](02-architecture.md), [mail and storage](04-email-and-storage.md), and [AI and evaluations](05-ai-and-evaluations.md).
+
+Oversized body text no longer automatically discards independently readable attachments. Complete visible HTML text may continue under the existing bound; selected but truncated content remains explicitly reviewable. Same-provider uncertain verification reuses normal reservations, authority fences and cache handling. A financial document-type guard runs for fresh extraction, cached results and durable reconciliation, so a nonfinancial result cannot create a purchase through a continuation. No model tools, new destination, raw-content persistence or unmetered repair call is introduced.
