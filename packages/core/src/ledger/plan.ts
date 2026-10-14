@@ -1,7 +1,7 @@
 import { calendarDate } from "@invoxim/contracts";
 import type { AiMissingField, PersistedAiRecord } from "../ai/types";
 import { validatePersistableAiResult } from "../ai/validation";
-import { parseMoney } from "../index";
+import { parseMoney } from "../money";
 import type {
   LedgerEvent,
   LedgerInput,
