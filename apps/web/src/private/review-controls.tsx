@@ -6,7 +6,7 @@ import {
   reviewResolutionRequestSchema,
 } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { assertPrivateIdentity, PrivateLoadError, readPrivate } from "./api";
+import { assertPrivateIdentity, identityFailure, readPrivate } from "./api";
 import { missingQuestions, reviewQuestions } from "./copy";
 import { CategoryField, CurrencyField, moneyMinor } from "./correction-forms";
 import { type CorrectionMutation, useCorrectionMutation } from "./mutations";
@@ -390,10 +390,7 @@ export function StandaloneReview({
           ...(purchase ? { purchase } : {}),
         });
     } catch (error) {
-      if (
-        error instanceof PrivateLoadError &&
-        (error.status === 401 || error.status === 403)
-      ) {
+      if (identityFailure(error)) {
         onReload();
         return;
       }

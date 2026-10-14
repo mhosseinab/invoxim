@@ -8,7 +8,7 @@ import {
   unmergeRequestSchema,
 } from "@invoxim/contracts";
 import { useEffect, useRef, useState } from "react";
-import { PrivateLoadError, readPrivateForIdentity } from "./api";
+import { identityFailure, readPrivateForIdentity } from "./api";
 import type { CorrectionMutation } from "./mutations";
 export function InclusionControl({
   state,
@@ -116,10 +116,7 @@ export function MergeControl({
           );
       }
     } catch (error) {
-      if (
-        error instanceof PrivateLoadError &&
-        (error.status === 401 || error.status === 403)
-      ) {
+      if (identityFailure(error)) {
         onSessionChanged();
         return;
       }

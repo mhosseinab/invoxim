@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { PrivateLoadError, readPrivateForIdentity } from "./api";
+import { identityFailure, readPrivateForIdentity } from "./api";
 import { missingQuestions, reviewQuestions, privateCopy as text } from "./copy";
 import { StandaloneReview } from "./review-controls";
 import { ReviewSource } from "./review-source";
@@ -334,10 +334,7 @@ function ReviewList({
               pending.current.delete(job.key);
               job.reject(error);
               if (abort.current.signal.aborted) return;
-              if (
-                error instanceof PrivateLoadError &&
-                (error.status === 401 || error.status === 403)
-              ) {
+              if (identityFailure(error)) {
                 abort.current.abort();
                 for (const queued of queue.current) queued.reject(error);
                 queue.current = [];

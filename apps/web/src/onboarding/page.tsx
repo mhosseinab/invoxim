@@ -21,7 +21,7 @@ import {
   OnboardingRequestError,
   sendOnboarding,
 } from "./api";
-import { onboardingCopy as text } from "./copy";
+import { providerInboxLabels, onboardingCopy as text } from "./copy";
 import { ImportProgress } from "./progress";
 import { ReviewImport } from "./review";
 import "./signin.css";
@@ -83,10 +83,7 @@ export function OnboardingPage({
         }
       } catch (failure) {
         if (!request.signal.aborted) {
-          if (
-            failure instanceof PrivateLoadError &&
-            (failure.status === 401 || failure.status === 403)
-          ) {
+          if (identityFailure(failure)) {
             setWorkspace(null);
             setAcceptedRunId(null);
             setError(text.signedOut);
@@ -362,9 +359,7 @@ export function OnboardingPage({
                         disabled={busy}
                         onClick={() => void authorize(provider)}
                       >
-                        {provider === "gmail"
-                          ? text.pageConnectGmailInbox
-                          : text.connectOutlookInbox}
+                        {providerInboxLabels[provider]}
                       </button>
                     ))}
                   </div>

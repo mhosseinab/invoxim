@@ -1,6 +1,6 @@
 import { correctionResultSchema } from "@invoxim/contracts";
 import { useEffect, useId, useRef, useState } from "react";
-import { assertPrivateIdentity, PrivateLoadError } from "./api";
+import { assertPrivateIdentity, identityFailure } from "./api";
 
 type Attempt = {
   path: string;
@@ -53,7 +53,7 @@ export function useCorrectionMutation(
         setMessage(
           "These changes were not saved because the record changed or an unresolved issue blocks this action. Your entries are still here. Reload the latest version before continuing.",
         );
-      } else if (response.status === 401 || response.status === 403) {
+      } else if (identityFailure(response.status)) {
         setRetry(null);
         onReload();
       } else if (response.status >= 500) {
@@ -80,10 +80,7 @@ export function useCorrectionMutation(
         }
       }
     } catch (error) {
-      if (
-        error instanceof PrivateLoadError &&
-        (error.status === 401 || error.status === 403)
-      ) {
+      if (identityFailure(error)) {
         setRetry(null);
         onReload();
         return;

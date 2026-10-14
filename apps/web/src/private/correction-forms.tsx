@@ -10,6 +10,7 @@ import {
 import { formatMinor, parseMoney } from "@invoxim/core";
 import { useId, useState } from "react";
 import { cashEvents } from "./cash";
+import { categoryLabel } from "./copy";
 import type { CorrectionMutation } from "./mutations";
 export function moneyMinor(value: string, currency: string): string {
   const minor = parseMoney(value, currency);
@@ -63,7 +64,7 @@ export function CategoryField({
         {extractionSchema.shape.records.element.shape.category.options.map(
           (category) => (
             <option key={category} value={category}>
-              {category.replaceAll("-", " ")}
+              {categoryLabel(category)}
             </option>
           ),
         )}

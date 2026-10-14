@@ -213,3 +213,7 @@ export const onboardingCopy = {
   settingsKeyRequired: "A key is required for your own provider.",
   progressRunPrefix: " Run: ",
 } as const;
+export const providerInboxLabels = {
+  gmail: onboardingCopy.pageConnectGmailInbox,
+  outlook: onboardingCopy.connectOutlookInbox,
+} as const;

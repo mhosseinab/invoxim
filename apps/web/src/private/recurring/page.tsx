@@ -9,7 +9,12 @@ import {
 } from "@invoxim/contracts";
 import { useEffect, useRef, useState } from "react";
 import { BrandMark, Icon } from "../../icons";
-import { PrivateLoadError, readPrivate, readPrivateForIdentity } from "../api";
+import {
+  identityFailure,
+  PrivateLoadError,
+  readPrivate,
+  readPrivateForIdentity,
+} from "../api";
 import { Coverage } from "../components";
 import { RecurringWorkspace } from "./workspace";
 
@@ -81,7 +86,7 @@ export function RecurringPage({ displayName }: { displayName: string }) {
       } catch (error) {
         const status = error instanceof PrivateLoadError ? error.status : 502;
         let loginReady = false;
-        if (status === 401 || status === 403) {
+        if (identityFailure(status)) {
           try {
             loginReady = (
               await readPrivate(
@@ -182,7 +187,7 @@ export function RecurringPage({ displayName }: { displayName: string }) {
               aria-label="Recurring unavailable"
             >
               <p role="alert">
-                {state.status === 401 || state.status === 403
+                {identityFailure(state.status)
                   ? "Your workspace session needs verification. Refresh or sign in again when available."
                   : state.status === 503 || state.status === 404
                     ? "Recurring payments are unavailable in this workspace."

@@ -1,5 +1,6 @@
-import { profileViewSchema } from "@invoxim/contracts";
-import { PrivateLoadError, readPrivate } from "../private/api";
+import { assertPrivateIdentity, identityFailure } from "../private/api";
+
+export { identityFailure };
 export class OnboardingRequestError extends Error {
   constructor(
     readonly status: number,
@@ -67,11 +68,7 @@ export async function sendOnboarding(
   if (response.status === 204) return null;
   return response.json();
 }
-export async function confirmActor(userId: string, signal: AbortSignal) {
-  const profile = await readPrivate("/api/me", profileViewSchema, signal);
-  if (profile.user.id !== userId)
-    throw new OnboardingRequestError(401, "unauthorized");
-}
+export const confirmActor = assertPrivateIdentity;
 export function googleAuthorization(value: string): string {
   const url = new URL(value);
   if (
@@ -99,12 +96,4 @@ export function mailboxAuthorization(
   )
     throw new OnboardingRequestError(502, "request_unavailable");
   return url.href;
-}
-
-export function identityFailure(error: unknown) {
-  return (
-    (error instanceof OnboardingRequestError ||
-      error instanceof PrivateLoadError) &&
-    (error.status === 401 || error.status === 403)
-  );
 }

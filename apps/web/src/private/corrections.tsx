@@ -4,7 +4,7 @@ import {
   type PurchaseDetail,
 } from "@invoxim/contracts";
 import { useEffect, useState } from "react";
-import { PrivateLoadError, readPrivateForIdentity } from "./api";
+import { identityFailure, readPrivateForIdentity } from "./api";
 import { cashEvents } from "./cash";
 import { reviewQuestions } from "./copy";
 import { InclusionControl, MergeControl } from "./correction-actions";
@@ -56,8 +56,7 @@ export function Corrections({
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          if (error instanceof PrivateLoadError && error.status === 401)
-            onReload();
+          if (identityFailure(error)) onReload();
           else
             setAvailability(
               "Corrections are currently unavailable. Your existing purchase records remain readable.",

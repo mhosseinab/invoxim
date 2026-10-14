@@ -18,9 +18,14 @@ import {
 } from "@invoxim/contracts";
 import { useEffect, useState } from "react";
 import { BrandMark, Icon } from "../icons";
-import { PrivateLoadError, readPrivate } from "./api";
-import { amount, Coverage, PurchaseCard, Totals } from "./components";
-import { privateCopy as text } from "./copy";
+import { identityFailure, PrivateLoadError, readPrivate } from "./api";
+import { amount, Coverage, isPaused, PurchaseCard, Totals } from "./components";
+import {
+  categoryLabel,
+  paymentStateLabel,
+  sourceReasonLabel,
+  privateCopy as text,
+} from "./copy";
 import { Corrections } from "./corrections";
 import { Reviews } from "./reviews";
 import "./purchases.css";
@@ -125,7 +130,7 @@ function Search({ coverage }: { coverage: PurchaseCoverage }) {
               {extractionSchema.shape.records.element.shape.category.options.map(
                 (category) => (
                   <option key={category} value={category}>
-                    {category.replaceAll("-", " ")}
+                    {categoryLabel(category)}
                   </option>
                 ),
               )}
@@ -192,19 +197,13 @@ function Detail({
           </p>
           <h1>{purchase.merchant}</h1>
           <p>
-            {purchase.category.replaceAll("_", " ")}
+            {categoryLabel(purchase.category)}
             {purchase.invoiceReference &&
               ` · Invoice ${purchase.invoiceReference}`}
             {purchase.orderReference && ` · Order ${purchase.orderReference}`}
           </p>
           <span className="status">
-            {purchase.paymentState === "paid"
-              ? text.paymentDocumented
-              : purchase.paymentState === "partially_paid"
-                ? text.partiallyPaid
-                : purchase.paymentState === "unpaid"
-                  ? text.unpaidInvoice
-                  : text.paymentUnconfirmed}
+            {paymentStateLabel(purchase.paymentState)}
           </span>
         </div>
         {purchase.documentTotalMinor !== null && purchase.currency && (
@@ -277,11 +276,7 @@ function Detail({
                   <strong>{text["purchase.originalUnavailable"]}</strong>
                 </p>
                 <p className="muted">
-                  {evidence.source.reason === "source_deleted"
-                    ? text.sourceDeleted
-                    : evidence.source.reason === "mailbox_disconnected"
-                      ? text.sourceDisconnected
-                      : text.sourceNotImplemented}
+                  {sourceReasonLabel(evidence.source.reason)}
                 </p>
               </li>
             ))}
@@ -318,11 +313,7 @@ function Detail({
                 <details>
                   <summary>{text["purchase.why"]}</summary>
                   <p className="muted">
-                    {item.source.reason === "source_deleted"
-                      ? text.sourceDeleted
-                      : item.source.reason === "mailbox_disconnected"
-                        ? text.sourceDisconnected
-                        : text.sourceNotImplemented}
+                    {sourceReasonLabel(item.source.reason)}
                   </p>
 
                   <p>
@@ -440,11 +431,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
       } catch (error) {
         const status = error instanceof PrivateLoadError ? error.status : 502;
         let loginReady = false;
-        if (
-          active &&
-          !controller.signal.aborted &&
-          (status === 401 || status === 403)
-        ) {
+        if (active && !controller.signal.aborted && identityFailure(status)) {
           try {
             const config = await readPrivate(
               "/api/public-config",
@@ -564,7 +551,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
               ? text.loading
               : state.kind === "error"
                 ? "Records could not be loaded."
-                : `${state.data.coverage.readyPurchaseCount} purchase records ready.${state.data.coverage.connections.some((connection) => connection.pausedJobs > 0 || connection.imports.some((run) => run.pauseReason !== null)) ? " Processing is paused. Existing records remain available." : ""}`}
+                : `${state.data.coverage.readyPurchaseCount} purchase records ready.${state.data.coverage.connections.some(isPaused) ? " Processing is paused. Existing records remain available." : ""}`}
           </p>
           {state.kind === "error" && (
             <section className="private-panel" role="alert">
@@ -576,13 +563,13 @@ export function PrivatePage({ displayName }: { displayName: string }) {
               <p>
                 {state.status === 400
                   ? text.invalidFilters
-                  : state.status === 401 || state.status === 403
+                  : identityFailure(state.status)
                     ? text.signedOut
                     : state.status === 503
                       ? text.unavailable
                       : text.failed}
               </p>
-              {(state.status === 401 || state.status === 403) &&
+              {identityFailure(state.status) &&
                 (state.loginReady ? (
                   <a className="primary" href="/onboarding">
                     {text.signIn}

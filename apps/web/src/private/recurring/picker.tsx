@@ -6,7 +6,7 @@ import {
   type RecurringCadence,
 } from "@invoxim/contracts";
 import { useEffect, useRef, useState } from "react";
-import { PrivateLoadError, readPrivateForIdentity } from "../api";
+import { identityFailure, readPrivateForIdentity } from "../api";
 import { amount } from "../components";
 
 type Selection = { entryId: string; expectedVersion: number; label: string };
@@ -48,11 +48,7 @@ export function PaymentPicker({
       })
       .catch((error) => {
         if (controller.signal.aborted) return;
-        if (
-          error instanceof PrivateLoadError &&
-          (error.status === 401 || error.status === 403)
-        )
-          onExpired();
+        if (identityFailure(error)) onExpired();
         else
           setMessage(
             "Purchase records could not be loaded. Refresh to try again.",
@@ -88,10 +84,7 @@ export function PaymentPicker({
       }
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (
-        error instanceof PrivateLoadError &&
-        (error.status === 401 || error.status === 403)
-      ) {
+      if (identityFailure(error)) {
         onExpired();
         return;
       }

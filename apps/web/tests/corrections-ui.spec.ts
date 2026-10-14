@@ -276,6 +276,32 @@ test("EDIT-01 unavailable corrections keep existing purchase and cash readable w
   ).toContainText("EUR 50.00");
 });
 
+test("EDIT-01 identity failure loading corrections on 403 reloads the session like 401", async ({
+  page,
+}) => {
+  const state = { dead: false };
+  await workspace(page);
+  await page.route("**/api/purchases/purchase-a/corrections", (route) => {
+    state.dead = true;
+    return route.fulfill({ status: 403, json: { error: "FORBIDDEN" } });
+  });
+  await page.route("**/api/me", (route) =>
+    state.dead
+      ? route.fulfill({ status: 403, json: { error: "FORBIDDEN" } })
+      : route.fulfill({ json: profile }),
+  );
+  await page.goto("/purchases/purchase-a");
+  await expect(
+    page.getByRole("heading", { name: "Workspace unavailable", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Corrections are currently unavailable. Your existing purchase records remain readable.",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+});
+
 test("EDIT-04 merge and reversal submit distinct owned versions without fabricating ledger changes", async ({
   page,
 }) => {

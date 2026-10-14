@@ -5,7 +5,12 @@ import type {
 } from "@invoxim/contracts";
 import { formatMinor } from "@invoxim/core";
 import { Icon } from "../icons";
-import { reviewQuestions, privateCopy as text } from "./copy";
+import {
+  categoryLabel,
+  paymentStateLabel,
+  reviewQuestions,
+  privateCopy as text,
+} from "./copy";
 export function amount(minor: string, currency: string) {
   try {
     return `${currency} ${formatMinor(minor, currency)}`;
@@ -69,16 +74,10 @@ export function PurchaseCard({ purchase }: { purchase: PurchaseView }) {
             <a href={historyUrl}>{purchase.merchant}</a>
           </h3>
           <p className="compact-purchase-meta">
-            {purchase.date} · {purchase.category.replaceAll("_", " ")}
+            {purchase.date} · {categoryLabel(purchase.category)}
           </p>
           <span className="status">
-            {purchase.paymentState === "paid"
-              ? text.paymentDocumented
-              : purchase.paymentState === "unpaid"
-                ? text.unpaidInvoice
-                : purchase.paymentState === "partially_paid"
-                  ? text.partiallyPaid
-                  : text.paymentUnconfirmed}
+            {paymentStateLabel(purchase.paymentState)}
           </span>
         </div>
         <div className="compact-purchase-amount">
@@ -163,6 +162,17 @@ function importDateLabel(value: string) {
       }).format(date);
 }
 
+export function isPaused(
+  connection: PurchaseCoverage["connections"][number],
+): boolean {
+  return (
+    connection.schedulingState === "paused" ||
+    connection.pausedJobs > 0 ||
+    connection.imports.some(
+      (run) => run.pauseReason !== null || run.stage === "paused",
+    )
+  );
+}
 export function Coverage({
   coverage,
   full = false,
@@ -173,14 +183,7 @@ export function Coverage({
   const connectedCount = coverage.connections.filter(
     (connection) => connection.state === "connected",
   ).length;
-  const paused = coverage.connections.some(
-    (connection) =>
-      connection.schedulingState === "paused" ||
-      connection.pausedJobs > 0 ||
-      connection.imports.some(
-        (run) => run.pauseReason !== null || run.stage === "paused",
-      ),
-  );
+  const paused = coverage.connections.some(isPaused);
   const pending = coverage.connections.some(
     (connection) =>
       connection.pendingJobs > 0 ||
@@ -234,12 +237,7 @@ export function Coverage({
         {coverage.connections.length === 0 && <p>{text.noMailbox}</p>}
       </div>
       {coverage.connections.map((connection) => {
-        const connectionPaused =
-          connection.schedulingState === "paused" ||
-          connection.pausedJobs > 0 ||
-          connection.imports.some(
-            (run) => run.pauseReason !== null || run.stage === "paused",
-          );
+        const connectionPaused = isPaused(connection);
         const connectionPending =
           connection.pendingJobs > 0 ||
           connection.imports.some((run) => run.completedAt === null);

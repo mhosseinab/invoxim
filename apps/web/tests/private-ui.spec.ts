@@ -374,6 +374,113 @@ test("UI-04 paused jobs override importing copy and announce a ready milestone",
   ).toHaveCount(0);
 });
 
+test("UI-04 paused scheduling and paused run stage report paused in both the status line and the coverage panel", async ({
+  page,
+}) => {
+  await fixtures(page);
+  const scheduled = structuredClone(coverage);
+  const inbox = scheduled.connections[0];
+  if (!inbox?.imports[0]) throw new Error("Missing fixture inbox");
+  inbox.schedulingState = "paused";
+  inbox.pendingJobs = 0;
+  inbox.pausedJobs = 0;
+  inbox.imports[0].completedAt = 1;
+  inbox.imports[0].pauseReason = null;
+  inbox.imports[0].stage = "processing_pending";
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({ json: scheduled }),
+  );
+  await page.goto("/home");
+  await expect(page.getByRole("status")).toContainText(
+    "1 purchase records ready. Processing is paused.",
+  );
+  await expect(
+    page.getByRole("region", { name: "Inbox coverage" }),
+  ).toContainText("Processing is paused.");
+  const staged = structuredClone(coverage);
+  const stagedInbox = staged.connections[0];
+  if (!stagedInbox?.imports[0]) throw new Error("Missing fixture inbox");
+  stagedInbox.pendingJobs = 0;
+  stagedInbox.pausedJobs = 0;
+  stagedInbox.imports[0].completedAt = 1;
+  stagedInbox.imports[0].pauseReason = null;
+  stagedInbox.imports[0].stage = "paused";
+  await page.route("**/api/purchases/coverage", (route) =>
+    route.fulfill({ json: staged }),
+  );
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText(
+    "1 purchase records ready. Processing is paused.",
+  );
+  await expect(
+    page.getByRole("region", { name: "Inbox coverage" }),
+  ).toContainText("Processing is paused.");
+});
+
+test("UI labels render hyphenated category, payment state and source reason from one map", async ({
+  page,
+}) => {
+  await fixtures(page);
+  const labeled = structuredClone(purchase);
+  labeled.category = "business-services";
+  labeled.paymentState = "partially_paid";
+  await page.route("**/api/purchases?*", (route) =>
+    route.fulfill({
+      json: {
+        rows: [labeled],
+        nextCursor: null,
+        dateBasis: "document-or-event",
+      },
+    }),
+  );
+  await page.route("**/api/purchases/purchase-1", (route) =>
+    route.fulfill({
+      json: {
+        purchase: labeled,
+        timeline: [
+          {
+            observationId: "observation-1",
+            documentId: "document-1",
+            documentType: "receipt",
+            relationship: "supporting",
+            evidenceCode: "source_exact",
+            reviewState: "accepted",
+            date: "2026-10-01",
+            paymentEvidence: null,
+            refundEvidence: "pending",
+            source: {
+              mailboxId: "mailbox-1",
+              provider: "gmail",
+              originalAvailable: false,
+              reason: "source_deleted",
+            },
+            events: [],
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/home?from=2026-10-01&to=2026-10-31");
+  const card = page.getByRole("article", { name: "Synthetic Audio purchase" });
+  await expect(card).toContainText("business services");
+  await expect(card).toContainText("Partially paid");
+  await expect(card.getByText("business-services")).toHaveCount(0);
+  await card.getByRole("link", { name: "Synthetic Audio", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Synthetic Audio", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("main")).toContainText("business services");
+  await expect(page.getByText("business-services")).toHaveCount(0);
+  await page
+    .locator("summary")
+    .filter({ hasText: "Why this amount?" })
+    .first()
+    .click();
+  await expect(
+    page.getByText("The source message was deleted.", { exact: true }),
+  ).toBeVisible();
+});
+
 test("HOME-05 only validated missing fields become exact questions including unlinked documents", async ({
   page,
 }) => {
