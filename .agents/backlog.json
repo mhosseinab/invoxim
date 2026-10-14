@@ -1420,6 +1420,20 @@
         "evidence/implementation/import-speed-observation-20261014.md"
       ],
       "blockedBy": []
+    },
+    {
+      "id": "UX-PURCHASES-01",
+      "title": "Compact purchase list with on-demand review and financial details",
+      "milestone": "Purchase UX",
+      "status": "in_progress",
+      "dependsOn": [],
+      "ownerRole": "frontend",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Compact responsive purchase rows, quieter functional search/coverage and progressive explanations with unchanged financial/filter/identity semantics.",
+      "completionEvidence": [
+        "evidence/implementation/compact-purchase-list-plan-20261014.md"
+      ],
+      "blockedBy": []
     }
   ]
 }

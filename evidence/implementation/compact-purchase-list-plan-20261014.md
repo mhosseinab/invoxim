@@ -1,0 +1,7 @@
+# Compact purchase list plan
+
+Task UX-PURCHASES-01, owner’s continuation of delegated UI work. Implementer `/root/compact_import_review`, independent read-only reviewer `/root/langchain_review`, parent owns integration/commits. Scope private components/page/copy, scoped purchases CSS and private UI/adversarial browser tests. No backend/contracts/dependencies/global styling or deployment.
+
+Replace oversized purchase cards and repeated explanatory notices with compact responsive rows: merchant, date/category, correctly labeled amount/payment status, evidence and history. Keep unpaid/unconfirmed document totals distinct from supported lifecycle payments/refunds/net and period spending. No currency conversion, undocumented arithmetic or implied zero-spend conclusion. Questions and detailed amounts/policies use on-demand controls. Search/filter/query/pagination semantics remain. Compact coverage and secondary summary retain truthful incomplete/paused/failed/empty state. Full Connections and purchase detail/corrections paths retain their meaning.
+
+Acceptance: dense three-record synthetic list visible in a desktop viewport without tiny text; 360px reflow and keyboard-accessible on-demand questions; supported paid/refunded/mixed-currency/unpaid/unknown labels unchanged; identity/filter/adverse/pagination cases preserved. Focused RED then full browser GREEN, automated accessibility/screenshots, root style/types/security/boundary/build/publication checks, independent review and scoped commits. Only synthetic screenshot data; preserve unrelated owner edits.
