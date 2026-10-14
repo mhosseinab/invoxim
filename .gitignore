@@ -62,7 +62,6 @@ temp/
 *.seed
 *.pid.lock
 .playwright-mcp/
-evidence/
 spikes/
 
 # Private production bundle inventories

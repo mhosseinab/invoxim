@@ -7,6 +7,7 @@ pnpm-lock.yaml
 # Prose, agent instructions, and design fixtures stay outside the Prettier surface.
 .agents/
 docs/
+evidence/
 test-design/
 AGENTS.md
 BLUEPRINT.md
