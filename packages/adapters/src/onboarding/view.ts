@@ -6,16 +6,21 @@ import {
   onboardingRunJobSql,
 } from "./active-run";
 import type { createOnboardingReads, SelectedInference } from "./read";
-import { scopeReady } from "./read";
+import { canStartImport, scopeReady } from "./read";
+export interface ReadOnboardingViewOptions {
+  ready: boolean;
+  mailboxLimit: number;
+  connectionId?: string | undefined;
+  mailboxProviders?: readonly ("gmail" | "outlook")[] | undefined;
+}
 export async function readOnboardingView(
   db: D1Database,
   reads: ReturnType<typeof createOnboardingReads>,
   session: OnboardingSession,
-  ready: boolean,
-  mailboxLimit: number,
-  connectionId?: string,
-  mailboxProviders: readonly ("gmail" | "outlook")[] = ["gmail"],
+  options: ReadOnboardingViewOptions,
 ) {
+  const { ready, mailboxLimit, connectionId } = options,
+    mailboxProviders = options.mailboxProviders ?? ["gmail"];
   const profile = await reads.profile(session),
     connections = await reads.connections(session);
   const connection = connectionId
@@ -164,7 +169,7 @@ export async function readOnboardingView(
     headlineKey = "import.completedWithIssues";
     primaryAction = "view_example";
   }
-  let canStartImport = false,
+  let startable = false,
     selected: SelectedInference | null = null;
   if (connection?.state === "connected" && processingReady) {
     try {
@@ -198,16 +203,8 @@ export async function readOnboardingView(
     (!run || complete || run.connection_generation <= connection.generation)
   ) {
     const allowance = await reads.allowance(session, selected);
-    canStartImport =
-      selected.keyReady &&
-      selected.noticesReady &&
-      !allowance.cooldownActive &&
-      allowance.dailyDocumentsRemaining > 0 &&
-      allowance.monthlyDocumentsRemaining > 0 &&
-      allowance.dailyUnitsRemaining > 0 &&
-      allowance.monthlyUnitsRemaining > 0 &&
-      (selected.mode !== "hosted" || allowance.hostedFundingAvailable);
-    if (canStartImport) primaryAction = "start_import";
+    startable = canStartImport(selected, allowance);
+    if (startable) primaryAction = "start_import";
   }
   return onboardingResponseSchema.parse({
     view: {
@@ -215,7 +212,7 @@ export async function readOnboardingView(
       state,
       headlineKey,
       primaryAction,
-      canStartImport,
+      canStartImport: startable,
       readyRecordCount: records,
       historyComplete: complete,
       hasProcessingConsent: consent,

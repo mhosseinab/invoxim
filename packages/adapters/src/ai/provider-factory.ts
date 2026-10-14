@@ -7,6 +7,7 @@ import type {
 } from "@invoxim/core";
 import { validateExtraction } from "@invoxim/core";
 import { selectedOnboardingConfigurationDigest } from "../onboarding/configuration";
+import { noticesReady } from "../onboarding/read";
 import { createCredentialVault } from "../security/vault";
 import type { AiPriceSnapshot, AiProbeResult } from "./budget";
 import { createAiProbeUsageStore } from "./budget";
@@ -67,12 +68,7 @@ export function createAiProviderFactory(
             classification: configuration.classification,
           })
         : undefined;
-    if (
-      acceptedConfigurationDigest &&
-      !destination.noticeRefs.every((ref) =>
-        destination.notices?.some((notice) => notice.id === ref),
-      )
-    )
+    if (acceptedConfigurationDigest && !noticesReady(destination))
       throw new AiSettingsError("CONFLICT");
     let key: string;
     if (row.mode === "hosted") {
