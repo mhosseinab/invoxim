@@ -1,5 +1,6 @@
 import { hasControlCharacters } from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
+import { decodeBase64url, encodeBase64url } from "./helpers";
 import type {
   CipherBinding,
   CredentialCipher,
@@ -7,6 +8,7 @@ import type {
   SecretPayloads,
   SecretPurpose,
 } from "./types";
+export { decodeBase64url, encodeBase64url };
 export class CredentialError extends Error {
   constructor(
     readonly code:
@@ -19,26 +21,7 @@ export class CredentialError extends Error {
     this.name = "CredentialError";
   }
 }
-export function encodeBase64url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-function decodeBase64url(value: unknown): Uint8Array<ArrayBuffer> {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > 40000 ||
-    !/^[A-Za-z0-9_-]+$/.test(value)
-  )
-    throw new CredentialError("SECRET_UNAVAILABLE");
-  const decoded = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
-  const bytes = Uint8Array.from(decoded, (c) => c.charCodeAt(0));
-  if (encodeBase64url(bytes) !== value)
-    throw new CredentialError("SECRET_UNAVAILABLE");
-  return bytes;
-}
+
 export function readEnvelopeVersion(envelope: string): number {
   try {
     if (typeof envelope !== "string" || envelope.length > 40000)

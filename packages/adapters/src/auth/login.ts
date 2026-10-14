@@ -4,14 +4,16 @@ import { APIError } from "better-auth/api";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "../auth-schema";
 import type { LoginConfiguration } from "./configuration";
-import { loginConfigurationSchema } from "./configuration";
+import {
+  allowedEmailSet,
+  isAllowedEmail,
+  loginConfigurationSchema,
+} from "./configuration";
 import { verifiedGoogleIdentity } from "./google-verification";
 import { protectedLoginState } from "./state-adapter";
 export function createLoginAuth(db: D1Database, input: LoginConfiguration) {
   const configuration = loginConfigurationSchema.parse(input);
-  const allowed = new Set(
-    configuration.allowedEmails.map((email) => email.toLowerCase()),
-  );
+  const allowed = allowedEmailSet(configuration.allowedEmails);
   const discardedTokens = {
     accessToken: null,
     refreshToken: null,
@@ -59,8 +61,7 @@ export function createLoginAuth(db: D1Database, input: LoginConfiguration) {
         if (
           source.oauth?.providerId !== "google" ||
           user.emailVerified !== true ||
-          typeof user.email !== "string" ||
-          !allowed.has(user.email.toLowerCase())
+          !isAllowedEmail(user.email, allowed)
         )
           return {
             error: "sign_in_denied",
@@ -95,7 +96,7 @@ export function createLoginAuth(db: D1Database, input: LoginConfiguration) {
       user: {
         create: {
           before: async (user) => {
-            if (!user.emailVerified || !allowed.has(user.email.toLowerCase()))
+            if (!user.emailVerified || !isAllowedEmail(user.email, allowed))
               throw new APIError("FORBIDDEN", {
                 message: "Sign-in unavailable",
               });

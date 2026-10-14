@@ -1,10 +1,7 @@
 import type { TenantContext } from "@invoxim/core";
-import {
-  CredentialError,
-  encodeBase64url,
-  readEnvelopeVersion,
-} from "./cipher";
+import { CredentialError, readEnvelopeVersion } from "./cipher";
 import { redactSecurityFailures } from "./errors";
+import { encodeBase64url, stateHash } from "./helpers";
 import type { CredentialCipher, OAuthBinding, OAuthCallbacks } from "./types";
 
 interface StateRow {
@@ -39,13 +36,7 @@ function checkBinding(context: TenantContext, binding: OAuthBinding) {
 async function digestState(state: string): Promise<string> {
   if (typeof state !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(state))
     throw new CredentialError("INVALID_OAUTH_STATE");
-  return [
-    ...new Uint8Array(
-      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(state)),
-    ),
-  ]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return stateHash(state);
 }
 export function createOAuthStateStore(
   db: D1Database,

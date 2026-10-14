@@ -18,6 +18,19 @@ export const loginConfigurationSchema = z.strictObject({
   allowedEmails: z.array(z.email().max(254)).min(1).max(100),
 });
 export type LoginConfiguration = z.infer<typeof loginConfigurationSchema>;
+/** Lowercased membership set for the allow-list sign-in rule (S8). */
+export function allowedEmailSet(
+  emails: readonly string[],
+): ReadonlySet<string> {
+  return new Set(emails.map((email) => email.toLowerCase()));
+}
+/** S8: the single allowed-email check; non-strings are never allowed. */
+export function isAllowedEmail(
+  email: unknown,
+  allowed: ReadonlySet<string>,
+): boolean {
+  return typeof email === "string" && allowed.has(email.toLowerCase());
+}
 export interface AuthBindings {
   DB?: D1Database;
   AUTH_ENABLED?: string;
