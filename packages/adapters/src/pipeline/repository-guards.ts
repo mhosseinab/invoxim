@@ -32,6 +32,70 @@ export function connectionConsentLiveSql(
   return `${c}.kind='mailbox' AND ${c}.state='connected' AND ${c}.scheduling_state='active' AND ${c}.credential_ciphertext IS NOT NULL AND ${p}.status='active' AND ${pc}.revoked_at IS NULL AND ${pc}.background_authorized=1`;
 }
 /**
+ * P1.5b / G2 / ext#12: the lease/consent "live" predicate. One fragment for
+ * every path that must only proceed while a job lease is held and its
+ * connection/consent is still live. Replaces the hand-copied guards in
+ * jobs/store.ts, sources.ts and (via INT-5) the discovery runners, which had
+ * drifted (Outlook skipped the disclosure/digest check).
+ *
+ * Joined form (default alias j): a WHERE fragment for a
+ * "jobs j JOIN connections c ... JOIN profiles p ... JOIN processing_consents pc"
+ * FROM clause (see LIVE_FROM). Bind order: userId, jobId, leaseId, fence, now,
+ * connectionId, generation, consentId, now (accepted_at), then any binds
+ * introduced by extras.
+ *
+ * Correlated form (alias.jobs = "jobs"): a WHERE fragment for the same joins
+ * against an outer jobs row, with no lease binds. Bind order: now
+ * (accepted_at), then extras binds.
+ *
+ * alias renames the joined tables. extras AND additional caller conditions
+ * (job type filters, provider/scope checks, the disclosure/digest gate).
+ */
+export function leaseLive(
+  options: {
+    alias?: {
+      jobs?: string;
+      connection?: string;
+      profile?: string;
+      consent?: string;
+    };
+    extras?: readonly string[];
+  } = {},
+): string {
+  const j = options.alias?.jobs ?? "j";
+  const c = options.alias?.connection ?? "c";
+  const p = options.alias?.profile ?? "p";
+  const pc = options.alias?.consent ?? "pc";
+  // `"jobs"` is the outer table name, not a join alias: correlate instead of
+  // binding a held lease. The job store's live check reads an existing row.
+  const link =
+    j === "jobs"
+      ? [
+          `${c}.user_id=jobs.user_id`,
+          `${c}.id=jobs.connection_id`,
+          `${c}.generation=jobs.connection_generation`,
+          `${pc}.id=jobs.consent_id`,
+        ]
+      : [
+          `${j}.user_id=?`,
+          `${j}.id=?`,
+          `${j}.status='leased'`,
+          `${j}.lease_id=?`,
+          `${j}.fence=?`,
+          `${j}.lease_expires_at>?`,
+          `${j}.connection_id=?`,
+          `${j}.connection_generation=?`,
+          `${j}.consent_id=?`,
+          `${c}.generation=${j}.connection_generation`,
+        ];
+  return [
+    ...link,
+    connectionConsentLiveSql({ connection: c, profile: p, consent: pc }),
+    `${pc}.accepted_at<=?`,
+    ...(options.extras ?? []),
+  ].join(" AND ");
+}
+/**
  * P1: the one consent-review selection shape (SQL `json_object` projection).
  * Optional columns are nullable because the projection emits SQL NULL.
  */
@@ -69,7 +133,7 @@ export function liveWhere(lease: JobLease, now: number): Predicate {
   )
     throw new PipelinePersistenceError("INVALID_PIPELINE");
   return {
-    sql: `(j.user_id=? AND j.id=? AND j.status='leased' AND j.lease_id=?) AND (j.fence=? AND j.lease_expires_at>? AND j.connection_id=? AND j.connection_generation=?) AND (j.consent_id=? AND j.type IN ('source-extract','reprocess') AND c.generation=j.connection_generation) AND (${connectionConsentLiveSql()} AND pc.accepted_at<=?) AND (pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version) AND (a.status='active' AND a.mode IS NOT NULL AND a.provider_id IS NOT NULL AND a.model_id IS NOT NULL AND a.config_version IS NOT NULL AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL)) AND (sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1) AND ${sourceNotDiscardedSql("sm")}`,
+    sql: `${leaseLive({ extras: ["j.type IN ('source-extract','reprocess')"] })} AND (pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version) AND (a.status='active' AND a.mode IS NOT NULL AND a.provider_id IS NOT NULL AND a.model_id IS NOT NULL AND a.config_version IS NOT NULL AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL)) AND (sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1) AND ${sourceNotDiscardedSql("sm")}`,
     values: [
       lease.context.userId,
       lease.jobId,
