@@ -30,6 +30,18 @@ import type {
 
 const completed: JobOutcome = { kind: "completed" };
 const stale: JobOutcome = { kind: "paused", code: "auth" };
+const budgetPaused: JobOutcome = { kind: "paused", code: "budget" };
+const handlerUnavailable: JobOutcome = {
+  kind: "paused",
+  code: "handler-unavailable",
+};
+const transientRetry: JobOutcome = { kind: "retry", code: "transient" };
+/**
+ * Statements that must remain after a paid attempt starts: known/uncertain
+ * settlement, cache completion, durable continuation, and engine settlement
+ * checks (P6). A fresh invocation can recover without another model charge.
+ */
+const PAID_ATTEMPT_STATEMENT_RESERVE = 23;
 function usesDirectModelInput(parserVersion: string | undefined): boolean {
   return (
     parserVersion === "documents-direct-v1" ||
@@ -56,7 +68,7 @@ export function createPipelineService(
   return {
     async run(lease, control) {
       if (!["source-extract", "reprocess"].includes(lease.type))
-        return { kind: "paused", code: "handler-unavailable" };
+        return handlerUnavailable;
       const authorized = async () =>
         !control.signal.aborted && (await repository.checkpoint(lease));
       const guardedControl: PipelineControl = {
@@ -66,32 +78,38 @@ export function createPipelineService(
       let failCurrentDocument:
         | ((code: string) => Promise<JobOutcome>)
         | undefined;
+      const settled = (outcome: "committed" | "stale"): JobOutcome =>
+        outcome === "committed" ? completed : stale;
       try {
         // load performs the full lease/source/processing-selection check in its
         // owned query; avoid repeating that read before any external effect.
         const work = await repository.load(lease);
         if (!work) return stale;
         const currentDocument = work.documents[work.documentIndex];
-        if (work.stage !== "parse" && currentDocument) {
-          failCurrentDocument = async (code) =>
-            (await repository.failDocument(lease, {
-              documentId: currentDocument.id,
-              code,
-              nextDocumentIndex:
-                work.documentIndex + 1 < work.documents.length
-                  ? work.documentIndex + 1
-                  : null,
-            })) === "committed"
-              ? completed
-              : stale;
-        }
         const finishFailure = async (
           status: "review" | "unsupported" | "failed",
           code: string,
+        ) => settled(await repository.fail(lease, { status, code }));
+        if (work.stage !== "parse" && currentDocument) {
+          failCurrentDocument = async (code) =>
+            settled(
+              await repository.failDocument(lease, {
+                documentId: currentDocument.id,
+                code,
+                nextDocumentIndex:
+                  work.documentIndex + 1 < work.documents.length
+                    ? work.documentIndex + 1
+                    : null,
+              }),
+            );
+        }
+        const failCode = async (
+          code: string,
+          status: "review" | "unsupported" | "failed" = "review",
         ) =>
-          (await repository.fail(lease, { status, code })) === "committed"
-            ? completed
-            : stale;
+          failCurrentDocument
+            ? await failCurrentDocument(code)
+            : await finishFailure(status, code);
         const reconcile = async (
           document: PipelineDocumentMetadata,
           fingerprint: string,
@@ -101,9 +119,7 @@ export function createPipelineService(
             options.classification &&
             verifyFinancialDocumentResult(result) !== result
           )
-            return failCurrentDocument
-              ? await failCurrentDocument("classification-verification")
-              : await finishFailure("review", "classification-verification");
+            return await failCode("classification-verification");
           const input = {
             identity: {
               documentId: document.id,
@@ -116,16 +132,16 @@ export function createPipelineService(
           const snapshot = await repository.loadSnapshot(lease, input);
           if (!snapshot) return stale;
           const plan = planLedgerIngestion(input, snapshot);
-          return (await repository.commit(lease, {
-            input,
-            plan,
-            nextDocumentIndex:
-              work.documentIndex + 1 < work.documents.length
-                ? work.documentIndex + 1
-                : null,
-          })) === "committed"
-            ? completed
-            : stale;
+          return settled(
+            await repository.commit(lease, {
+              input,
+              plan,
+              nextDocumentIndex:
+                work.documentIndex + 1 < work.documents.length
+                  ? work.documentIndex + 1
+                  : null,
+            }),
+          );
         };
         if (work.stage === "reconcile") {
           const document = work.documents[work.documentIndex];
@@ -190,17 +206,14 @@ export function createPipelineService(
                     },
                   )
                 : null;
-            if (!cached)
-              return failCurrentDocument
-                ? await failCurrentDocument("cache-review-required")
-                : await finishFailure("review", "cache-review-required");
-            return (await repository.advance(lease, {
-              stage: "reconcile",
-              documentIndex: work.documentIndex,
-              extractionFingerprint: previous.fingerprint,
-            })) === "committed"
-              ? completed
-              : stale;
+            if (!cached) return await failCode("cache-review-required");
+            return settled(
+              await repository.advance(lease, {
+                stage: "reconcile",
+                documentIndex: work.documentIndex,
+                extractionFingerprint: previous.fingerprint,
+              }),
+            );
           }
         }
         const selectedPart =
@@ -223,10 +236,7 @@ export function createPipelineService(
           ...(selectedPart !== undefined ? { partKey: selectedPart } : {}),
           ...guardedControl,
         });
-        if (content.status !== "ready")
-          return failCurrentDocument
-            ? await failCurrentDocument(content.code)
-            : await finishFailure("review", content.code);
+        if (content.status !== "ready") return await failCode(content.code);
         // MIME decoding has no external effects; writes/model transport retain their fences.
         const directModelInput =
           (work.stage === "parse" && options.directModelInputs === true) ||
@@ -245,12 +255,10 @@ export function createPipelineService(
             : {}),
         });
         if (!parsed.documents.length)
-          return failCurrentDocument
-            ? await failCurrentDocument(parsed.code ?? "empty-document")
-            : await finishFailure(
-                parsed.status === "unsupported" ? "unsupported" : "review",
-                parsed.code ?? "empty-document",
-              );
+          return await failCode(
+            parsed.code ?? "empty-document",
+            parsed.status === "unsupported" ? "unsupported" : "review",
+          );
         if (work.stage === "parse") {
           const lengths = byteLengths(content.input);
           const metadata: PipelineDocumentMetadata[] = parsed.documents.map(
@@ -283,10 +291,7 @@ export function createPipelineService(
               ...(document.status !== "ready" ? { code: document.code } : {}),
             }),
           );
-          return (await repository.stageDocuments(lease, metadata)) ===
-            "committed"
-            ? completed
-            : stale;
+          return settled(await repository.stageDocuments(lease, metadata));
         }
         const metadata = work.documents[work.documentIndex];
         if (!metadata) return await finishFailure("review", "invalid-stage");
@@ -298,17 +303,9 @@ export function createPipelineService(
           document.contentHash !== metadata.contentHash ||
           document.parserVersion !== metadata.parserVersion
         )
-          return failCurrentDocument
-            ? await failCurrentDocument("source-changed")
-            : await finishFailure("review", "source-changed");
-        if (document.status !== "ready")
-          return failCurrentDocument
-            ? await failCurrentDocument(document.code)
-            : await finishFailure("review", document.code);
-        if (document.truncated)
-          return failCurrentDocument
-            ? await failCurrentDocument("text_limit")
-            : await finishFailure("review", "text_limit");
+          return await failCode("source-changed");
+        if (document.status !== "ready") return await failCode(document.code);
+        if (document.truncated) return await failCode("text_limit");
         const parts: AiTextPart[] = document.textParts.map((part, index) => ({
           id: `part-${index}`,
           text: part.text,
@@ -338,9 +335,7 @@ export function createPipelineService(
               );
             })
           )
-            return failCurrentDocument
-              ? await failCurrentDocument("source-changed")
-              : await finishFailure("review", "source-changed");
+            return await failCode("source-changed");
           const classificationParts = document.textParts.map(
             (part, partIndex) => ({
               id: `document-${work.documentIndex}-part-${partIndex}`,
@@ -353,8 +348,8 @@ export function createPipelineService(
             classificationParts,
             selected,
           );
-          if (options.remainingStatements() < 23)
-            return { kind: "retry", code: "transient" };
+          if (options.remainingStatements() < PAID_ATTEMPT_STATEMENT_RESERVE)
+            return transientRetry;
           const classificationIdentity = {
             documentId: metadata.id,
             contentHash: metadata.contentHash,
@@ -395,20 +390,15 @@ export function createPipelineService(
                   : "schema",
               )
             )
-              return { kind: "paused", code: "budget" };
+              return budgetPaused;
             if (
               classification.status === "needs-review" &&
               classification.reason === "settings-changed"
             )
               return stale;
-            return failCurrentDocument
-              ? await failCurrentDocument(
-                  `classification-${classification.status === "needs-review" ? classification.reason : "schema"}`,
-                )
-              : await finishFailure(
-                  "review",
-                  `classification-${classification.status === "needs-review" ? classification.reason : "schema"}`,
-                );
+            return await failCode(
+              `classification-${classification.status === "needs-review" ? classification.reason : "schema"}`,
+            );
           }
           if (
             classification.status === "classified" &&
@@ -420,36 +410,26 @@ export function createPipelineService(
                 "review",
                 "classification-handler-unavailable",
               );
-            return (await options.repository.skipSource(
-              lease,
-              classificationKey,
-            )) === "committed"
-              ? completed
-              : stale;
+            return settled(
+              await options.repository.skipSource(lease, classificationKey),
+            );
           }
           if (
             classification.status === "classified" &&
             !classification.isReceipt
           ) {
             if (!repository.skipDocument)
-              return failCurrentDocument
-                ? await failCurrentDocument(
-                    "classification-handler-unavailable",
-                  )
-                : await finishFailure(
-                    "review",
-                    "classification-handler-unavailable",
-                  );
-            return (await repository.skipDocument(lease, {
-              documentId: metadata.id,
-              classificationFingerprint: classificationKey,
-              nextDocumentIndex:
-                work.documentIndex + 1 < work.documents.length
-                  ? work.documentIndex + 1
-                  : null,
-            })) === "committed"
-              ? completed
-              : stale;
+              return await failCode("classification-handler-unavailable");
+            return settled(
+              await repository.skipDocument(lease, {
+                documentId: metadata.id,
+                classificationFingerprint: classificationKey,
+                nextDocumentIndex:
+                  work.documentIndex + 1 < work.documents.length
+                    ? work.documentIndex + 1
+                    : null,
+              }),
+            );
           }
           verifyFinancialDocument = true;
           classifiedCategory =
@@ -458,23 +438,22 @@ export function createPipelineService(
               ? undefined
               : classification.category;
           if (work.extractionFingerprint !== classificationKey) {
-            return (await repository.advance(lease, {
-              stage: "infer",
-              documentIndex: work.documentIndex,
-              extractionFingerprint: classificationKey,
-            })) === "committed"
-              ? completed
-              : stale;
+            return settled(
+              await repository.advance(lease, {
+                stage: "infer",
+                documentIndex: work.documentIndex,
+                extractionFingerprint: classificationKey,
+              }),
+            );
           }
         }
         // One paid attempt per stage. Preserve room for known/uncertain settlement,
         // cache completion, durable continuation and engine settlement checks.
-        if (selected.config.maxAttempts !== 1)
-          return { kind: "paused", code: "handler-unavailable" };
+        if (selected.config.maxAttempts !== 1) return handlerUnavailable;
         // Refresh and prior guarded work can consume this invocation's SQL
         // allowance. A fresh invocation can recover without any model charge.
-        if (options.remainingStatements() < 23)
-          return { kind: "retry", code: "transient" };
+        if (options.remainingStatements() < PAID_ATTEMPT_STATEMENT_RESERVE)
+          return transientRetry;
         const identity = {
           documentId: metadata.id,
           contentHash: metadata.contentHash,
@@ -535,7 +514,7 @@ export function createPipelineService(
           result.status === "needs-review" &&
           ["budget", "in-progress"].includes(result.reason)
         )
-          return { kind: "paused", code: "budget" };
+          return budgetPaused;
         if (
           result.status === "needs-review" &&
           result.reason === "settings-changed"
@@ -544,15 +523,13 @@ export function createPipelineService(
         if (result.status === "needs-review" && result.reason === "invalid-key")
           return stale;
         if (result.status === "needs-review" && result.reason === "rate-limit")
-          return { kind: "paused", code: "budget" };
+          return budgetPaused;
         if (
           verifyFinancialDocument &&
           result.status === "needs-review" &&
           result.reason === "semantics"
         )
-          return failCurrentDocument
-            ? await failCurrentDocument("classification-verification")
-            : await finishFailure("review", "classification-verification");
+          return await failCode("classification-verification");
         const fingerprint = await aiRunIdentityKey({
           tenant: lease.context,
           identity,
@@ -570,36 +547,33 @@ export function createPipelineService(
             "outage",
           ].includes(result.reason)
         )
-          return failCurrentDocument
-            ? await failCurrentDocument(result.reason)
-            : await finishFailure("review", result.reason);
-        return (await repository.advance(lease, {
-          stage: "reconcile",
-          documentIndex: work.documentIndex,
-          extractionFingerprint: fingerprint,
-        })) === "committed"
-          ? completed
-          : stale;
+          return await failCode(result.reason);
+        return settled(
+          await repository.advance(lease, {
+            stage: "reconcile",
+            documentIndex: work.documentIndex,
+            extractionFingerprint: fingerprint,
+          }),
+        );
       } catch (cause) {
         if (
           cause instanceof ContentError &&
           cause.retryAfterMs !== undefined &&
           cause.retryAfterMs > 86400000
         )
-          return { kind: "paused", code: "handler-unavailable" };
+          return handlerUnavailable;
         if (
           cause instanceof ContentError &&
           cause.code === "CONTENT_BYTE_LIMIT"
-        ) {
-          if (failCurrentDocument)
-            return await failCurrentDocument("byte_limit");
-          return (await repository.fail(lease, {
-            status: "review",
-            code: "byte_limit",
-          })) === "committed"
-            ? completed
-            : stale;
-        }
+        )
+          return failCurrentDocument
+            ? await failCurrentDocument("byte_limit")
+            : settled(
+                await repository.fail(lease, {
+                  status: "review",
+                  code: "byte_limit",
+                }),
+              );
         if (cause instanceof AiSettingsError && cause.code === "CONFLICT")
           return stale;
         if (
@@ -610,16 +584,15 @@ export function createPipelineService(
         if (
           cause instanceof ContentError &&
           cause.code === "CONTENT_SOURCE_UNAVAILABLE"
-        ) {
-          if (failCurrentDocument)
-            return await failCurrentDocument("source-unavailable");
-          return (await repository.fail(lease, {
-            status: "review",
-            code: "source-unavailable",
-          })) === "committed"
-            ? completed
-            : stale;
-        }
+        )
+          return failCurrentDocument
+            ? await failCurrentDocument("source-unavailable")
+            : settled(
+                await repository.fail(lease, {
+                  status: "review",
+                  code: "source-unavailable",
+                }),
+              );
         console.warn("pipeline_retry", {
           reason:
             cause instanceof ContentError ||
