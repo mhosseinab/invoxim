@@ -7,12 +7,12 @@ import extractionDesign from "../../../contracts/extraction.schema.json";
 import onboardingDesign from "../../../contracts/onboarding-view.schema.json";
 import views from "../../../test-design/fixtures/onboarding-views.json";
 import receipts from "../../../test-design/fixtures/receipts.json";
+import { requireFixture } from "../../testkit/src/fixture-value";
 import {
   configSchema,
   extractionSchema,
   onboardingViewSchema,
 } from "../src/index";
-import { requireFixture } from "./fixture-value";
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);

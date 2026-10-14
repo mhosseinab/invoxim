@@ -5,7 +5,7 @@ import { createDocumentTextExtractor } from "../../../packages/core/src/document
 import {
   generateCompressedTextPdf,
   generateTextPdf,
-} from "./fixtures/synthetic-pdf";
+} from "../../../packages/testkit/src/pdf/synthetic";
 
 const tenant = {
   userId: "synthetic-pdf-processing",
@@ -79,7 +79,7 @@ it("PDF-PROCESSING-02: direct-model input converts PDF while preserving exact so
 
 it("PDF-PROCESSING-03: embedded compressed font and indirect length retain realistic invoice lines without network", async () => {
   const { embeddedInvoicePdf } =
-    await import("./fixtures/synthetic-embedded-pdf");
+    await import("../../../packages/testkit/src/pdf/embedded");
   const result = await createLocalPdfTextExtractor().extract(
     embeddedInvoicePdf(),
     DOCUMENT_LIMITS,
@@ -208,7 +208,7 @@ it("PDF-PROCESSING-09: converted PDF hash changes with original bytes and preser
 });
 it("PDF-PROCESSING-10: no parser network access occurs for an embedded-font invoice", async () => {
   const { embeddedInvoicePdf } =
-    await import("./fixtures/synthetic-embedded-pdf");
+    await import("../../../packages/testkit/src/pdf/embedded");
   const fetch = vi
     .spyOn(globalThis, "fetch")
     .mockRejectedValue(new Error("NETWORK_FORBIDDEN"));
@@ -228,7 +228,8 @@ it("PDF-PROCESSING-10: no parser network access occurs for an embedded-font invo
 });
 
 it("PDF-PROCESSING-11: passive receipt hyperlinks stay inert while active JavaScript actions fail closed", async () => {
-  const { generateLinkedInvoicePdf } = await import("./fixtures/synthetic-pdf");
+  const { generateLinkedInvoicePdf } =
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const fetch = vi
     .spyOn(globalThis, "fetch")
     .mockRejectedValue(new Error("NETWORK_FORBIDDEN"));
@@ -347,7 +348,7 @@ it.each(["/Prev", "/XRefStm", "/P#72ev", "/XRef#53tm"] as const)(
     const { preflightPdf } =
       await import("../../../packages/adapters/src/documents/pdf-preflight");
     const { generateSecondaryXrefPdf } =
-      await import("./fixtures/synthetic-pdf");
+      await import("../../../packages/testkit/src/pdf/synthetic");
     expect(
       await preflightPdf(generateSecondaryXrefPdf(feature), DOCUMENT_LIMITS),
     ).toBe("compressed_pdf");
@@ -357,7 +358,8 @@ it.each(["/Prev", "/XRefStm", "/P#72ev", "/XRef#53tm"] as const)(
 it("PDF-PROCESSING-16: small object-heavy PDFs fail the structural resource bound", async () => {
   const { preflightPdf } =
     await import("../../../packages/adapters/src/documents/pdf-preflight");
-  const { generateObjectHeavyPdf } = await import("./fixtures/synthetic-pdf");
+  const { generateObjectHeavyPdf } =
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const bytes = generateObjectHeavyPdf();
   expect(bytes.byteLength).toBeLessThan(DOCUMENT_LIMITS.bytes);
   expect(await preflightPdf(bytes, DOCUMENT_LIMITS)).toBe("part_limit");
@@ -383,7 +385,8 @@ it.each([false, true])(
   async (indirect) => {
     const { preflightPdf } =
       await import("../../../packages/adapters/src/documents/pdf-preflight");
-    const { generateLengthDecoyPdf } = await import("./fixtures/synthetic-pdf");
+    const { generateLengthDecoyPdf } =
+      await import("../../../packages/testkit/src/pdf/synthetic");
     expect(
       await preflightPdf(generateLengthDecoyPdf(indirect), DOCUMENT_LIMITS),
     ).toBe(indirect ? "malformed_pdf" : "compressed_pdf");
@@ -418,7 +421,7 @@ it.each([
     const { preflightPdf } =
       await import("../../../packages/adapters/src/documents/pdf-preflight");
     const { generatePdfGateRegression } =
-      await import("./fixtures/synthetic-pdf");
+      await import("../../../packages/testkit/src/pdf/synthetic");
     expect(
       await preflightPdf(generatePdfGateRegression(kind), DOCUMENT_LIMITS),
     ).not.toBeNull();
@@ -514,7 +517,7 @@ it("PDF-COMPAT-01: legal bare CR stream delimiters remain bounded and readable",
 
 it("PDF-COMPAT-02: common nested catalog preferences preserve text without enabling active content", async () => {
   const { nestedCatalogPdf } =
-    await import("./fixtures/synthetic-compatible-pdf");
+    await import("../../../packages/testkit/src/pdf/compatible");
   expect(
     await createLocalPdfTextExtractor().extract(
       nestedCatalogPdf(),
@@ -586,7 +589,7 @@ it.each(["pages", "count", "pages-array", "count-array"] as const)(
   "PDF-COMPAT-03: nested %s cannot supply authoritative top-level PDF control keys",
   async (kind) => {
     const { nestedCatalogPdf } =
-      await import("./fixtures/synthetic-compatible-pdf");
+      await import("../../../packages/testkit/src/pdf/compatible");
     const { preflightPdf } =
       await import("../../../packages/adapters/src/documents/pdf-preflight");
     expect(

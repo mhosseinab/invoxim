@@ -10,6 +10,15 @@ import {
   DRIVE_AUTHORIZATION_SCOPES,
   driveConfiguration,
 } from "../../../packages/adapters/src/drive/configuration";
+import {
+  GOOGLE_JWKS_ENDPOINT,
+  GOOGLE_TOKEN_ENDPOINT,
+  GOOGLE_USERINFO_ENDPOINT,
+  generateSigningKeys,
+  googleIdTokenClaims,
+  googleTokenResponse,
+  signIdToken,
+} from "../../../packages/testkit/src/google-token";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
@@ -471,58 +480,34 @@ it("actual signed Google Drive callback stores independent identity with no arch
     .bind(f.current.tenant.userId)
     .first<string>("nonce");
   if (!nonce) throw new Error("Synthetic nonce not persisted");
-  const pair = await crypto.subtle.generateKey(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["sign", "verify"],
-  );
-  if (!("privateKey" in pair)) throw new Error("Synthetic RSA pair missing");
-  const encode = (value: unknown) =>
-    encodeBase64url(new TextEncoder().encode(JSON.stringify(value)));
-  const now = Math.floor(Date.now() / 1000),
-    subject = "synthetic-drive-route-subject-d";
-  const text = `${encode({ alg: "RS256", kid: "synthetic-route-key", typ: "JWT" })}.${encode({ iss: "https://accounts.google.com", sub: subject, aud: f.bindings.DRIVE_CLIENT_ID, nonce, iat: now, exp: now + 3600, email: "Drive-D@example.test", email_verified: true })}`;
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    pair.privateKey,
-    new TextEncoder().encode(text),
-  );
-  const jwt = `${text}.${encodeBase64url(new Uint8Array(signature))}`,
-    key = await crypto.subtle.exportKey("jwk", pair.publicKey);
-  if (!("kty" in key)) throw new Error("Synthetic JWK export failed");
-  const jwk = { kty: key.kty, n: key.n, e: key.e };
+  const { keys: pair } = await generateSigningKeys();
+  const subject = "synthetic-drive-route-subject-d";
+  const signed = await signIdToken({
+    claims: googleIdTokenClaims({
+      sub: subject,
+      aud: f.bindings.DRIVE_CLIENT_ID,
+      nonce,
+      email: "Drive-D@example.test",
+    }),
+    privateKey: pair.privateKey,
+    publicKey: pair.publicKey,
+    kid: "synthetic-route-key",
+  });
   const calls: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (value) => {
     const url = value instanceof Request ? value.url : String(value);
     calls.push(url);
-    if (url === "https://oauth2.googleapis.com/token")
-      return Response.json({
-        access_token: "synthetic-route-access",
-        refresh_token: "synthetic-route-refresh",
-        token_type: "Bearer",
-        expires_in: 3600,
-        scope: DRIVE_AUTHORIZATION_SCOPES.join(" "),
-        id_token: jwt,
-      });
-    if (url === "https://www.googleapis.com/oauth2/v3/certs")
-      return Response.json({
-        keys: [
-          {
-            kty: jwk.kty,
-            n: jwk.n,
-            e: jwk.e,
-            kid: "synthetic-route-key",
-            alg: "RS256",
-            use: "sig",
-          },
-        ],
-      });
-    if (url === "https://openidconnect.googleapis.com/v1/userinfo")
+    if (url === GOOGLE_TOKEN_ENDPOINT)
+      return Response.json(
+        googleTokenResponse({
+          access_token: "synthetic-route-access",
+          refresh_token: "synthetic-route-refresh",
+          scope: DRIVE_AUTHORIZATION_SCOPES.join(" "),
+          id_token: signed.jwt,
+        }),
+      );
+    if (url === GOOGLE_JWKS_ENDPOINT) return Response.json(signed.jwks);
+    if (url === GOOGLE_USERINFO_ENDPOINT)
       return Response.json({
         sub: subject,
         email: "drive-d@example.test",
@@ -561,7 +546,7 @@ it("actual signed Google Drive callback stores independent identity with no arch
     "synthetic-route-access",
   );
   expect(calls).toEqual([
-    "https://oauth2.googleapis.com/token",
+    GOOGLE_TOKEN_ENDPOINT,
     "https://www.googleapis.com/oauth2/v3/certs",
     "https://openidconnect.googleapis.com/v1/userinfo",
   ]);

@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
+import { requireFixture } from "../../../packages/testkit/src/fixture-value";
 import { createMailboxRoutes } from "../src/mailbox-routes";
-import { requireFixture } from "./fixture-value";
 
 it("AUTH-02/ONBOARD-02 mailbox consent requires a verified login session", async () => {
   const response = await createMailboxRoutes().request(

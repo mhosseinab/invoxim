@@ -34,7 +34,8 @@ it("DOCUMENT-05: inert HTML retains numeric receipt text without fetching script
 });
 
 it("DOCUMENT-02: real generated two-page PDF retains subtotal/tax and final paid evidence exactly", async () => {
-  const { generateTextPdf } = await import("./fixtures/synthetic-pdf");
+  const { generateTextPdf } =
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const { createLocalPdfTextExtractor } =
     await import("../../../packages/adapters/src/documents/pdf");
   const extractor = createDocumentTextExtractor({
@@ -110,7 +111,8 @@ it("DOCUMENT-05: nested hidden forms and fake script closing prefixes do not bec
 });
 
 it("DOCUMENT-04: a real PDF mislabelled plain text never returns its syntax as receipt evidence", async () => {
-  const { generateTextPdf } = await import("./fixtures/synthetic-pdf");
+  const { generateTextPdf } =
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const result = await createDocumentTextExtractor().extract(
     {
       connectionId: "synthetic-mailbox",
@@ -162,7 +164,8 @@ it("DOCUMENT-03: a swappable converter cannot claim ready with empty or whitespa
 });
 
 it("DOCUMENT-03: a real generated image-only PDF requires review without invented OCR", async () => {
-  const { generateImageOnlyPdf } = await import("./fixtures/synthetic-pdf");
+  const { generateImageOnlyPdf } =
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const { createLocalPdfTextExtractor } =
     await import("../../../packages/adapters/src/documents/pdf");
   const result = await createDocumentTextExtractor({
@@ -188,7 +191,7 @@ it("DOCUMENT-03: a real generated image-only PDF requires review without invente
 });
 it("DOCUMENT-04: a real small compressed PDF with a large expanded stream is rejected before conversion", async () => {
   const { generateCompressedTextPdf } =
-    await import("./fixtures/synthetic-pdf");
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const { createLocalPdfTextExtractor } =
     await import("../../../packages/adapters/src/documents/pdf");
   const bytes = await generateCompressedTextPdf("A".repeat(1024 * 1024));
@@ -210,7 +213,8 @@ it("DOCUMENT-04: a real small compressed PDF with a large expanded stream is rej
   expect(document && "textParts" in document).toBe(false);
 });
 it("DOCUMENT-04: PDF page allowance is aggregate across attachments, with no partial text on overflow", async () => {
-  const { generateTextPdf } = await import("./fixtures/synthetic-pdf");
+  const { generateTextPdf } =
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const { createLocalPdfTextExtractor } =
     await import("../../../packages/adapters/src/documents/pdf");
   const bytes = generateTextPdf([["Paid EUR 12.34"]]);
@@ -238,7 +242,8 @@ it("DOCUMENT-04: PDF page allowance is aggregate across attachments, with no par
 });
 
 it("DOCUMENT-04: an actual deflated inline-image PDF using /F /Fl is rejected before PDF.js", async () => {
-  const { generateTextPdf } = await import("./fixtures/synthetic-pdf");
+  const { generateTextPdf } =
+    await import("../../../packages/testkit/src/pdf/synthetic");
   const { createLocalPdfTextExtractor } =
     await import("../../../packages/adapters/src/documents/pdf");
   // Rewrite only this known synthetic generator output, never production document bytes.

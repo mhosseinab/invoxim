@@ -14,7 +14,7 @@ import type {
   CredentialTarget,
 } from "../../../packages/adapters/src/security/types";
 import { createCredentialVault } from "../../../packages/adapters/src/security/vault";
-import { requireFixture } from "./fixture-value";
+import { requireFixture } from "../../../packages/testkit/src/fixture-value";
 
 const db = env.DB;
 

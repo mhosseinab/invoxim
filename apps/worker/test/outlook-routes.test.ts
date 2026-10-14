@@ -7,6 +7,10 @@ import {
 } from "@invoxim/adapters";
 import { mailboxStartResponseSchema } from "@invoxim/contracts";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  generateSigningKeys,
+  signIdToken,
+} from "../../../packages/testkit/src/google-token";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
@@ -181,31 +185,27 @@ async function signedTransport(
   nonce: string,
   permission = true,
 ) {
-  const generated = await crypto.subtle.generateKey(
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["sign", "verify"],
-  );
-  if (!("privateKey" in generated))
-    throw new Error("Synthetic RSA key pair was not generated");
+  const generated = await generateSigningKeys();
+  const keys = generated.keys;
   const tenant = "22222222-2222-4222-8222-222222222222",
     issuer = `https://login.microsoftonline.com/${tenant}/v2.0`,
     subject = "qa-outlook-immutable-subject-b";
-  const encode = (value: unknown) =>
-    encodeBase64url(new TextEncoder().encode(JSON.stringify(value)));
-  const now = Math.floor(Date.now() / 1000);
-  const message = `${encode({ alg: "RS256", kid: "qa-outlook-route-key", typ: "JWT" })}.${encode({ iss: issuer, tid: tenant, sub: subject, aud: f.bindings.OUTLOOK_CLIENT_ID, nonce, iat: now, exp: now + 3600, ver: "2.0" })}`;
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    generated.privateKey,
-    new TextEncoder().encode(message),
-  );
-  const jwk = await crypto.subtle.exportKey("jwk", generated.publicKey);
+  const signed = await signIdToken({
+    claims: {
+      iss: issuer,
+      tid: tenant,
+      sub: subject,
+      aud: f.bindings.OUTLOOK_CLIENT_ID,
+      nonce,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      ver: "2.0",
+    },
+    privateKey: keys.privateKey,
+    publicKey: keys.publicKey,
+    kid: "qa-outlook-route-key",
+  });
+  const jwk = await crypto.subtle.exportKey("jwk", keys.publicKey);
   const urls: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
@@ -220,7 +220,7 @@ async function signedTransport(
         scope: permission
           ? "openid profile email https://graph.microsoft.com/Mail.Read"
           : "openid profile email",
-        id_token: `${message}.${encodeBase64url(new Uint8Array(signature))}`,
+        id_token: signed.jwt,
       });
     if (url === "https://login.microsoftonline.com/common/discovery/v2.0/keys")
       return Response.json({

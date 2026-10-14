@@ -3,8 +3,8 @@ import type { TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it, vi } from "vitest";
 import initial from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import type { ReceiptClassificationConfiguration } from "../../../packages/adapters/src/ai/clef";
+import { generateTextPdf } from "../../../packages/testkit/src/pdf/synthetic";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { generateTextPdf } from "./fixtures/synthetic-pdf";
 
 const db = env.DB;
 const policy = {

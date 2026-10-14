@@ -3,9 +3,15 @@ import type { AuthBindings, LoginConfiguration } from "@invoxim/adapters";
 import { createLoginAuth } from "@invoxim/adapters";
 import { beforeAll, expect, it, vi } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
-
+import { requireFixture } from "../../../packages/testkit/src/fixture-value";
+import {
+  GOOGLE_TOKEN_ENDPOINT,
+  generateSigningKeys,
+  googleIdTokenClaims,
+  googleTokenResponse,
+  signIdToken,
+} from "../../../packages/testkit/src/google-token";
 import { createAuthRoutes } from "../src/auth-routes";
-import { requireFixture } from "./fixture-value";
 
 const db = env.DB;
 
@@ -86,28 +92,11 @@ beforeAll(async () => {
     });
   }
 });
-function base64url(bytes: Uint8Array) {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-}
 let googleKeys: CryptoKeyPair | undefined;
 async function syntheticGoogle(extraAllowedEmails: string[] = []) {
   if (!googleKeys) {
-    const generated = await crypto.subtle.generateKey(
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: "SHA-256",
-      },
-      true,
-      ["sign", "verify"],
-    );
-    if (!("privateKey" in generated))
-      throw new Error("Synthetic signing key unavailable");
-    googleKeys = generated;
+    const generated = await generateSigningKeys();
+    googleKeys = generated.keys;
   }
   const pair = googleKeys;
   const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
@@ -127,23 +116,21 @@ async function syntheticGoogle(extraAllowedEmails: string[] = []) {
             { ...jwk, kid: "qa-synthetic-google", alg: "RS256", use: "sig" },
           ],
         });
-      if (
-        request.url === "https://oauth2.googleapis.com/token" &&
-        request.method === "POST"
-      ) {
+      if (request.url === GOOGLE_TOKEN_ENDPOINT && request.method === "POST") {
         const form = await request.formData();
         const code = form.get("code");
         const verifier = form.get("code_verifier");
         exchangedVerifier = typeof verifier === "string" ? verifier : undefined;
         const token = typeof code === "string" ? tokens.get(code) : null;
         if (!token) throw new Error("Synthetic transport denied");
-        return Response.json({
-          access_token: "synthetic-transient-access",
-          refresh_token: "synthetic-transient-refresh",
-          token_type: "Bearer",
-          expires_in: 300,
-          id_token: token,
-        });
+        return Response.json(
+          googleTokenResponse({
+            access_token: "synthetic-transient-access",
+            refresh_token: "synthetic-transient-refresh",
+            expires_in: 300,
+            id_token: token,
+          }),
+        );
       }
       throw new Error("Synthetic transport denied");
     });
@@ -193,35 +180,28 @@ async function syntheticGoogle(extraAllowedEmails: string[] = []) {
     corrupt = false,
     code = "synthetic-code",
   ) {
-    const now = Math.floor(Date.now() / 1000);
-    const payload: Record<string, unknown> = {
+    const payload = googleIdTokenClaims({
       sub: "qa-google-subject",
       email: "qa-google@example.invalid",
-      email_verified: true,
       name: "QA synthetic Google",
       nonce,
       aud: configuration.googleClientId,
-      iss: "https://accounts.google.com",
-      iat: now,
-      exp: now + 300,
+      exp: Math.floor(Date.now() / 1000) + 300,
       ...changed,
-    };
-    const encode = (value: unknown) =>
-      base64url(new TextEncoder().encode(JSON.stringify(value)));
-    const unsigned = `${encode({ alg: "RS256", kid: "qa-synthetic-google", typ: "JWT" })}.${encode(payload)}`;
-    const signature = base64url(
-      new Uint8Array(
-        await crypto.subtle.sign(
-          "RSASSA-PKCS1-v1_5",
-          pair.privateKey,
-          new TextEncoder().encode(unsigned),
-        ),
-      ),
-    );
-    tokens.set(
-      code,
-      `${unsigned}.${corrupt ? (signature.startsWith("A") ? "B" : "A") + signature.slice(1) : signature}`,
-    );
+    });
+    const signed = await signIdToken({
+      claims: payload,
+      privateKey: pair.privateKey,
+      kid: "qa-synthetic-google",
+    });
+    let jwt = signed.jwt;
+    if (corrupt) {
+      const parts = jwt.split(".");
+      const signature = parts[2] ?? "";
+      parts[2] = (signature.startsWith("A") ? "B" : "A") + signature.slice(1);
+      jwt = parts.join(".");
+    }
+    tokens.set(code, jwt);
   }
   function callback(
     flow: {

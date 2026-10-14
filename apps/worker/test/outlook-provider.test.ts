@@ -6,6 +6,10 @@ import {
   outlookConfiguration,
 } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { encodeBase64url } from "../../../packages/adapters/src/security/cipher";
+import {
+  generateSigningKeys,
+  signIdToken,
+} from "../../../packages/testkit/src/google-token";
 
 const clientId = "11111111-1111-4111-8111-111111111111";
 const configuration = { clientId, clientSecret: "synthetic-microsoft-secret" };
@@ -40,28 +44,11 @@ const accountSub = "synthetic-pairwise-subject-b";
 let keys: CryptoKeyPair;
 let wrongKeys: CryptoKeyPair;
 beforeAll(async () => {
-  const options = {
-    name: "RSASSA-PKCS1-v1_5",
-    modulusLength: 2048,
-    publicExponent: new Uint8Array([1, 0, 1]),
-    hash: "SHA-256",
-  };
-  const first = await crypto.subtle.generateKey(options, true, [
-    "sign",
-    "verify",
-  ]);
-  const second = await crypto.subtle.generateKey(options, true, [
-    "sign",
-    "verify",
-  ]);
-  if (!("privateKey" in first) || !("privateKey" in second))
-    throw new Error("Synthetic key setup failed");
-  keys = first;
-  wrongKeys = second;
+  const generated = await generateSigningKeys();
+  keys = generated.keys;
+  wrongKeys = generated.wrongKeys;
 });
 afterEach(() => vi.restoreAllMocks());
-const encode = (value: unknown) =>
-  encodeBase64url(new TextEncoder().encode(JSON.stringify(value)));
 async function signed(
   extra: Record<string, unknown> = {},
   kid = "synthetic-ms-key",
@@ -79,15 +66,14 @@ async function signed(
     ver: "2.0",
     ...extra,
   };
-  const message = `${encode({ alg: "RS256", kid, typ: "JWT" })}.${encode(claims)}`;
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    (wrong ? wrongKeys : keys).privateKey,
-    new TextEncoder().encode(message),
-  );
+  const result = await signIdToken({
+    claims,
+    privateKey: (wrong ? wrongKeys : keys).privateKey,
+    kid,
+  });
   const jwk = await crypto.subtle.exportKey("jwk", keys.publicKey);
   return {
-    jwt: `${message}.${encodeBase64url(new Uint8Array(signature))}`,
+    jwt: result.jwt,
     key: {
       ...jwk,
       kid,
