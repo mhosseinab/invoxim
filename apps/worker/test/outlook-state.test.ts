@@ -11,6 +11,7 @@ import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { owner } from "./onboarding-qa-fixture";
+import { faultingDatabase } from "./support/faults";
 
 const fixtureDatabase = env.DB;
 const db = fixtureDatabase;
@@ -539,54 +540,29 @@ it("OUTLOOK-02 getNext rechecks consent after its protected cursor read before r
     }),
   ).toEqual({ kind: "committed", version: 1 });
   const before = await snapshot(lease);
-  let triggered = 0;
-  function wrapped(
-    statement: D1PreparedStatement,
-    sql: string,
-  ): D1PreparedStatement {
-    return new Proxy(statement, {
-      get(target, key) {
-        if (key === "bind")
-          return (...values: unknown[]) => wrapped(target.bind(...values), sql);
-        if (key === "first")
-          return async (...args: unknown[]) => {
-            if (
-              !triggered &&
-              /^(SELECT|WITH)\b/.test(sql.trimStart()) &&
-              sql.includes("FROM outlook_inventory_states")
-            ) {
-              triggered++;
-              await db
-                .prepare(
-                  "UPDATE processing_consents SET revoked_at=1 WHERE user_id=?",
-                )
-                .bind(lease.context.userId)
-                .run();
-            }
-            const column = args[0];
-            return typeof column === "string"
-              ? target.first(column)
-              : target.first();
-          };
-        const value = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-  }
   const existing = createInvocationDatabase(env.DB, 40);
-  const db = new Proxy(existing.db, {
-    get(target, key) {
-      if (key === "prepare")
-        return (sql: string) => wrapped(target.prepare(sql), sql);
-      const value = Reflect.get(target, key);
-      return typeof value === "function" ? value.bind(target) : value;
+  const { db: faulted, fireCounts } = faultingDatabase(existing.db, [
+    {
+      match: (sql) =>
+        /^(SELECT|WITH)\b/.test(sql.trimStart()) &&
+        sql.includes("FROM outlook_inventory_states"),
+      on: "first",
+      fire: async ({ proceed, native }) => {
+        await native
+          .prepare(
+            "UPDATE processing_consents SET revoked_at=1 WHERE user_id=?",
+          )
+          .bind(lease.context.userId)
+          .run();
+        return proceed();
+      },
     },
-  });
-  const meter = createInvocationDatabase(db, 40);
+  ]);
+  const meter = createInvocationDatabase(faulted, 40);
   const next = await createOutlookFolderStore(meter.db).getNextInventory(lease);
-  expect(triggered).toBe(1);
+  expect(fireCounts[0]).toBe(1);
   expect(
-    await db
+    await faulted
       .prepare("SELECT revoked_at FROM processing_consents WHERE user_id=?")
       .bind(lease.context.userId)
       .first("revoked_at"),

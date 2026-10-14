@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { createGmailDiscovery } from "../../../packages/adapters/src/discovery/gmail";
 import { createGmailDiscoveryProviderFactory } from "../../../packages/adapters/src/discovery/provider-factory";
 import { gmailConfiguration } from "../../../packages/adapters/src/mailbox/configuration";
+import { faultingDatabase } from "./support/faults";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -39,15 +40,14 @@ it("records only the failed Gmail operation and HTTP status without exposing pro
 
 it("redacts unexpected credential-read errors while identifying the preparation stage", async () => {
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-  const database = new Proxy(env.DB, {
-    get(target, property) {
-      if (property === "prepare")
-        return () => {
-          throw new Error("private-database-content");
-        };
-      return Reflect.get(target, property);
+  const { db: database } = faultingDatabase(env.DB, [
+    {
+      on: "prepare",
+      fire: () => {
+        throw new Error("private-database-content");
+      },
     },
-  });
+  ]);
   const configuration = gmailConfiguration({
     DB: database,
     AUTH_ENABLED: "true",

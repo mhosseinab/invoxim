@@ -27,6 +27,7 @@ import {
 import { planDiscoveryRange } from "../../../packages/core/src/discovery/calendar";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createJobRuntime } from "../src/job-runtime";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
@@ -571,42 +572,18 @@ const factoryConfiguration: GmailConfiguration = {
   cipher: discoveryCipher,
 };
 function afterSecondCredentialRead(action: () => Promise<void>): D1Database {
-  let reads = 0;
-  function wrap(
-    statement: D1PreparedStatement,
-    sql: string,
-  ): D1PreparedStatement {
-    return new Proxy(statement, {
-      get(target, key) {
-        if (key === "bind")
-          return (...values: unknown[]) => wrap(target.bind(...values), sql);
-        if (key === "first")
-          return async (column?: string) => {
-            const result =
-              column === undefined
-                ? await target.first()
-                : await target.first(column);
-            if (
-              sql.startsWith("SELECT credential_ciphertext AS") &&
-              ++reads === 2
-            )
-              await action();
-            return result;
-          };
-        const value = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
+  return faultingDatabase(createInvocationDatabase(env.DB, 40).db, [
+    {
+      match: "SELECT credential_ciphertext AS",
+      on: "first",
+      skip: 1,
+      fire: async ({ proceed }) => {
+        const result = await proceed();
+        await action();
+        return result;
       },
-    });
-  }
-  const observed = createInvocationDatabase(env.DB, 40).db;
-  return new Proxy(observed, {
-    get(target, key) {
-      if (key === "prepare")
-        return (sql: string) => wrap(target.prepare(sql), sql);
-      const value = Reflect.get(target, key);
-      return typeof value === "function" ? value.bind(target) : value;
     },
-  });
+  ]).db;
 }
 async function expiredCredential(
   tenant: TenantContext,
@@ -872,22 +849,24 @@ it("RECENT-09 late D1 constraint failure rolls back source staging, outbox and c
     excluded: false,
     candidate: "matched",
   });
-  const failing = new Proxy(createInvocationDatabase(env.DB, 40).db, {
-    get(target, key) {
-      if (key === "batch")
-        return (statements: D1PreparedStatement[]) =>
-          target.batch([
-            ...statements,
-            target
-              .prepare(
-                "INSERT INTO profiles(user_id,created_at,updated_at) VALUES(?,0,0)",
-              )
-              .bind(tenant.userId),
-          ]);
-      const value = Reflect.get(target, key);
-      return typeof value === "function" ? value.bind(target) : value;
+  const base = createInvocationDatabase(env.DB, 40).db;
+  const failing = faultingDatabase(base, [
+    {
+      on: "batch",
+      fire: async ({ args, native }) => {
+        // Append a duplicate-profile INSERT so the batch hits a real D1 constraint failure.
+        const statements = args as D1PreparedStatement[];
+        return native.batch([
+          ...statements,
+          native
+            .prepare(
+              "INSERT INTO profiles(user_id,created_at,updated_at) VALUES(?,0,0)",
+            )
+            .bind(tenant.userId),
+        ]);
+      },
     },
-  });
+  ]).db;
   const result = await pageTurn(tenant, provider, { database: failing });
   expect(result.outcome).toEqual({ kind: "retry", code: "transient" });
   expect(

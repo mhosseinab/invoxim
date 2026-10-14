@@ -6,6 +6,7 @@ import { createArchiveFolderStore } from "../../../packages/adapters/src/drive/f
 import { createFxValuationRepository } from "../../../packages/adapters/src/fx/repository";
 import { createLifecycleCleanup } from "../../../packages/adapters/src/lifecycle/cleanup";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
@@ -386,44 +387,24 @@ it("M1 source cleanup preserves reparented and user-owned ledger valuations and 
 });
 function changingDatabase(change: () => Promise<unknown>, fail = false) {
   const meter = createInvocationDatabase(env.DB, 5);
-  const base = meter.db;
-  function wrap(
-    statement: D1PreparedStatement,
-    sql: string,
-  ): D1PreparedStatement {
-    return new Proxy(statement, {
-      get(target, key) {
-        if (key === "bind")
-          return (...args: unknown[]) => wrap(target.bind(...args), sql);
-        if (key === "run")
-          return async <T = Record<string, unknown>>() => {
-            if (sql.startsWith("DELETE FROM entry_valuations")) {
-              await change();
-              if (fail) {
-                await base.batch([
-                  target,
-                  base.prepare(
-                    "INSERT INTO fx_rates(id,source,from_currency,to_currency,requested_date,effective_date,rate,retrieved_at,source_version) VALUES('bad','synthetic','EUR','USD','2026-10-11','2026-10-09','1',0,'v1')",
-                  ),
-                ]);
-                throw new Error("UNREACHABLE");
-              }
-            }
-            return target.run<T>();
-          };
-        const value = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
+  const { db: database } = faultingDatabase(meter.db, [
+    {
+      match: "DELETE FROM entry_valuations",
+      on: "run",
+      fire: async ({ proceed, native, statement }) => {
+        await change();
+        if (!fail) return proceed();
+        if (!statement) throw new Error("MISSING_INTERCEPTED_STATEMENT");
+        await native.batch([
+          statement,
+          native.prepare(
+            "INSERT INTO fx_rates(id,source,from_currency,to_currency,requested_date,effective_date,rate,retrieved_at,source_version) VALUES('bad','synthetic','EUR','USD','2026-10-11','2026-10-09','1',0,'v1')",
+          ),
+        ]);
+        throw new Error("UNREACHABLE");
       },
-    });
-  }
-  const database = new Proxy(base, {
-    get(target, key) {
-      if (key === "prepare")
-        return (sql: string) => wrap(target.prepare(sql), sql);
-      const value = Reflect.get(target, key);
-      return typeof value === "function" ? value.bind(target) : value;
     },
-  });
+  ]);
   return { database, meter };
 }
 it("M1 changed deletion request before leaf mutation cannot erase or advance legacy stage", async () => {

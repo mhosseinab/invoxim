@@ -11,6 +11,7 @@ import {
   type OnboardingBindings,
 } from "../src/onboarding-routes";
 import { syntheticClassificationBindings } from "./classification-fixture";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 const userId = "synthetic-disclosure-owner";
@@ -175,15 +176,14 @@ it("ONBOARD-04 unavailable processors preserve strict disclosure query validatio
 });
 
 it("ONBOARD-04 runtime failures remain retryable even when processing is unconfigured", async () => {
-  const unavailableDatabase = new Proxy(db, {
-    get(target, property, receiver) {
-      if (property === "prepare")
-        return () => {
-          throw new Error("Synthetic database unavailable");
-        };
-      return Reflect.get(target, property, receiver);
+  const { db: unavailableDatabase } = faultingDatabase(db, [
+    {
+      on: "prepare",
+      fire: () => {
+        throw new Error("Synthetic database unavailable");
+      },
     },
-  });
+  ]);
   const response = await app.request(
     `${configuration.origin}/api/processing-disclosure?connectionId=synthetic-owned-mailbox`,
     { headers: { Cookie: cookie } },

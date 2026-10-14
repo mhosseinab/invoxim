@@ -5,6 +5,7 @@ import type { MailboxSession, TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
 import { createArchiveConsentRepository } from "../../../packages/adapters/src/drive/archive-consent";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { faultingDatabase } from "./support/faults";
 import m1 from "./migrations/historical/0001_auth.sql?raw";
 import m2 from "./migrations/historical/0002_records.sql?raw";
 import m3 from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
@@ -422,27 +423,19 @@ it("ARCH-01: concurrent first enable is one atomic winner without implicit desti
   expect((await repository.read(context)).version).toBe(1);
 });
 function changedSessionDatabase(): D1Database {
-  return {
-    prepare(sql: string) {
-      const native = db.prepare(sql);
-      return {
-        bind(...args: unknown[]) {
-          const bound = native.bind(...args);
-          return {
-            first: () => bound.first(),
-            async run() {
-              if (sql.startsWith("INSERT INTO archive_settings"))
-                await db
-                  .prepare('UPDATE "session" SET expiresAt=0 WHERE id=?')
-                  .bind(session.sessionId)
-                  .run();
-              return bound.run();
-            },
-          };
-        },
-      };
+  return faultingDatabase(db, [
+    {
+      match: "INSERT INTO archive_settings",
+      on: "run",
+      fire: async ({ proceed, native }) => {
+        await native
+          .prepare('UPDATE "session" SET expiresAt=0 WHERE id=?')
+          .bind(session.sessionId)
+          .run();
+        return proceed();
+      },
     },
-  } as unknown as D1Database;
+  ]).db;
 }
 it("ARCH-01: expired session between checks and actual CAS cannot leave consent prefix", async () => {
   await expect(

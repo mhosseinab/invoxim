@@ -18,6 +18,7 @@ import {
   encodeBase64url,
 } from "../../../packages/adapters/src/security/cipher";
 import { createMailboxRoutes } from "../src/mailbox-routes";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
@@ -811,43 +812,22 @@ it("disconnect after credential reread prevents the pending provider refresh cal
     releaseResolve = resolve;
   });
   let reads = 0;
-  function wrap(
-    statement: D1PreparedStatement,
-    sql: string,
-  ): D1PreparedStatement {
-    return new Proxy(statement, {
-      get(target, key) {
-        if (key === "bind")
-          return (...values: unknown[]) => wrap(target.bind(...values), sql);
-        if (key === "first")
-          return async (...args: unknown[]) => {
-            const column = args[0];
-            const result =
-              typeof column === "string"
-                ? await target.first(column)
-                : await target.first();
-            if (
-              sql.startsWith("SELECT id,provider,provider_subject") &&
-              ++reads === 2
-            ) {
-              enteredResolve();
-              await release;
-            }
-            return result;
-          };
-        const value = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
+  const { db: delayed } = faultingDatabase(db, [
+    {
+      match: "SELECT id,provider,provider_subject",
+      on: "first",
+      once: false,
+      fire: async ({ proceed }) => {
+        const result = await proceed();
+        reads++;
+        if (reads === 2) {
+          enteredResolve();
+          await release;
+        }
+        return result;
       },
-    });
-  }
-  const delayed = new Proxy(db, {
-    get(target, key) {
-      if (key === "prepare")
-        return (sql: string) => wrap(target.prepare(sql), sql);
-      const value = Reflect.get(target, key);
-      return typeof value === "function" ? value.bind(target) : value;
     },
-  });
+  ]);
   const pending = createMailboxService(
     delayed,
     configuration,

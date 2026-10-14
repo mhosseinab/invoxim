@@ -12,6 +12,7 @@ import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw
 import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import worker from "../src/index";
 import { createJobRuntime } from "../src/job-runtime";
+import { statementCounter } from "./support/faults";
 
 const db = env.DB;
 
@@ -503,35 +504,7 @@ it("one Cron invocation stays within its D1 query cap and later invocations visi
     .run();
   const sent: string[] = [];
   for (let invocation = 0; invocation < 6; invocation++) {
-    let executed = 0;
-    function counted(statement: D1PreparedStatement): D1PreparedStatement {
-      return new Proxy(statement, {
-        get(target, key) {
-          if (key === "bind")
-            return (...values: unknown[]) => counted(target.bind(...values));
-          const value = Reflect.get(target, key);
-          if (typeof value !== "function") return value;
-          return (...args: unknown[]) => {
-            if (["first", "all", "run", "raw"].includes(String(key)))
-              executed++;
-            return value.apply(target, args);
-          };
-        },
-      });
-    }
-    const measured = new Proxy(db, {
-      get(target, key) {
-        if (key === "prepare")
-          return (sql: string) => counted(target.prepare(sql));
-        if (key === "batch")
-          return (statements: D1PreparedStatement[]) => {
-            executed += statements.length;
-            return target.batch(statements);
-          };
-        const value = Reflect.get(target, key);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
+    const { db: measured, count } = statementCounter(db);
     await createJobRuntime({
       store: createJobStore(measured, {
         policy: {
@@ -549,7 +522,7 @@ it("one Cron invocation stays within its D1 query cap and later invocations visi
       },
       clock: () => instant,
     }).scheduled();
-    expect(executed).toBeLessThanOrEqual(16);
+    expect(count()).toBeLessThanOrEqual(16);
   }
   for (const owner of owners)
     expect(sent).toContain(`budget-job-${owner.userId.at(-1)}`);

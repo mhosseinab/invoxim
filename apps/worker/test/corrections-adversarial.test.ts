@@ -9,6 +9,7 @@ import { createLifecycleCleanup } from "../../../packages/adapters/src/lifecycle
 import { createLifecycleRepository } from "../../../packages/adapters/src/lifecycle/repository";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
@@ -1488,22 +1489,20 @@ it("REVIEW-DISCARD-04 concurrent manual evidence wins atomically and blocks ever
     )
     .bind(session.tenant.userId)
     .run();
-  const raced = new Proxy(db, {
-    get(target, name) {
-      if (name === "batch")
-        return async (statements: D1PreparedStatement[]) => {
-          await db
-            .prepare(
-              "INSERT INTO manual_purchase_evidence(user_id,purchase_id,document_id) VALUES(?,'discard-race-purchase','discard-race-source')",
-            )
-            .bind(session.tenant.userId)
-            .run();
-          return target.batch(statements);
-        };
-      const value = Reflect.get(target, name);
-      return typeof value === "function" ? value.bind(target) : value;
+  const { db: raced } = faultingDatabase(db, [
+    {
+      on: "batch",
+      fire: async ({ proceed }) => {
+        await db
+          .prepare(
+            "INSERT INTO manual_purchase_evidence(user_id,purchase_id,document_id) VALUES(?,'discard-race-purchase','discard-race-source')",
+          )
+          .bind(session.tenant.userId)
+          .run();
+        return proceed();
+      },
     },
-  });
+  ]);
   await expect(
     createCorrectionStore(raced).execute(
       session,

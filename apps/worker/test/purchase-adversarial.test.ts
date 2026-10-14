@@ -8,6 +8,7 @@ import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createPurchaseRoutes } from "../src/purchase-routes";
+import { faultingDatabase } from "./support/faults";
 
 const fixtureDatabase = env.DB;
 const db = fixtureDatabase;
@@ -452,42 +453,27 @@ it("HOME-05 actual review endpoint retains exact missing field names without dis
 
 it("HOME-02/LIFECYCLE-02 concurrent refund produces export totals derived from the exported cash facts", async () => {
   let interleaved = false;
-  function wrap(statement: D1PreparedStatement): D1PreparedStatement {
-    return new Proxy(statement, {
-      get(target, key) {
-        if (key === "bind")
-          return (...values: unknown[]) => wrap(target.bind(...values));
-        if (key === "all")
-          return async () => {
-            const result = await target.all();
-            if (!interleaved) {
-              interleaved = true;
-              await event(
-                "qa-home-a",
-                "history",
-                "completed-refund",
-                "qa-concurrent-refund",
-                "refund",
-                1000,
-                "2026-10-12",
-              );
-            }
-            return result;
-          };
-        const value = Reflect.get(target, key, target);
-        return typeof value === "function" ? value.bind(target) : value;
+  const { db: faulted } = faultingDatabase(fixtureDatabase, [
+    {
+      on: "all",
+      fire: async ({ proceed }) => {
+        const result = await proceed();
+        interleaved = true;
+        await event(
+          "qa-home-a",
+          "history",
+          "completed-refund",
+          "qa-concurrent-refund",
+          "refund",
+          1000,
+          "2026-10-12",
+        );
+        return result;
       },
-    });
-  }
-  const db = new Proxy(fixtureDatabase, {
-    get(target, key) {
-      if (key === "prepare") return (sql: string) => wrap(target.prepare(sql));
-      const value = Reflect.get(target, key, target);
-      return typeof value === "function" ? value.bind(target) : value;
     },
-  });
+  ]);
   const tenant = { userId: "qa-home-a", authority: "session" } as TenantContext;
-  const snapshot = await createPurchaseViewReader(db).exportSnapshot(tenant, {
+  const snapshot = await createPurchaseViewReader(faulted).exportSnapshot(tenant, {
     q: "history",
     from: "2026-10-01",
     to: "2026-10-31",
