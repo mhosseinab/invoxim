@@ -34,14 +34,18 @@ export function createReceiptClassifierFactory(
         .bind(lease.context.userId, work.settingsRevision)
         .first<{ generation: number; credential_version: number }>();
       if (!row) throw new AiSettingsError("CONFLICT");
+      const document = work.documents[work.documentIndex];
+      if (!document) throw new AiSettingsError("CONFLICT");
       const configurationDigest = await hashOnboardingValue({
         classification: configuration,
         classifierPolicyVersion: CLEF_RECEIPT_POLICY_VERSION,
-        sourceDocuments: work.documents.map((document) => ({
-          partKey: document.partKey,
-          contentHash: document.contentHash,
-          parserVersion: document.parserVersion,
-        })),
+        sourceDocuments: [
+          {
+            partKey: document.partKey,
+            contentHash: document.contentHash,
+            parserVersion: document.parserVersion,
+          },
+        ],
       });
       const fingerprint = await hashOnboardingValue([
         "hosted",

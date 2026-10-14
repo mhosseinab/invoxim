@@ -29,6 +29,12 @@ import type {
 
 const completed: JobOutcome = { kind: "completed" };
 const stale: JobOutcome = { kind: "paused", code: "auth" };
+function usesDirectModelInput(parserVersion: string | undefined): boolean {
+  return (
+    parserVersion === "documents-direct-v1" ||
+    parserVersion?.startsWith("documents-direct-pdf-v2/") === true
+  );
+}
 function byteLengths(input: DocumentInput): Map<string, number> {
   const result = new Map<string, number>();
   const pending = [input.root];
@@ -190,14 +196,14 @@ export function createPipelineService(
         const selectedPart =
           work.stage === "infer" &&
           !options.classification &&
-          currentDocument?.parserVersion !== "documents-direct-v1"
+          !usesDirectModelInput(currentDocument?.parserVersion)
             ? work.documents[work.documentIndex]?.partKey
             : undefined;
         if (
           work.stage === "infer" &&
           selectedPart === undefined &&
           !options.classification &&
-          currentDocument?.parserVersion !== "documents-direct-v1"
+          !usesDirectModelInput(currentDocument?.parserVersion)
         )
           return await finishFailure("review", "invalid-stage");
         const reader = await options.content.open(lease, guardedControl);
@@ -214,8 +220,8 @@ export function createPipelineService(
         // MIME decoding has no external effects; writes/model transport retain their fences.
         const directModelInput =
           (work.stage === "parse" && options.directModelInputs === true) ||
-          work.documents.some(
-            (document) => document.parserVersion === "documents-direct-v1",
+          work.documents.some((document) =>
+            usesDirectModelInput(document.parserVersion),
           );
         const parsed = await options.documents.extract(content.input, {
           tenant: lease.context,
@@ -294,9 +300,6 @@ export function createPipelineService(
         const selected = await options.inference.open(lease, work, parts);
         let classifiedCategory: ReceiptCategory | undefined;
         if (options.classification) {
-          const firstDocument = work.documents[0];
-          if (!firstDocument)
-            return await finishFailure("review", "invalid-stage");
           if (
             parsed.documents.length !== work.documents.length ||
             work.documents.some((metadata) => {
@@ -313,14 +316,11 @@ export function createPipelineService(
             return failCurrentDocument
               ? await failCurrentDocument("source-changed")
               : await finishFailure("review", "source-changed");
-          const classificationParts = parsed.documents.flatMap(
-            (candidate, documentIndex) =>
-              candidate.status === "ready"
-                ? candidate.textParts.map((part, partIndex) => ({
-                    id: `document-${documentIndex}-part-${partIndex}`,
-                    text: part.text,
-                  }))
-                : [],
+          const classificationParts = document.textParts.map(
+            (part, partIndex) => ({
+              id: `document-${work.documentIndex}-part-${partIndex}`,
+              text: part.text,
+            }),
           );
           const classifier = await options.classification.open(
             lease,
@@ -331,8 +331,8 @@ export function createPipelineService(
           if (options.remainingStatements() < 23)
             return { kind: "retry", code: "transient" };
           const classificationIdentity = {
-            documentId: firstDocument.id,
-            contentHash: firstDocument.contentHash,
+            documentId: metadata.id,
+            contentHash: metadata.contentHash,
             extractionVersion: EMAIL_CLASSIFICATION_VERSION,
           };
           const classificationKey = await aiRunIdentityKey({
@@ -372,10 +372,7 @@ export function createPipelineService(
                   `classification-${classification.reason}`,
                 );
           }
-          if (
-            !classification.isReceipt &&
-            parsed.documents.every((candidate) => candidate.status === "ready")
-          ) {
+          if (!classification.isReceipt && work.documents.length === 1) {
             if (!options.repository.skipSource)
               return await finishFailure(
                 "review",

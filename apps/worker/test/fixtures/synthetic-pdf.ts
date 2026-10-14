@@ -33,7 +33,11 @@ export function generateTextPdf(
   return encodeObjects(objects);
 }
 
-function encodeObjects(objects: readonly (string | Uint8Array)[]): Uint8Array {
+function encodeObjects(
+  objects: readonly (string | Uint8Array)[],
+  trailerExtras = "",
+  rootId = 1,
+): Uint8Array {
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [encoder.encode("%PDF-1.4\n")];
   let length = chunks[0]?.length ?? 0;
@@ -53,7 +57,7 @@ function encodeObjects(objects: readonly (string | Uint8Array)[]): Uint8Array {
         .map((offset) => `${String(offset).padStart(10, "0")} 00000 n `)
         .join(
           "\n",
-        )}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${length}\n%%EOF\n`,
+        )}\ntrailer\n<< /Size ${objects.length + 1} /Root ${rootId} 0 R ${trailerExtras} >>\nstartxref\n${length}\n%%EOF\n`,
     ),
   );
   const result = new Uint8Array(
@@ -107,4 +111,114 @@ export async function generateCompressedTextPdf(
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     object,
   ]);
+}
+
+/** Passive URI annotations are common on invoice PDFs; text extraction never follows them. */
+export function generateLinkedInvoicePdf(
+  action = "/URI (https://synthetic.invalid/invoice)",
+): Uint8Array {
+  const content = "BT /F1 12 Tf 72 720 Td (Invoice total EUR 123.45) Tj ET";
+  return encodeObjects([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R /Annots [6 0 R] >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    `<< /Type /Annot /Subtype /Link /Rect [70 700 300 730] /A << /S /URI ${action} >> >>`,
+  ]);
+}
+
+/** Synthetic hybrid/incremental trailer declaration; no network or customer data. */
+export function generateSecondaryXrefPdf(
+  feature: "/Prev" | "/XRefStm" | "/P#72ev" | "/XRef#53tm",
+): Uint8Array {
+  return encodeObjects(
+    [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>",
+    ],
+    `${feature} 0`,
+  );
+}
+
+export function generateObjectHeavyPdf(): Uint8Array {
+  return encodeObjects([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>",
+    ...Array.from({ length: 4094 }, () => "<<>>"),
+  ]);
+}
+
+export function generateLengthDecoyPdf(indirect: boolean): Uint8Array {
+  // Both offsets contain endstream: raw-regex length selection could validate the
+  // decoy prefix rather than the actual stream. Neither fixture is customer data.
+  const payload = `${"X".repeat(20)}endstream\n${"Y".repeat(70)}`;
+  const objects: (string | Uint8Array)[] = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>",
+    `<< ${indirect ? "/Length 6 0 R" : `/Decoy (/Length 20) /Length ${payload.length}`} >>\nstream\n${payload}\nendstream`,
+  ];
+  if (indirect) {
+    const text = new TextEncoder().encode("\n6 0 obj\n20\nendobj\n");
+    // One uncompressed DEFLATE block inside a valid zlib stream, retaining literal decoy bytes.
+    let a = 1;
+    let b = 0;
+    for (const byte of text) {
+      a = (a + byte) % 65521;
+      b = (b + a) % 65521;
+    }
+    const deflated = Uint8Array.from([
+      0x78,
+      0x01,
+      0x01,
+      text.length,
+      0,
+      255 - text.length,
+      255,
+      ...text,
+      b >>> 8,
+      b & 255,
+      a >>> 8,
+      a & 255,
+    ]);
+    const prefix = new TextEncoder().encode(
+      `<< /Filter /FlateDecode /Length ${deflated.length} >>\nstream\n`,
+    );
+    const suffix = new TextEncoder().encode("\nendstream");
+    const carrier = new Uint8Array(
+      prefix.length + deflated.length + suffix.length,
+    );
+    carrier.set(prefix);
+    carrier.set(deflated, prefix.length);
+    carrier.set(suffix, prefix.length + deflated.length);
+    objects.push(
+      carrier,
+      `% Actual xref-authorized scalar has unsupported comment syntax\n${payload.length}`,
+    );
+  }
+  return encodeObjects(objects);
+}
+
+export function generatePdfGateRegression(
+  kind: "nested-length" | "invalid-root" | "invalid-pages" | "unclaimed-stream",
+): Uint8Array {
+  const payload = `${"X".repeat(20)}endstream\n${"Y".repeat(70)}`;
+  return encodeObjects(
+    [
+      `<< /Type /Catalog /Pages ${kind === "invalid-pages" ? 9999 : 2} 0 R >>`,
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>",
+      kind === "nested-length"
+        ? `<< /Length ${payload.length} /Extra << /Length 20 >> >>\nstream\n${payload}\nendstream`
+        : `<< /Length ${payload.length} >>\nstream\n${payload}\nendstream`,
+      ...(kind === "unclaimed-stream"
+        ? ["<< /Length 3 /Filter /FlateDecode >>\nstream\rABC\rendstream"]
+        : []),
+    ],
+    "",
+    kind === "invalid-root" ? 9999 : 1,
+  );
 }

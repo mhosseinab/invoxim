@@ -164,6 +164,7 @@ async function directModelInput(
   input: DocumentInput,
   limits: Readonly<DocumentLimits>,
   context: DocumentContext,
+  pdf?: PdfTextExtractor,
 ): Promise<MessageDocumentResult> {
   const bodies: MimePart[] = [];
   const attachments: MimePart[] = [];
@@ -197,6 +198,7 @@ async function directModelInput(
   ];
   const documents: DocumentResult[] = [];
   let characters = 0;
+  let pageCount = 0;
   for (const group of groups) {
     if (context.signal?.aborted)
       return {
@@ -271,6 +273,96 @@ async function directModelInput(
         .join(""),
       parserVersion: "documents-direct-v1",
     };
+    if (mimeType === "application/pdf") {
+      const exhausted =
+        pageCount >= limits.pages
+          ? "page_limit"
+          : characters >= limits.textCharacters
+            ? "text_limit"
+            : null;
+      if (exhausted)
+        return {
+          status: "incomplete",
+          code: exhausted,
+          documents: [],
+          ignoredPartIds: [],
+        };
+      let converted: PdfTextResult;
+      try {
+        converted = pdf
+          ? await pdf.extract(
+              first.bytes,
+              {
+                ...limits,
+                pages: limits.pages - pageCount,
+                textCharacters: limits.textCharacters - characters,
+              },
+              context.signal,
+            )
+          : {
+              status: "needs_review",
+              code: "converter_unavailable",
+              parserVersion: "disabled",
+            };
+      } catch {
+        converted = {
+          status: "needs_review",
+          code: "converter_unavailable",
+          parserVersion: "unavailable",
+        };
+      }
+      if (converted.status === "incomplete")
+        return {
+          status: "incomplete",
+          code: converted.code,
+          documents: [],
+          ignoredPartIds: [],
+        };
+      const parserVersion = `documents-direct-pdf-v2/${converted.parserVersion}`;
+      if (converted.status !== "ready") {
+        documents.push({ ...base, ...converted, parserVersion });
+        continue;
+      }
+      if (
+        !Array.isArray(converted.pages) ||
+        !converted.pages.length ||
+        converted.pages.some((page) => typeof page !== "string" || !page.trim())
+      ) {
+        documents.push({
+          ...base,
+          status: "needs_review",
+          code: "textless_pdf",
+          parserVersion,
+        });
+        continue;
+      }
+      pageCount += converted.pages.length;
+      characters += converted.pages.reduce((sum, page) => sum + page.length, 0);
+      const code =
+        pageCount > limits.pages
+          ? "page_limit"
+          : characters > limits.textCharacters
+            ? "text_limit"
+            : null;
+      if (code)
+        return {
+          status: "incomplete",
+          code,
+          documents: [],
+          ignoredPartIds: [],
+        };
+      documents.push({
+        ...base,
+        status: "ready",
+        parserVersion,
+        textParts: converted.pages.map((text, index) => ({
+          page: index + 1,
+          text,
+        })),
+        pageCount: converted.pages.length,
+      });
+      continue;
+    }
     if (
       group.some(
         (part) =>
@@ -369,7 +461,7 @@ export function createDocumentTextExtractor(
           invalid,
         );
       if (context.inputMode === "direct-model")
-        return directModelInput(input, limits, context);
+        return directModelInput(input, limits, context, options.pdf);
       const ignoredPartIds: string[] = [];
       const documents: DocumentResult[] = [];
       let characters = 0;

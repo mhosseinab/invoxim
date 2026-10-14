@@ -253,7 +253,7 @@ it("AI-CLEF-PRECISION-01 decision diagnostics contain scores and sizes without e
     );
     expect(info).toHaveBeenCalledTimes(1);
     expect(info).toHaveBeenCalledWith("ai_classification_decision", {
-      policyVersion: "invoice-document-classification-v2",
+      policyVersion: "document-invoice-classification-v3",
       partCount: 1,
       inputBytes: expect.any(Number),
       receiptProbability: 0.45,

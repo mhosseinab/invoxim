@@ -7,13 +7,14 @@ import {
   aiNoticeSchema,
   selectedAiConfigurationDigest,
 } from "../ai/configuration";
+import { LOCAL_PDF_PARSER_VERSION } from "../documents/pdf-preflight";
 
 /** Code-owned local parser policy: transient in-Worker processing, no remote converter. */
 export const LOCAL_PARSER_POLICY = Object.freeze({
   providerId: "local-unpdf",
-  version: "unpdf-1.8.1/uncompressed-v1",
-  policyVersion: "local-parser-transient-v1",
-  noticeRefs: ["local-parser-transient-v1"],
+  version: LOCAL_PDF_PARSER_VERSION,
+  policyVersion: "local-parser-transient-v2",
+  noticeRefs: ["local-parser-transient-v2"],
   limits: DOCUMENT_LIMITS,
 });
 const id = z.string().min(1).max(120);
@@ -77,10 +78,10 @@ export async function hashOnboardingValue(value: unknown): Promise<string> {
 }
 
 export const RECEIPT_CLASSIFIER_NOTICE = Object.freeze({
-  id: "cloudflare-clef-v2",
+  id: "cloudflare-clef-v3",
   displayName: "Cloudflare Workers AI — Clef email classification",
   dataUseSummary:
-    "Bounded email text is sent to Cloudflare Clef to detect invoices, payment receipts, credit notes or completed refund confirmations and suggest a category. Order-only and delivery/status notifications do not qualify on their own. Financial extraction uses your separately selected provider. Cloudflare states it does not train on Workers AI customer content without explicit consent.",
+    "Each readable document, including locally converted text PDFs, is sent to Cloudflare Clef to detect invoices, receipts, credit notes or completed refund confirmations and suggest a category. An attachment does not qualify its covering email. Financial extraction uses your selected provider. Cloudflare states it does not train on this content without explicit consent.",
   retentionSummary:
     "This app does not store email text or model transcripts. Cloudflare processes classification content under its Workers AI terms; this app does not enable remote content storage or assert a fixed retention period.",
   privacyUrl:

@@ -690,7 +690,7 @@ async function continueLease(): Promise<JobLease> {
     .run();
   return { ...lease, jobId: row.id, leaseId };
 }
-it("CLEF-01 two documents in one email reuse one classifier result across durable sibling jobs", async () => {
+it("CLEF-01 two documents in one email receive independent classifier results across durable sibling jobs", async () => {
   const content = twoParts();
   await sourceDocuments(content);
   const { pipeline, run, extract } = service(0.9, policy, content);
@@ -699,7 +699,7 @@ it("CLEF-01 two documents in one email reuse one classifier result across durabl
     expect(await pipeline.run(current, control)).toEqual({ kind: "completed" });
     if (index < 5) current = await continueLease();
   }
-  expect(run).toHaveBeenCalledTimes(1);
+  expect(run).toHaveBeenCalledTimes(2);
   expect(extract).toHaveBeenCalledTimes(2);
 });
 it("CLEF-01 a changed sibling document cannot reuse a previous classification or silently disappear", async () => {
