@@ -1,6 +1,6 @@
 # Email fetch and purchase detection flow
 
-This describes the current Gmail Worker composition. Outlook adapters exist separately; they are not enabled by this flow. Originals and full message/model contents stay transient unless the user explicitly enables their own Drive archive.
+This describes the local Gmail and Outlook Worker composition. Outlook processing requires explicit OAuth and discovery configuration and remains disabled by default pending live release checks. Originals and full message/model contents stay transient unless the user explicitly enables their own Drive archive.
 
 ## Discovery and processing
 
@@ -8,8 +8,11 @@ This describes the current Gmail Worker composition. Outlook adapters exist sepa
 flowchart TD
     Start[User reviews processing and starts import] --> Consent[Store consent and frozen import range]
     Consent --> Discovery[Durable discovery job]
-    Discovery --> Gmail[Gmail IDs and bounded metadata pages]
+    Discovery --> Provider{Owned mailbox provider}
+    Provider --> Gmail[Gmail IDs and bounded metadata pages]
+    Provider --> Outlook[Graph recursive folder inventory and per-folder delta]
     Gmail --> Source[D1 source references and extraction jobs]
+    Outlook --> Source
     Source --> Fetch[Fetch source bytes transiently]
     Fetch --> Convert[Bounded MIME handling and local PDF text conversion]
     Convert --> Clef[Mandatory Clef decision and category per readable document]
@@ -23,7 +26,7 @@ flowchart TD
 
 Signing in and connecting a mailbox do not authorize scanning. Start binds the mailbox, frozen interval, processing destinations, current settings and background authorization. Recent history runs first within the full selected interval; the older slice continues afterward.
 
-Discovery jobs page through Gmail IDs and metadata, save resumable cursors, and enqueue deduplicated source work. The queue consumer loads trusted tenant/connection/consent state and claims a fenced lease. Cron dispatch recovers eligible durable work; queue delivery itself does not prove completion.
+Discovery jobs page through Gmail IDs and metadata or Outlook recursive folder inventories and per-folder deltas, save resumable cursors, and enqueue deduplicated source work. Outlook uses immutable message IDs and preserves opaque continuation URLs. Each later hourly cycle requeues existing live folders without clearing their delta cursors and discovers newly added nested folders. Production Graph discovery currently uses one-item pages to fit the measured 40-statement invocation budget; this trades throughput for bounded work without narrowing the selected date range. The queue consumer loads trusted tenant/connection/consent state and claims a fenced lease. Cron dispatch recovers eligible durable work; queue delivery itself does not prove completion.
 
 Implementation: `apps/worker/src/index.ts`, `discovery-runtime.ts`, `job-runtime.ts`; `packages/adapters/src/discovery/` and `packages/core/src/jobs/`.
 

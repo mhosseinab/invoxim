@@ -70,3 +70,9 @@ Verified Start repair release: API `963f4705-029b-4014-8360-1f5c2eafe323`, Pages
 - Run a separately recorded live synthetic Clef quality/latency/cost smoke; deterministic mocks do not prove model accuracy.
 - Production currently pauses inference at 50 documents/day; use a reviewed Start after reset. Limits were not increased. One exhausted sync needs failure tracing before retry; its original error is unavailable.
 - Historical parser failures and review outcomes are not automatically replayed by this refactor. Correction actions are currently disabled in production.
+
+## Outlook local connector checkpoint — 2026-10-14
+
+The Worker now composes Outlook discovery, transient content fetch, mandatory Clef classification and selected financial extraction. Later hourly cycles preserve folder delta cursors, including newly added nested folders. On-demand review metadata and local disconnect are supported. This supersedes older notes describing Outlook as adapter-only; it does not establish deployed or live acceptance.
+
+Before enabling `OUTLOOK_ENABLED` and `OUTLOOK_DISCOVERY_ENABLED`, configure the Microsoft app registration, callback and Wrangler secrets described in `apps/worker/CONFIGURATION.md`. Record personal and work-account authorization, tenant/admin-policy refusal, token rotation/revocation, moved/deleted folders and expired-delta recovery smoke tests. Verify queue bindings and invocation limits. Keep existing migration history; no schema change is introduced by this connector completion. No deployment, remote migration or paid model call was performed for this checkpoint.

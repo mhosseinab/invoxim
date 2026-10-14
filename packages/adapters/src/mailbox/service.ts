@@ -82,6 +82,7 @@ export function createMailboxService(
     },
   });
   const vault = createCredentialVault(db, configuration.cipher);
+  const management = createMailboxManagement(db, configuration.provider);
   async function row(context: TenantContext, id: string) {
     return db
       .prepare(
@@ -90,23 +91,9 @@ export function createMailboxService(
       .bind(context.userId, id, configuration.provider, context.userId)
       .first<ConnectionRow>();
   }
-  async function live(session: MailboxSession) {
-    const found = await db
-      .prepare(
-        "SELECT id FROM session WHERE id=? AND userId=? AND expiresAt>? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
-      )
-      .bind(
-        session.sessionId,
-        session.tenant.userId,
-        Date.now(),
-        session.tenant.userId,
-      )
-      .first();
-    if (!found) throw new MailboxError("UNAUTHENTICATED");
-  }
   async function start(session: MailboxSession, connectionId?: string) {
     requireRecentMailboxSession(session, Date.now());
-    await live(session);
+    await liveMailboxSession(db, session);
     const existing = connectionId
       ? await row(session.tenant, connectionId)
       : null;
@@ -139,24 +126,12 @@ export function createMailboxService(
       }),
     };
   }
-  async function list(context: TenantContext) {
-    const result = await db
-      .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ORDER BY CASE state WHEN 'disconnected' THEN 1 ELSE 0 END,id LIMIT 11`,
-      )
-      .bind(context.userId, context.userId)
-      .all<ConnectionRow>();
-    return {
-      connections: result.results.slice(0, 10).map(project),
-      hasMore: result.results.length > 10,
-    };
-  }
   async function complete(
     session: MailboxSession,
     input: { state: string; code?: string; denied?: boolean },
   ) {
     requireRecentMailboxSession(session, Date.now());
-    await live(session);
+    await liveMailboxSession(db, session);
     if (!/^[A-Za-z0-9_-]{43}$/.test(input.state))
       throw new MailboxError("INVALID_STATE");
     const intent = await db
@@ -239,7 +214,7 @@ export function createMailboxService(
       { entityId: id, purpose: "mailbox-credentials" },
       credentials,
     );
-    await live(session);
+    await liveMailboxSession(db, session);
     const scopes = JSON.stringify(configuration.scopes);
     let updated: ConnectionRow | null;
     if (existing) {
@@ -307,41 +282,6 @@ export function createMailboxService(
           : "LIMIT_REACHED",
       );
     return project(updated);
-  }
-  async function disconnect(
-    session: MailboxSession,
-    id: string,
-    expected: { generation: number; credentialVersion: number },
-  ) {
-    requireRecentMailboxSession(session, Date.now());
-    await live(session);
-    const existing = await row(session.tenant, id);
-    if (!existing) throw new MailboxError("NOT_FOUND");
-    if (
-      existing.state === "disconnected" &&
-      existing.generation === expected.generation + 1 &&
-      existing.credential_version === expected.credentialVersion + 1
-    )
-      return;
-    const changed = await db
-      .prepare(
-        "UPDATE connections SET state='disconnected',scheduling_state='paused',next_sync_at=NULL,credential_ciphertext=NULL,credential_key_version=NULL,generation=generation+1,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND state!='disconnected' AND generation=? AND credential_version=? AND generation<? AND credential_version<? AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING id",
-      )
-      .bind(
-        session.tenant.userId,
-        id,
-        configuration.provider,
-        expected.generation,
-        expected.credentialVersion,
-        MAX,
-        MAX,
-        session.sessionId,
-        session.tenant.userId,
-        Date.now(),
-        session.tenant.userId,
-      )
-      .first();
-    if (!changed) throw new MailboxError("CONFLICT");
   }
   async function refresh(
     context: TenantContext,
@@ -496,22 +436,110 @@ export function createMailboxService(
         .run();
     }
   }
-  async function safe<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (cause) {
-      if (cause instanceof MailboxError) throw cause;
-      throw new MailboxError("UNAVAILABLE");
-    }
-  }
   return {
     start: (...args: Parameters<typeof start>) => safe(() => start(...args)),
     complete: (...args: Parameters<typeof complete>) =>
       safe(() => complete(...args)),
-    list: (...args: Parameters<typeof list>) => safe(() => list(...args)),
-    disconnect: (...args: Parameters<typeof disconnect>) =>
-      safe(() => disconnect(...args)),
+    list: management.list,
+    disconnect: management.disconnect,
     refresh: (...args: Parameters<typeof refresh>) =>
       safe(() => refresh(...args)),
   };
+}
+
+async function liveMailboxSession(db: D1Database, session: MailboxSession) {
+  const found = await db
+    .prepare(
+      "SELECT id FROM session WHERE id=? AND userId=? AND expiresAt>? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+    )
+    .bind(
+      session.sessionId,
+      session.tenant.userId,
+      Date.now(),
+      session.tenant.userId,
+    )
+    .first();
+  if (!found) throw new MailboxError("UNAUTHENTICATED");
+}
+
+/** Local owner management remains available when provider OAuth is disabled. */
+export function createMailboxManagement(
+  db: D1Database,
+  provider?: "gmail" | "outlook",
+) {
+  async function row(context: TenantContext, id: string) {
+    return db
+      .prepare(
+        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND (? IS NULL OR provider=?) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')`,
+      )
+      .bind(
+        context.userId,
+        id,
+        provider ?? null,
+        provider ?? null,
+        context.userId,
+      )
+      .first<ConnectionRow>();
+  }
+  async function list(context: TenantContext) {
+    const result = await db
+      .prepare(
+        `SELECT ${fields} FROM connections WHERE user_id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ORDER BY CASE state WHEN 'disconnected' THEN 1 ELSE 0 END,id LIMIT 11`,
+      )
+      .bind(context.userId, context.userId)
+      .all<ConnectionRow>();
+    return {
+      connections: result.results.slice(0, 10).map(project),
+      hasMore: result.results.length > 10,
+    };
+  }
+  async function disconnect(
+    session: MailboxSession,
+    id: string,
+    expected: { generation: number; credentialVersion: number },
+  ) {
+    requireRecentMailboxSession(session, Date.now());
+    await liveMailboxSession(db, session);
+    const existing = await row(session.tenant, id);
+    if (!existing) throw new MailboxError("NOT_FOUND");
+    if (
+      existing.state === "disconnected" &&
+      existing.generation === expected.generation + 1 &&
+      existing.credential_version === expected.credentialVersion + 1
+    )
+      return;
+    const changed = await db
+      .prepare(
+        "UPDATE connections SET state='disconnected',scheduling_state='paused',next_sync_at=NULL,credential_ciphertext=NULL,credential_key_version=NULL,generation=generation+1,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND state!='disconnected' AND generation=? AND credential_version=? AND generation<? AND credential_version<? AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING id",
+      )
+      .bind(
+        session.tenant.userId,
+        id,
+        existing.provider,
+        expected.generation,
+        expected.credentialVersion,
+        MAX,
+        MAX,
+        session.sessionId,
+        session.tenant.userId,
+        Date.now(),
+        session.tenant.userId,
+      )
+      .first();
+    if (!changed) throw new MailboxError("CONFLICT");
+  }
+  return {
+    list: (...args: Parameters<typeof list>) => safe(() => list(...args)),
+    disconnect: (...args: Parameters<typeof disconnect>) =>
+      safe(() => disconnect(...args)),
+  };
+}
+
+async function safe<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (cause) {
+    if (cause instanceof MailboxError) throw cause;
+    throw new MailboxError("UNAVAILABLE");
+  }
 }

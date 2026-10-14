@@ -135,7 +135,7 @@ flowchart LR
 
 ## Data flow
 
-This describes the approved flow and current module boundaries, not proof of deployed completion. Gmail processing is composed in the Worker; complete Outlook processing, Drive queue/backfill integration and full-period FX reporting remain in progress.
+This describes the approved flow and current module boundaries, not proof of deployed completion. Gmail and Outlook processing are composed in the Worker. Outlook remains disabled by default until Microsoft registration and live personal/work-account smoke checks pass. Drive queue/backfill integration and full-period FX reporting retain their separate release gates.
 
 ```mermaid
 flowchart TD
@@ -206,4 +206,4 @@ Classification is operator funded even when financial extraction uses BYOK. It c
 
 Rollout checklist: run `pnpm verify`, deploy the Worker and web bundle together, and obtain a new processing review/Start approval that includes Cloudflare classification. Existing consent digests do not authorize the additional processor. After renewed Review/Start, Cron recovery rebinds unpaid jobs; compatible completed classification and financial caches are reused without another model charge. Paid stages with a genuinely changed processing digest, unfinished attempts or invalid cache remain paused for review. Completed or reviewed messages are not automatically reclassified or billed again. No database migration is required. Clef classification is deployed. Runtime counters confirm calls and source decisions, but deterministic tests and aggregate live counters do not establish real-model classification accuracy.
 
-Review cards identify the connected inbox and source received time. **Show source email** explicitly requests only Subject, From and Message-ID from Gmail; these headers are returned transiently and never stored. The original-email action searches that mailbox by RFC822 Message-ID. Source inspection remains tenant-scoped and checks connection generation and processing consent before and after the provider read. Missing details are shown separately from failed/unsupported source processing.
+Review cards identify the connected inbox and source received time. **Show source email** requests bounded subject, sender and attachment metadata on demand from the owned Gmail or Outlook connection; metadata is transient and never stored. Gmail supports an original-email search by RFC822 Message-ID. Outlook original-email links are currently unavailable. Source inspection checks tenant ownership, connection generation, scopes, credentials and processing consent before provider reads and again before returning data. Missing details are shown separately from failed/unsupported source processing.

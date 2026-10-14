@@ -19,6 +19,7 @@ import {
 } from "@invoxim/contracts";
 import { MailboxError } from "@invoxim/core";
 import { Hono } from "hono";
+import { createMailboxManagement } from "../../../packages/adapters/src/mailbox/service";
 import { createInvocationDatabase } from "./invocation-database";
 
 type MailboxBindings = GmailBindings & OutlookBindings;
@@ -64,6 +65,18 @@ export function createMailboxRoutes() {
       login,
     ).current(request.headers);
     if (!current) throw new MailboxError("UNAUTHENTICATED");
+    const session = {
+      tenant: current.tenant,
+      sessionId: current.session.id,
+      createdAtMs: current.session.createdAt.getTime(),
+    };
+    if (!provider)
+      return {
+        kind: "management" as const,
+        service: createMailboxManagement(db),
+        session,
+        origin: login.origin,
+      };
     const gmail = provider !== "outlook" ? gmailConfiguration(bindings) : null;
     const outlook =
       provider !== "gmail" ? outlookConfiguration(bindings) : null;
@@ -76,12 +89,9 @@ export function createMailboxRoutes() {
         : null;
     if (!authorization) throw new MailboxError("UNAVAILABLE");
     return {
+      kind: "oauth" as const,
       service: createMailboxService(db, configuration, authorization),
-      session: {
-        tenant: current.tenant,
-        sessionId: current.session.id,
-        createdAtMs: current.session.createdAt.getTime(),
-      },
+      session,
       origin: login.origin,
     };
   }
@@ -150,6 +160,7 @@ export function createMailboxRoutes() {
           await readAuthJson(c.req.raw),
         );
         if (!input.success) return error(400, "invalid_request");
+        if (ready.kind !== "oauth") throw new MailboxError("UNAVAILABLE");
         return c.json(
           mailboxStartResponseSchema.parse(
             await ready.service.start(ready.session, input.data.connectionId),
@@ -175,6 +186,7 @@ export function createMailboxRoutes() {
             keys.filter((key) => key === "code").length !== 1)
         )
           throw new MailboxError("INVALID_STATE");
+        if (ready.kind !== "oauth") throw new MailboxError("UNAVAILABLE");
         const connection = await ready.service.complete(ready.session, {
           state: url.searchParams.get("state") ?? "",
           ...(url.searchParams.has("code")
