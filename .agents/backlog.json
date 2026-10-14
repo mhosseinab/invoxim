@@ -1502,7 +1502,7 @@
       "id": "UX-MEANINGFUL-LISTS-01",
       "title": "Identify emails and decisions in meaningful compact private lists",
       "milestone": "M0",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "UX-REVIEW-DISCARD-01"
       ],
@@ -1516,13 +1516,16 @@
         "LIST-MOBILE",
         "LIST-DIALOG"
       ],
-      "completionEvidence": []
+      "completionEvidence": [
+        "evidence/implementation/meaningful-lists-completion-20261014.md",
+        "evidence/implementation/meaningful-lists-review-20261014.md"
+      ]
     },
     {
       "id": "AI-CLEF-PRECISION-01",
       "title": "Investigate Clef false positives and prioritize invoice evidence",
       "milestone": "M0",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [],
       "ownerRole": "ai",
       "reviewerRole": "principal-reviewer",
@@ -1532,7 +1535,11 @@
         "CLEF-PAYLOAD",
         "CLEF-RELATED-MAIL"
       ],
-      "completionEvidence": []
+      "completionEvidence": [
+        "evidence/implementation/meaningful-lists-completion-20261014.md",
+        "evidence/implementation/meaningful-lists-review-20261014.md",
+        "evidence/implementation/clef-precision-audit-20261014.md"
+      ]
     }
   ]
 }

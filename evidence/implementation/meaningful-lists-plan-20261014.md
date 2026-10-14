@@ -11,3 +11,11 @@ Behavior deliberately changes the previous selected-source-only metadata load: o
 Clef investigation acceptance: trace request fields and validated response; demonstrate complete synthetic examples, not production private contents. Determine current decisions/threshold support and contrast invoice/receipt with delivery/status/marketing and multiple emails about one purchase. Do not blindly tune an uncalibrated threshold or weaken evidence checks. Report observed defects versus inferred live model quality; confirm minimal scope before changes.
 
 Verification: focused RED/GREEN behavior tests, bounded loading/identity/failure/mobile/keyboard regression tests, independent review, required repository verify on clean tracked-source archive, synthetic desktop/mobile screenshots. Deployment and live model claims must be separately evidenced; no automatic reset of sources or allowance.
+
+## Investigation extension
+
+Read-only production aggregates exposed two separate contributors to review noise: 32 positive versus 18 negative normalized Clef source decisions, and 30 converter-unavailable operational items plus 30 extraction-review financial items among 65 open reviews. Historical Clef scores/raw responses are not stored and cannot be reconstructed. These counts are not a measured precision/recall score.
+
+The existing classifier explicitly accepted order-only/cancellation/pending-refund content and interpreted every noul score above 0.1 as a positive. Approved minimal policy: actual invoice/receipt/credit/completed-refund criteria, explicit yes/no definitions, negative at or below0.1, positive at or above0.9 and uncertain between. The0.9 setting is an uncalibrated conservative routing policy, not financial acceptance or an accuracy claim. Versioned cache/processor notice changes require refreshed processing review; no automatic reprocessing of historical facts.
+
+A separate pipeline defect sends a Clef-negative readable body to financial extraction whenever a sibling binary attachment is unreadable. Approved bounded fix adds a guarded per-document non-purchase continuation, preserving unreadable sibling warnings/source incompleteness, old financial facts and whole-source skip safeguards. No new PDF conversion subsystem or attachment-content assumptions.
