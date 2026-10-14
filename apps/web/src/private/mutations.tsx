@@ -43,7 +43,12 @@ type Attempt = {
   workspaceToken: string;
 };
 
-type MutationState = "idle" | "conflict" | "unavailable" | "retryable" | "rejected";
+type MutationState =
+  | "idle"
+  | "conflict"
+  | "unavailable"
+  | "retryable"
+  | "rejected";
 
 export function useRetryableMutation<T>(options: MutationOptions<T>) {
   const [message, setMessage] = useState("");
@@ -111,11 +116,7 @@ export function useRetryableMutation<T>(options: MutationOptions<T>) {
     state === "unavailable" ||
     state === "retryable";
 
-  function submit(
-    path: string,
-    method: Attempt["method"],
-    body: unknown,
-  ) {
+  function submit(path: string, method: Attempt["method"], body: unknown) {
     if (locked || !options.getWorkspaceToken()) return;
     void perform({
       path,
@@ -145,7 +146,9 @@ export function useRetryableMutation<T>(options: MutationOptions<T>) {
           {options.actions.retry}
         </button>
       )}
-      {(state === "retryable" || state === "conflict" || state === "unavailable") && (
+      {(state === "retryable" ||
+        state === "conflict" ||
+        state === "unavailable") && (
         <button type="button" disabled={busy} onClick={options.onSuccess}>
           {options.actions.reload}
         </button>

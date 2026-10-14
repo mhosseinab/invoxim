@@ -74,10 +74,7 @@ export async function requestJson<T>(
         const error = (value as { error: unknown }).error;
         if (error && typeof error === "object") {
           const record = error as { code?: unknown; retryable?: unknown };
-          if (
-            typeof record.code === "string" &&
-            safeCodes.has(record.code)
-          )
+          if (typeof record.code === "string" && safeCodes.has(record.code))
             code = record.code;
           if (typeof record.retryable === "boolean")
             retryable = record.retryable;
