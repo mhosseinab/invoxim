@@ -35,7 +35,10 @@
         "evidence/implementation/t00-blueprint-validation.txt",
         "evidence/implementation/t00-helper-tests.txt"
       ],
-      "blockedBy": []
+      "blockedBy": [],
+      "localProgressEvidence": [
+        "evidence/implementation/working-tree-cleanup-20261014.md"
+      ]
     },
     {
       "id": "T01",
