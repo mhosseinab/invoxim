@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { extractionSchema } from "./designs";
 import {
+  currencyCode,
   dateSchema as date,
   hasControlCharacters,
   MINOR_BOUND,
@@ -61,7 +62,7 @@ export const purchaseViewSchema = z.strictObject({
   invoiceReference: z.string().max(160).nullable(),
   orderReference: z.string().max(160).nullable(),
   category,
-  currency: currency.nullable(),
+  currency: currencyCode.nullable(),
   documentTotalMinor: documentMinor.nullable(),
   paymentState: z.enum(["unknown", "unpaid", "partially_paid", "paid"]),
   version: z.number().int().positive(),
@@ -106,7 +107,7 @@ export const purchaseLedgerEntrySchema = z.strictObject({
   version: z.number().int().positive(),
   kind: z.enum(["payment", "refund"]),
   minor: documentMinor,
-  currency,
+  currency: currencyCode,
   date,
   dateBasis: z.enum([
     "explicit-event-date",
