@@ -358,28 +358,40 @@ export const reviewSourceSchema = z.strictObject({
 });
 export type ReviewSource = z.infer<typeof reviewSourceSchema>;
 
+/**
+ * Review reasons accepted on purchase review contracts.
+ *
+ * Mirrors core `CORRECTION_REVIEW_REASONS` (core `LEDGER_REVIEW_REASONS` plus
+ * `document-review`). `document-review` is kept per OD-2: an open operational
+ * document-review does not block financial restoration, but it stays a visible
+ * review reason. contracts cannot import `@invoxim/core` (package boundaries),
+ * so the vocabulary is pinned to core's union by tests.
+ */
+export const PURCHASE_REVIEW_REASONS = [
+  "extraction-review",
+  "incomplete-financial-facts",
+  "unknown-payment",
+  "payment-allocation-review",
+  "ambiguous-event",
+  "event-conflict",
+  "invoice-conflict",
+  "purchase-conflict",
+  "possible-duplicate",
+  "unmatched-refund",
+  "refund-exceeds-payment",
+  "refund-currency-mismatch",
+  "credit-note-completion",
+  "mixed-tender",
+  "document-review",
+] as const satisfies readonly string[];
+export type PurchaseReviewReason = (typeof PURCHASE_REVIEW_REASONS)[number];
+
 /** Open questions only: no incomplete field guesses or source contents. */
 export const purchaseReviewSchema = z.strictObject({
   id,
   documentId: id.nullable(),
   purchaseId: id.nullable(),
-  reason: z.enum([
-    "extraction-review",
-    "incomplete-financial-facts",
-    "unknown-payment",
-    "payment-allocation-review",
-    "ambiguous-event",
-    "event-conflict",
-    "invoice-conflict",
-    "purchase-conflict",
-    "possible-duplicate",
-    "unmatched-refund",
-    "refund-exceeds-payment",
-    "refund-currency-mismatch",
-    "credit-note-completion",
-    "mixed-tender",
-    "document-review",
-  ]),
+  reason: z.enum(PURCHASE_REVIEW_REASONS),
   sourceMessageId: id.optional(),
   sourceContext: reviewSourceContextSchema.optional(),
   missingFields: z
