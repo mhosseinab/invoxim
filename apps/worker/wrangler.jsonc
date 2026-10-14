@@ -12,7 +12,6 @@
     "GMAIL_CLIENT_ID": "563909797128-s3loaq011nlfsjl1d250kcl90h1th186.apps.googleusercontent.com",
     "CORRECTIONS_ENABLED": "true",
     "EXTRACTION_ENABLED": "true",
-    "AUTH_ALLOWED_EMAILS": "[\"mh.abolghasemi@gmail.com\"]",
     "GMAIL_ENABLED": "true",
     "MAILBOX_LIMIT": "3",
     "OUTLOOK_ENABLED": "false",
