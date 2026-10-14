@@ -323,6 +323,21 @@ export const reviewSourceSchema = z.strictObject({
   receivedAt: z.number().int().nonnegative().max(8_640_000_000_000_000),
   subject: z.string().max(998).nullable(),
   sender: z.string().max(998).nullable(),
+  attachments: z
+    .array(
+      z.strictObject({
+        filename: z.string().max(255),
+        mimeType: z.string().max(100),
+        size: z
+          .number()
+          .int()
+          .nonnegative()
+          .max(Number.MAX_SAFE_INTEGER)
+          .nullable(),
+      }),
+    )
+    .max(64)
+    .optional(),
   originalUrl: z
     .string()
     .max(4096)
@@ -366,6 +381,7 @@ export const purchaseReviewSchema = z.strictObject({
     "mixed-tender",
     "document-review",
   ]),
+  sourceMessageId: id.optional(),
   sourceContext: reviewSourceContextSchema.optional(),
   missingFields: z
     .array(z.enum(["merchant", "currency", "total", "documentDate"]))

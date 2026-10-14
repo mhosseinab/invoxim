@@ -1,4 +1,5 @@
 import type { JobLease } from "@invoxim/core";
+import { sourceNotDiscardedSql } from "../corrections/source-decision";
 export class PipelinePersistenceError extends Error {
   constructor(
     readonly code:
@@ -29,7 +30,7 @@ export function liveWhere(lease: JobLease, now: number): Predicate {
   )
     throw new PipelinePersistenceError("INVALID_PIPELINE");
   return {
-    sql: `(j.user_id=? AND j.id=? AND j.status='leased' AND j.lease_id=?) AND (j.fence=? AND j.lease_expires_at>? AND j.connection_id=? AND j.connection_generation=?) AND (j.consent_id=? AND j.type IN ('source-extract','reprocess') AND p.status='active') AND (c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND c.credential_ciphertext IS NOT NULL) AND (pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version) AND (a.status='active' AND a.mode IS NOT NULL AND a.provider_id IS NOT NULL AND a.model_id IS NOT NULL AND a.config_version IS NOT NULL AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL)) AND (sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1)`,
+    sql: `(j.user_id=? AND j.id=? AND j.status='leased' AND j.lease_id=?) AND (j.fence=? AND j.lease_expires_at>? AND j.connection_id=? AND j.connection_generation=?) AND (j.consent_id=? AND j.type IN ('source-extract','reprocess') AND p.status='active') AND (c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND c.credential_ciphertext IS NOT NULL) AND (pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version) AND (a.status='active' AND a.mode IS NOT NULL AND a.provider_id IS NOT NULL AND a.model_id IS NOT NULL AND a.config_version IS NOT NULL AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL)) AND (sm.connection_id=c.id AND sm.generation=c.generation AND sm.available=1) AND ${sourceNotDiscardedSql("sm")}`,
     values: [
       lease.context.userId,
       lease.jobId,

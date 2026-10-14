@@ -70,12 +70,10 @@ it("explicit source lookup fetches only headers and returns inert identity plus 
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input));
       expect(url.origin).toBe("https://gmail.googleapis.com");
-      expect(url.searchParams.get("format")).toBe("metadata");
-      expect(url.searchParams.getAll("metadataHeaders")).toEqual([
-        "Subject",
-        "From",
-        "Message-ID",
-      ]);
+      expect(url.searchParams.get("format")).toBe("full");
+      expect(url.searchParams.get("fields")).not.toContain("data");
+      expect(url.searchParams.get("fields")).not.toContain("attachmentId");
+      expect(url.searchParams.getAll("metadataHeaders")).toEqual([]);
       expect(init?.redirect).toBe("manual");
       expect(init?.signal).toBeTruthy();
       return metadata([
@@ -207,4 +205,153 @@ it("wrong message metadata cannot identify a review", async () => {
         Response.json({ id: "other-message", payload: { headers: [] } }),
     ),
   ).rejects.toThrow("source_unavailable");
+});
+
+it("explicit inspection returns bounded inert attachment metadata, never requests file data", async () => {
+  const result = await loadGmailReviewHeaders(
+    "api-id",
+    "synthetic",
+    "synthetic@example.invalid",
+    async (input) => {
+      const fields = new URL(String(input)).searchParams.get("fields");
+      expect(fields).not.toContain("data");
+      expect(fields).not.toContain("attachmentId");
+      return Response.json({
+        id: "api-id",
+        payload: {
+          headers: [],
+          parts: [
+            {
+              filename: "<script>invoice.pdf</script>",
+              mimeType: "application/pdf",
+              body: { size: 2048 },
+            },
+            {
+              mimeType: "multipart/mixed",
+              parts: [
+                {
+                  filename: "receipt.png",
+                  mimeType: "image/png",
+                  body: { size: 100 },
+                },
+              ],
+            },
+          ],
+        },
+      });
+    },
+  );
+  expect(result.attachments).toEqual([
+    {
+      filename: "<script>invoice.pdf</script>",
+      mimeType: "application/pdf",
+      size: 2048,
+    },
+    { filename: "receipt.png", mimeType: "image/png", size: 100 },
+  ]);
+});
+
+it.each(["empty", "tiny"] as const)(
+  "bounds %s metadata chunks and cancels the source stream",
+  async (kind) => {
+    let pulls = 0;
+    const cancel = vi.fn();
+    const bytes = new TextEncoder().encode(
+      JSON.stringify({ id: "api-id", payload: { headers: [] } }),
+    );
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        if (pulls <= (kind === "empty" ? 33 : 4097))
+          controller.enqueue(
+            kind === "empty" ? new Uint8Array() : new Uint8Array([32]),
+          );
+        else {
+          controller.enqueue(bytes);
+          controller.close();
+        }
+      },
+      cancel,
+    });
+    await expect(
+      loadGmailReviewHeaders(
+        "api-id",
+        "synthetic",
+        "synthetic@example.invalid",
+        async () => new Response(stream),
+      ),
+    ).rejects.toThrow("source_unavailable");
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(pulls).toBeLessThanOrEqual(kind === "empty" ? 34 : 4098);
+  },
+);
+
+it("rejects elapsed metadata reads even when stream microtasks starve the abort timer", async () => {
+  let now = 1000;
+  let pulls = 0;
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+  const cancel = vi.fn();
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        pulls++;
+        now += 11000;
+        controller.enqueue(
+          new TextEncoder().encode('{"id":"api-id","payload":{"headers":[]}}'),
+        );
+      },
+      cancel,
+    },
+    { highWaterMark: 0 },
+  );
+  try {
+    await expect(
+      loadGmailReviewHeaders(
+        "api-id",
+        "synthetic",
+        "synthetic@example.invalid",
+        async () => new Response(stream),
+      ),
+    ).rejects.toThrow("source_unavailable");
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(pulls).toBeLessThanOrEqual(2);
+  } finally {
+    clock.mockRestore();
+  }
+});
+
+it("normalizes provider stream errors without returning their content", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    pull() {
+      throw new Error("PRIVATE PROVIDER CONTENT");
+    },
+  });
+  await expect(
+    loadGmailReviewHeaders(
+      "api-id",
+      "synthetic",
+      "synthetic@example.invalid",
+      async () => new Response(stream),
+    ),
+  ).rejects.toThrow("source_unavailable");
+});
+
+it("accepts unrelated full-message headers beyond the old metadata-only count without exposing them", async () => {
+  const result = await loadGmailReviewHeaders(
+    "api-id",
+    "synthetic",
+    "synthetic@example.invalid",
+    async () =>
+      metadata([
+        ...Array.from({ length: 40 }, (_, index) => ({
+          name: `X-Synthetic-${index}`,
+          value: "PRIVATE UNUSED HEADER",
+        })),
+        { name: "Subject", value: "Synthetic receipt" },
+        { name: "From", value: "sender@example.invalid" },
+      ]),
+  );
+  expect(result.subject).toBe("Synthetic receipt");
+  expect(result.sender).toBe("sender@example.invalid");
+  expect(JSON.stringify(result)).not.toContain("PRIVATE UNUSED HEADER");
 });

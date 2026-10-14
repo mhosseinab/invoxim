@@ -21,18 +21,33 @@ interface Source {
   receivedAt: number;
   consentId: string;
 }
+const metadataPartSchema = z.object({
+  filename: z.string().max(255).optional(),
+  mimeType: z.string().max(100).optional(),
+  body: z
+    .object({
+      size: z
+        .number()
+        .int()
+        .nonnegative()
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional(),
+    })
+    .optional(),
+  parts: z.array(z.unknown()).max(64).optional(),
+});
 const headersSchema = z.object({
   id: z.string(),
-  payload: z.object({
+  payload: metadataPartSchema.extend({
     headers: z
       .array(
         z.object({ name: z.string().max(100), value: z.string().max(998) }),
       )
-      .max(20),
+      .max(100),
   }),
 });
 
-/** Only requested headers are fetched. Header text never enters persistence. */
+/** Explicit inspection fetches headers and MIME metadata, never body or attachment bytes. */
 export async function loadGmailReviewHeaders(
   messageId: string,
   accessToken: string,
@@ -41,21 +56,35 @@ export async function loadGmailReviewHeaders(
 ) {
   if (!/^[a-zA-Z0-9_-]{1,256}$/.test(messageId))
     throw new ReviewSourceError("source_unavailable");
+  const deadline = Date.now() + 10000;
   const signal = AbortSignal.timeout(10000);
+  function assertWithinDeadline() {
+    if (signal.aborted || Date.now() > deadline)
+      throw new ReviewSourceError("source_unavailable");
+  }
   const url = new URL(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
   );
-  url.searchParams.set("format", "metadata");
-  for (const header of ["Subject", "From", "Message-ID"])
-    url.searchParams.append("metadataHeaders", header);
-  url.searchParams.set("fields", "id,payload(headers)");
-  const response = await fetcher(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    redirect: "manual",
-    signal,
-  });
-  if (!response.ok || !response.body)
+  url.searchParams.set("format", "full");
+  let partFields = "filename,mimeType,body(size)";
+  for (let depth = 0; depth < 8; depth++)
+    partFields = `filename,mimeType,body(size),parts(${partFields})`;
+  url.searchParams.set("fields", `id,payload(headers,${partFields})`);
+  let response: Response;
+  try {
+    assertWithinDeadline();
+    response = await fetcher(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      redirect: "manual",
+      signal,
+    });
+  } catch {
     throw new ReviewSourceError("source_unavailable");
+  }
+  if (!response.ok || !response.body) {
+    await response.body?.cancel().catch(() => {});
+    throw new ReviewSourceError("source_unavailable");
+  }
   const reader = response.body.getReader();
   const cancel = () => {
     void reader.cancel().catch(() => {});
@@ -63,30 +92,48 @@ export async function loadGmailReviewHeaders(
   signal.addEventListener("abort", cancel, { once: true });
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let chunkCount = 0;
+  let emptyChunks = 0;
   try {
     for (;;) {
-      signal.throwIfAborted();
+      assertWithinDeadline();
       const next = await reader.read();
+      assertWithinDeadline();
       if (next.done) break;
+      if (++chunkCount > 4096)
+        throw new ReviewSourceError("source_unavailable");
+      if (next.value.byteLength === 0) {
+        if (++emptyChunks > 32)
+          throw new ReviewSourceError("source_unavailable");
+        continue;
+      }
       size += next.value.byteLength;
-      if (size > 16384) throw new ReviewSourceError("source_unavailable");
+      if (size > 65536) throw new ReviewSourceError("source_unavailable");
       chunks.push(next.value);
     }
+  } catch {
+    throw new ReviewSourceError("source_unavailable");
   } finally {
     signal.removeEventListener("abort", cancel);
-    await reader.cancel();
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
-  signal.throwIfAborted();
+  assertWithinDeadline();
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  const result = headersSchema.safeParse(
-    JSON.parse(new TextDecoder().decode(bytes)),
-  );
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
+    );
+  } catch {
+    throw new ReviewSourceError("source_unavailable");
+  }
+  const result = headersSchema.safeParse(decoded);
   if (!result.success || result.data.id !== messageId)
     throw new ReviewSourceError("source_unavailable");
   function header(name: string) {
@@ -97,12 +144,34 @@ export async function loadGmailReviewHeaders(
       : [];
     return rows.length === 1 ? (rows[0]?.value ?? null) : null;
   }
+  const attachments: {
+    filename: string;
+    mimeType: string;
+    size: number | null;
+  }[] = [];
+  let partCount = 0;
+  function collect(value: unknown, depth: number) {
+    if (++partCount > 64 || depth > 8)
+      throw new ReviewSourceError("source_unavailable");
+    const checked = metadataPartSchema.safeParse(value);
+    if (!checked.success) throw new ReviewSourceError("source_unavailable");
+    const part = checked.data;
+    if (part.filename)
+      attachments.push({
+        filename: part.filename,
+        mimeType: part.mimeType ?? "application/octet-stream",
+        size: part.body?.size ?? null,
+      });
+    for (const child of part.parts ?? []) collect(child, depth + 1);
+  }
+  collect(result.data.payload, 0);
   const message = header("message-id");
   // RFC822 search accepts an identifier; reject whitespace/search syntax rather than interpolating arbitrary mail text.
   const identifier = message?.match(
     /^<?([a-zA-Z0-9.!#$%&'*+\-/=?^_`{|}~]+@[a-zA-Z0-9.-]+)>?$/,
   )?.[1];
   return {
+    attachments,
     subject: header("subject"),
     sender: header("from"),
     originalUrl: identifier

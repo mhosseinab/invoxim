@@ -1249,3 +1249,288 @@ it("EDIT-03/05 settling merged20+20 with one confirmed60 payment resolves both o
       .first("n"),
   ).toBe(100);
 });
+
+it("REVIEW-DISCARD-01 dismisses real-source siblings atomically, replays safely and never changes financial records", async () => {
+  const session = await owner("qa-discard-source");
+  await purchase(session.tenant.userId, "discard-unrelated-purchase");
+  await source(
+    session.tenant.userId,
+    "discard-unrelated-purchase",
+    "discard-source",
+  );
+  await db
+    .prepare(
+      "DELETE FROM purchase_evidence WHERE user_id=? AND observation_id='discard-source'",
+    )
+    .bind(session.tenant.userId)
+    .run();
+  for (const [id, reason, scope] of [
+    ["discard-operational", "document-review", "operational"],
+    ["discard-missing", "incomplete-financial-facts", "financial"],
+  ])
+    await db
+      .prepare(
+        "INSERT INTO review_items(id,user_id,document_id,reason,blocking_scope,created_at) VALUES(?,?,'discard-source',?,?,0)",
+      )
+      .bind(id, session.tenant.userId, reason, scope)
+      .run();
+  await db
+    .prepare(
+      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES('discard-consent',?,'discard-source',1,'synthetic','local',0,0,1)",
+    )
+    .bind(session.tenant.userId)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at,lease_id,lease_expires_at,fence) VALUES('discard-inflight',?,'discard-source','discard-consent',1,'source-extract','discard-job','leased',0,'lease',9999999999999,1)",
+    )
+    .bind(session.tenant.userId)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO discovery_source_jobs(user_id,job_id,source_message_id,pipeline_stage) VALUES(?,'discard-inflight','discard-source','infer')",
+    )
+    .bind(session.tenant.userId)
+    .run();
+  const store = createCorrectionStore(db);
+  const before = await store.readReview(session.tenant, "discard-operational");
+  expect(before?.review.actions).toContain("not-a-purchase");
+  const command = {
+    kind: "review-resolve" as const,
+    reviewId: "discard-operational",
+    request: { version: 1, action: "not-a-purchase" as const },
+  };
+  const result = await store.execute(
+    session,
+    command,
+    "discard-source-command",
+  );
+  expect(result.reviewStatus).toBe("dismissed");
+  expect(
+    await db
+      .prepare(
+        "SELECT status,lease_id,lease_expires_at,fence,outcome_code FROM jobs WHERE user_id=? AND id='discard-inflight'",
+      )
+      .bind(session.tenant.userId)
+      .first(),
+  ).toEqual({
+    status: "canceled",
+    lease_id: null,
+    lease_expires_at: null,
+    fence: 2,
+    outcome_code: "not-a-purchase",
+  });
+  expect(
+    await db
+      .prepare("SELECT processing_status FROM source_messages WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("processing_status"),
+  ).toBe("processed");
+  expect(
+    await store.execute(session, command, "discard-source-command"),
+  ).toEqual(result);
+  expect(
+    (
+      await db
+        .prepare(
+          "SELECT status,version FROM review_items WHERE user_id=? ORDER BY id",
+        )
+        .bind(session.tenant.userId)
+        .all()
+    ).results,
+  ).toEqual([
+    { status: "dismissed", version: 2 },
+    { status: "dismissed", version: 2 },
+  ]);
+  expect(
+    await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM correction_audit WHERE user_id=? AND action='not-a-purchase'",
+      )
+      .bind(session.tenant.userId)
+      .first("n"),
+  ).toBe(2);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM source_messages WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("n"),
+  ).toBe(1);
+  expect(
+    await db
+      .prepare("SELECT version FROM purchases WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("version"),
+  ).toBe(1);
+});
+
+it("REVIEW-DISCARD-02 withholds and rejects discard when another document in the same email supports a purchase", async () => {
+  const session = await owner("qa-discard-linked");
+  await purchase(session.tenant.userId, "discard-linked-purchase");
+  await source(
+    session.tenant.userId,
+    "discard-linked-purchase",
+    "discard-linked-source",
+  );
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES('discard-linked-extra',?,'discard-linked-source','extra',?,'text/plain',10)",
+    )
+    .bind(session.tenant.userId, "c".repeat(64))
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO review_items(id,user_id,document_id,reason,blocking_scope,created_at) VALUES('discard-linked-review',?,'discard-linked-extra','extraction-review','financial',0)",
+    )
+    .bind(session.tenant.userId)
+    .run();
+  const store = createCorrectionStore(db);
+  expect(
+    (await store.readReview(session.tenant, "discard-linked-review"))?.review
+      .actions,
+  ).not.toContain("not-a-purchase");
+  await expect(
+    store.execute(
+      session,
+      {
+        kind: "review-resolve",
+        reviewId: "discard-linked-review",
+        request: { version: 1, action: "not-a-purchase" },
+      },
+      "discard-linked-key",
+    ),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(
+    await db
+      .prepare("SELECT version FROM purchases WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("version"),
+  ).toBe(1);
+  expect(
+    await db
+      .prepare("SELECT status FROM review_items WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("status"),
+  ).toBe("open");
+});
+
+it("REVIEW-DISCARD-03 rejects stale, foreign and expired-session decisions without audit or mutation", async () => {
+  const session = await owner("qa-discard-security"),
+    foreign = await owner("qa-discard-foreign");
+  await purchase(session.tenant.userId, "discard-security-purchase");
+  await source(
+    session.tenant.userId,
+    "discard-security-purchase",
+    "discard-security-source",
+  );
+  await db
+    .prepare("DELETE FROM purchase_evidence WHERE user_id=?")
+    .bind(session.tenant.userId)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO review_items(id,user_id,document_id,reason,blocking_scope,created_at,version) VALUES('discard-security-review',?,'discard-security-source','incomplete-financial-facts','financial',0,2)",
+    )
+    .bind(session.tenant.userId)
+    .run();
+  const store = createCorrectionStore(db),
+    command = {
+      kind: "review-resolve" as const,
+      reviewId: "discard-security-review",
+      request: { version: 1, action: "not-a-purchase" as const },
+    };
+  await expect(
+    store.execute(session, command, "discard-security-stale"),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  await expect(
+    store.execute(foreign, command, "discard-security-foreign"),
+  ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await db
+    .prepare("UPDATE session SET expiresAt=0 WHERE id=?")
+    .bind(session.sessionId)
+    .run();
+  await expect(
+    store.execute(
+      session,
+      { ...command, request: { ...command.request, version: 2 } },
+      "discard-security-expired",
+    ),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM correction_audit WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("n"),
+  ).toBe(0);
+  expect(
+    await db
+      .prepare("SELECT status FROM review_items WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("status"),
+  ).toBe("open");
+});
+
+it("REVIEW-DISCARD-04 concurrent manual evidence wins atomically and blocks every sibling dismissal", async () => {
+  const session = await owner("qa-discard-race");
+  await purchase(session.tenant.userId, "discard-race-purchase");
+  await source(
+    session.tenant.userId,
+    "discard-race-purchase",
+    "discard-race-source",
+  );
+  await db
+    .prepare("DELETE FROM purchase_evidence WHERE user_id=?")
+    .bind(session.tenant.userId)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO review_items(id,user_id,document_id,reason,blocking_scope,created_at) VALUES('discard-race-review',?,'discard-race-source','extraction-review','financial',0)",
+    )
+    .bind(session.tenant.userId)
+    .run();
+  const raced = new Proxy(db, {
+    get(target, name) {
+      if (name === "batch")
+        return async (statements: D1PreparedStatement[]) => {
+          await db
+            .prepare(
+              "INSERT INTO manual_purchase_evidence(user_id,purchase_id,document_id) VALUES(?,'discard-race-purchase','discard-race-source')",
+            )
+            .bind(session.tenant.userId)
+            .run();
+          return target.batch(statements);
+        };
+      const value = Reflect.get(target, name);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  await expect(
+    createCorrectionStore(raced).execute(
+      session,
+      {
+        kind: "review-resolve",
+        reviewId: "discard-race-review",
+        request: { version: 1, action: "not-a-purchase" },
+      },
+      "discard-race-command",
+    ),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(
+    await db
+      .prepare("SELECT status,version FROM review_items WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first(),
+  ).toEqual({ status: "open", version: 1 });
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM correction_audit WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("n"),
+  ).toBe(0);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM correction_commands WHERE user_id=?")
+      .bind(session.tenant.userId)
+      .first("n"),
+  ).toBe(0);
+});

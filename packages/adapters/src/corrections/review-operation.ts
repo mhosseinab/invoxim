@@ -12,6 +12,8 @@ import {
   reviewFact,
   reviewVersion,
 } from "./data";
+import { sourceNotDiscardedSql } from "./source-decision";
+import { discardableSource, executeSourceDiscard } from "./source-discard";
 import { correctionTransaction } from "./transaction";
 
 const empty: CorrectionResult = {
@@ -35,8 +37,23 @@ export async function executeReview(
   const user = session.tenant.userId,
     row = await review(db, user, command.reviewId),
     request = command.request;
-  assertReviewAction(reviewFact(row), request);
+  assertReviewAction(
+    {
+      ...reviewFact(row),
+      canDiscardSource:
+        request.action === "not-a-purchase" &&
+        !!(await discardableSource(db, user, row.document_id)),
+    },
+    request,
+  );
   const checks = [reviewVersion(user, row, request.version)];
+  if (row.document_id)
+    checks.push({
+      sql: `EXISTS(SELECT 1 FROM documents d JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id WHERE d.user_id=? AND d.id=? AND ${sourceNotDiscardedSql("s")})`,
+      values: [user, row.document_id],
+    });
+  if (request.action === "not-a-purchase")
+    return executeSourceDiscard(db, session, row, key, identity, checks, clock);
   const owned = row.purchase_id
     ? await purchase(db, user, row.purchase_id)
     : null;

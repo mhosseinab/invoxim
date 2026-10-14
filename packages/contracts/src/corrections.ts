@@ -104,6 +104,7 @@ const missingChanges = z
   .refine((value) => Object.keys(value).length > 0);
 export const reviewResolutionRequestSchema = z.discriminatedUnion("action", [
   z.strictObject({ version, action: z.literal("dismiss-operational") }),
+  z.strictObject({ version, action: z.literal("not-a-purchase") }),
   z.strictObject({
     version,
     action: z.literal("correct-missing-fields"),
@@ -218,6 +219,7 @@ export const correctionStateSchema = z.strictObject({
           .array(
             z.enum([
               "dismiss-operational",
+              "not-a-purchase",
               "correct-missing-fields",
               "complete-record",
               "different-purchase",
@@ -225,7 +227,7 @@ export const correctionStateSchema = z.strictObject({
               "confirm-refund",
             ]),
           )
-          .max(6),
+          .max(7),
       }),
     )
     .max(200),

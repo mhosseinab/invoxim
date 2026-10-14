@@ -1054,3 +1054,35 @@ it("T14 reprocessing an excluded purchase keeps new cash excluded in list summar
   expect(exported.ledgerEntries[0]?.eligible).toBe(false);
   expect(exported.summary.totals).toEqual([]);
 });
+
+it("manual false-positive decision fences future checkpoints and stale financial commits without crossing tenants", async () => {
+  const repo = createPipelineRepository(db, { clock: () => now });
+  const current = lease();
+  const candidate = input();
+  const snapshot = await repo.loadSnapshot(current, candidate);
+  if (!snapshot) throw new Error("Synthetic snapshot missing");
+  const plan = planLedgerIngestion(candidate, snapshot);
+  await db
+    .prepare(
+      "INSERT INTO review_items(id,user_id,document_id,reason,blocking_scope,created_at) VALUES('discarded-source','pipeline-a','d','document-review','operational',?)",
+    )
+    .bind(now)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO correction_audit(id,user_id,entity_kind,entity_id,action,before_json,after_json,created_at) VALUES('discard-audit','pipeline-a','review','discarded-source','not-a-purchase','{}','{}',?)",
+    )
+    .bind(now)
+    .run();
+  expect(await repo.checkpoint(current)).toBe(false);
+  expect(await repo.checkpoint(lease("pipeline-b"))).toBe(true);
+  expect(
+    await repo.commit(current, {
+      input: candidate,
+      plan,
+      nextDocumentIndex: null,
+    }),
+  ).toBe("stale");
+  expect(await tableCount("purchases")).toBe(0);
+  expect(await tableCount("ledger_entries")).toBe(0);
+});

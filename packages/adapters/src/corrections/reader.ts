@@ -2,6 +2,7 @@ import type { CorrectionReview, CorrectionState } from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
 import { CorrectionError, reviewActions } from "@invoxim/core";
 import { events, purchase, review, reviewFact, reviews } from "./data";
+import { discardableSource } from "./source-discard";
 export async function readCorrectionPurchase(
   db: D1Database,
   tenant: TenantContext,
@@ -128,7 +129,14 @@ export async function readCorrectionReview(
         | "documentDate"
       )[],
       status: row.status,
-      actions: editable ? reviewActions(reviewFact(row)) : [],
+      actions: editable
+        ? reviewActions({
+            ...reviewFact(row),
+            canDiscardSource:
+              !row.purchase_id &&
+              !!(await discardableSource(db, tenant.userId, row.document_id)),
+          })
+        : [],
     },
   };
 }

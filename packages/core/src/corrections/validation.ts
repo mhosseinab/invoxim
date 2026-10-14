@@ -15,6 +15,7 @@ export interface CorrectionEventFact {
 }
 export interface CorrectionReviewFact {
   available?: boolean;
+  canDiscardSource?: boolean;
   id: string;
   observationId: string | null;
   documentId?: string | null;
@@ -96,6 +97,7 @@ export function validateEntryChange(
 export function reviewActions(
   review: CorrectionReviewFact,
 ): (
+  | "not-a-purchase"
   | "dismiss-operational"
   | "correct-missing-fields"
   | "complete-record"
@@ -104,18 +106,25 @@ export function reviewActions(
   | "confirm-refund"
 )[] {
   if (review.status !== "open" || review.available === false) return [];
-  if (review.blockingScope === "operational") return ["dismiss-operational"];
+  const discard =
+    review.canDiscardSource && !review.purchaseId
+      ? ["not-a-purchase" as const]
+      : [];
+  if (review.blockingScope === "operational")
+    return [...discard, "dismiss-operational"];
   if (review.reason === "unmatched-refund")
-    return review.purchaseId ? ["confirm-refund"] : ["complete-record"];
+    return review.purchaseId
+      ? ["confirm-refund"]
+      : [...discard, "complete-record"];
   if (
     review.reason === "unknown-payment" ||
     review.reason === "payment-allocation-review"
   )
-    return review.purchaseId ? ["confirm-payment"] : [];
+    return review.purchaseId ? ["confirm-payment"] : discard;
   if (review.reason === "ambiguous-event")
-    return review.purchaseId ? ["confirm-payment", "confirm-refund"] : [];
+    return review.purchaseId ? ["confirm-payment", "confirm-refund"] : discard;
   if (review.reason === "possible-duplicate")
-    return review.purchaseId ? ["different-purchase"] : [];
+    return review.purchaseId ? ["different-purchase"] : discard;
   if (
     review.reason === "extraction-review" ||
     review.reason === "incomplete-financial-facts"
@@ -124,8 +133,8 @@ export function reviewActions(
       ? review.missingFields.length
         ? ["correct-missing-fields"]
         : []
-      : ["complete-record"];
-  return [];
+      : [...discard, "complete-record"];
+  return discard;
 }
 export function assertReviewAction(
   review: CorrectionReviewFact,
