@@ -13,6 +13,7 @@ import {
   validateEmailClassification,
   validatePersistableAiResult,
 } from "@invoxim/core";
+import { buildFingerprintTuple } from "./configuration";
 export interface AiBudgetPolicy {
   readonly dailyDocuments: number;
   readonly monthlyDocuments: number;
@@ -159,19 +160,7 @@ export async function computeRunFingerprint(input: {
   promptVersion: string;
   classificationAuthorization: boolean;
 }): Promise<string> {
-  return digest([
-    input.mode,
-    input.configurationDigest,
-    input.settingsRevision,
-    input.generation,
-    input.credentialVersion,
-    input.policyVersion,
-    input.classificationAuthorization
-      ? EMAIL_CLASSIFICATION_VERSION
-      : input.consentId,
-    input.promptVersion,
-    1,
-  ]);
+  return digest(buildFingerprintTuple(input));
 }
 function validatePolicy(policy: AiBudgetPolicy): void {
   for (const value of [

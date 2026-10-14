@@ -3,6 +3,7 @@ import {
   EXTRACTION_PROMPT_VERSION,
   hasControlCharacters,
 } from "@invoxim/contracts";
+import { EMAIL_CLASSIFICATION_VERSION } from "@invoxim/core";
 import { z } from "zod";
 import type { AuthBindings } from "../auth/configuration";
 import { createCredentialCipher } from "../security/cipher";
@@ -235,6 +236,35 @@ async function hashAiValue(value: unknown) {
     byte.toString(16).padStart(2, "0"),
   ).join("");
 }
+/**
+ * AI run fingerprint tuple (A1). The single recipe behind extraction,
+ * classification, and budget verification — must stay byte-identical.
+ */
+export function buildFingerprintTuple(input: {
+  mode: "hosted" | "byok";
+  configurationDigest: string;
+  settingsRevision: number;
+  generation: number;
+  credentialVersion: number;
+  policyVersion: number;
+  consentId: string;
+  promptVersion: string;
+  classificationAuthorization: boolean;
+}) {
+  return [
+    input.mode,
+    input.configurationDigest,
+    input.settingsRevision,
+    input.generation,
+    input.credentialVersion,
+    input.policyVersion,
+    input.classificationAuthorization
+      ? EMAIL_CLASSIFICATION_VERSION
+      : input.consentId,
+    input.promptVersion,
+    1,
+  ];
+}
 export async function computeAiFingerprint(input: {
   mode: "hosted" | "byok";
   configurationDigest: string;
@@ -244,15 +274,11 @@ export async function computeAiFingerprint(input: {
   policyVersion: number;
   consentId: string;
 }) {
-  return hashAiValue([
-    input.mode,
-    input.configurationDigest,
-    input.settingsRevision,
-    input.generation,
-    input.credentialVersion,
-    input.policyVersion,
-    input.consentId,
-    EXTRACTION_PROMPT_VERSION,
-    1,
-  ]);
+  return hashAiValue(
+    buildFingerprintTuple({
+      ...input,
+      promptVersion: EXTRACTION_PROMPT_VERSION,
+      classificationAuthorization: false,
+    }),
+  );
 }

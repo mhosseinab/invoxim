@@ -11,6 +11,7 @@ import {
   createClefEmailClassifier,
   type ReceiptClassificationConfiguration,
 } from "./clef";
+import { buildFingerprintTuple } from "./configuration";
 import { AiSettingsError } from "./settings";
 
 /** Classification fingerprint recipe (A1). Must stay byte-identical to budget.ts verification. */
@@ -21,17 +22,15 @@ export async function computeClassificationFingerprint(input: {
   credentialVersion: number;
   policyVersion: number;
 }): Promise<string> {
-  return hashOnboardingValue([
-    "hosted",
-    input.configurationDigest,
-    input.settingsRevision,
-    input.generation,
-    input.credentialVersion,
-    input.policyVersion,
-    EMAIL_CLASSIFICATION_VERSION,
-    EMAIL_CLASSIFICATION_VERSION,
-    1,
-  ]);
+  return hashOnboardingValue(
+    buildFingerprintTuple({
+      mode: "hosted",
+      ...input,
+      consentId: "",
+      promptVersion: EMAIL_CLASSIFICATION_VERSION,
+      classificationAuthorization: true,
+    }),
+  );
 }
 
 /** One explicitly disclosed hosted decision processor, independent of financial BYOK routing. */
