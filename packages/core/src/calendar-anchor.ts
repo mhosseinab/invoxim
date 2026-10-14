@@ -1,23 +1,5 @@
-import { calendarDate } from "@invoxim/contracts";
+import { calendarDate, daysInMonth } from "@invoxim/contracts";
 
-function daysInMonth(year: number, month: number): number {
-  return (
-    [
-      31,
-      year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
-      31,
-      30,
-      31,
-      30,
-      31,
-      31,
-      30,
-      31,
-      30,
-      31,
-    ][month - 1] ?? 0
-  );
-}
 export function monthlyAnchor(month: string, day: number): string {
   if (
     !/^\d{4}-\d{2}$/.test(month) ||

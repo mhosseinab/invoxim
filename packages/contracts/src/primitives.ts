@@ -38,20 +38,20 @@ export const fxRateDecimal = z
   .string()
   .regex(/^(?:0|[1-9][0-9]{0,12})(?:\.[0-9]{1,18})?$/)
   .pipe(z.string().refine((value) => BigInt(value.replace(".", "")) > 0n));
+/** Gregorian leap rule shared with `core/calendar-anchor`. */
+export function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+/** One month-length table for calendar validation and monthly anchors. */
+export function daysInMonth(year: number, month: number): number {
+  if (month === 2 && isLeapYear(year)) return 29;
+  return MONTH_DAYS[month - 1] ?? 0;
+}
 export function validCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year = 0, month = 0, day = 0] = value.split("-").map(Number);
-  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  return (
-    year > 0 &&
-    month > 0 &&
-    month <= 12 &&
-    day > 0 &&
-    day <=
-      ([31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][
-        month - 1
-      ] ?? 0)
-  );
+  return year > 0 && month > 0 && month <= 12 && day > 0 && day <= daysInMonth(year, month);
 }
 export function calendarDate(value: string): string {
   if (!validCalendarDate(value)) throw new Error("INVALID_DATE");
