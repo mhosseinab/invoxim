@@ -4,7 +4,11 @@ import { createAiProviderFactory } from "../../../packages/adapters/src/ai/provi
 import { createAiSettingsService } from "../../../packages/adapters/src/ai/settings";
 import { selectedOnboardingConfigurationDigest } from "../../../packages/adapters/src/onboarding/configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { configuredAi, owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import {
+  configuredAi,
+  installOnboardingQaHooks,
+  owner,
+} from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 

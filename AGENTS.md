@@ -29,7 +29,7 @@ AI is provider-agnostic. Provide operator-funded inference and BYOK through the 
 
 ## Engineering contract
 
-Use a pnpm/Turborepo monorepo, strict TypeScript, Zod boundaries, Vitest, Playwright, ESLint, and Prettier. Pin compatible stable dependency versions after checking primary documentation. Do not blindly install release candidates or use floating `latest` in committed automation.
+Use a pnpm/Turborepo monorepo, strict TypeScript, Zod boundaries, Vitest, Playwright, Biome, and Prettier. Pin compatible stable dependency versions after checking primary documentation. Do not blindly install release candidates or use floating `latest` in committed automation.
 
 Apply SOLID pragmatically, DRY to real repeated knowledge, KISS to implementation, and YAGNI to unrequested features. Use explicit ports only at real external boundaries. No dependency-injection framework, generic base repository, microservices, or premature plugin framework.
 

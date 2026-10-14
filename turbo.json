@@ -30,7 +30,7 @@
   ],
   "globalDependencies": [
     "tsconfig.base.json",
-    "eslint.config.mjs",
+    "biome.json",
     ".node-version",
     "contracts/**",
     "test-design/**"

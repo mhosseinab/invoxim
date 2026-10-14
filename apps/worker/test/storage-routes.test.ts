@@ -12,7 +12,7 @@ import {
 } from "../../../packages/adapters/src/drive/configuration";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 

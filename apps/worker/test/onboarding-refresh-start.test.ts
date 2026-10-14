@@ -14,10 +14,12 @@ import { createOnboardingRoutes } from "../src/onboarding-routes";
 import { syntheticClassificationBindings } from "./classification-fixture";
 import {
   configuredAi,
+  installOnboardingQaHooks,
   now,
   owner,
   query,
-  startBody, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+  startBody,
+} from "./onboarding-qa-fixture";
 import { faultingDatabase } from "./support/faults";
 
 installOnboardingQaHooks();

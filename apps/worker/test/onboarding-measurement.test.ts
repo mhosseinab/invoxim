@@ -16,11 +16,13 @@ import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import {
   configuredAi,
+  installOnboardingQaHooks,
   now,
   owner,
   query,
   runtime,
-  startBody, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+  startBody,
+} from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 

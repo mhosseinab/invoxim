@@ -6,11 +6,13 @@ import { createProcessingReviewResolver } from "../../../packages/adapters/src/o
 import { createInvocationDatabase } from "../src/invocation-database";
 import {
   configuredAi,
+  installOnboardingQaHooks,
   now,
   owner,
   query,
   runtime,
-  startBody, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+  startBody,
+} from "./onboarding-qa-fixture";
 
 installOnboardingQaHooks();
 

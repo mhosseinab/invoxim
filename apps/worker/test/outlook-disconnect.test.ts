@@ -3,7 +3,7 @@ import { createLoginAuth, loginConfiguration } from "@invoxim/adapters";
 import { expect, it } from "vitest";
 import worker from "../src/index";
 import { requireFixture } from "./fixture-value";
-import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 import { signedSession } from "./support/tenant";
 
 installOnboardingQaHooks();
@@ -133,4 +133,3 @@ it("OUTLOOK-01 disconnect uses the owned provider when both providers are config
     )?.state,
   ).toBe("connected");
 });
-

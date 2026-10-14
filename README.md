@@ -20,27 +20,26 @@ Vite does not provide the production Pages service-binding proxy. Running both p
 
 ## Common commands
 
-| Command                                | Purpose                                                                                                                                        |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm run dev`                         | Start frontend and local Worker together                                                                                                       |
-| `pnpm --filter @invoxim/web dev`       | Start only the frontend                                                                                                                        |
-| `pnpm --filter @invoxim/worker dev`    | Start only the local Worker                                                                                                                    |
-| `pnpm verify`                          | Required local gate: boundaries, secrets, dependency policy, formatting, Biome, ESLint, types, unit/integration tests, build and browser tests |
-| `pnpm lint:biome`                      | Check source and tests; warnings fail                                                                                                          |
-| `pnpm lint`                            | Run ESLint                                                                                                                                     |
-| `pnpm format:check`                    | Check configured Prettier targets                                                                                                              |
-| `pnpm exec prettier --check README.md` | Check this README's formatting                                                                                                                 |
-| `pnpm typecheck`                       | Typecheck workspace packages                                                                                                                   |
-| `pnpm test:unit`                       | Run tooling and workspace unit tests                                                                                                           |
-| `pnpm test:integration`                | Run native Worker/D1 integration tests                                                                                                         |
-| `pnpm test:e2e`                        | Run browser tests                                                                                                                              |
-| `pnpm test:a11y`                       | Run browser cases matching `accessibility`                                                                                                     |
-| `pnpm test:security`                   | Run the explicit adversarial test suite                                                                                                        |
-| `pnpm db:check`                        | Run database, pipeline and lifecycle integrity suites                                                                                          |
-| `pnpm test:eval:offline`               | Run the synthetic extraction corpus; not live-model evaluation                                                                                 |
-| `pnpm check:deps`                      | Check dependency policy and registry advisories                                                                                                |
-| `pnpm check:production`                | Inspect built publication artifacts and all three bundle inventories for test/debug tooling; requires a completed build                        |
-| `pnpm build`                           | Build frontend/Pages Function, dry-run the Worker bundle, and check production artifacts; does not deploy                                      |
+| Command                             | Purpose                                                                                                                                |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm run dev`                      | Start frontend and local Worker together                                                                                               |
+| `pnpm --filter @invoxim/web dev`    | Start only the frontend                                                                                                                |
+| `pnpm --filter @invoxim/worker dev` | Start only the local Worker                                                                                                            |
+| `pnpm verify`                       | Required local gate: boundaries, secrets, dependency policy, formatting, Biome, types, unit/integration tests, build and browser tests |
+| `pnpm lint:biome`                   | Check source and tests; warnings fail                                                                                                  |
+| `pnpm lint`                         | Alias for `pnpm lint:biome`                                                                                                            |
+| `pnpm format:check`                 | Check Prettier formatting of the derived file set (see `.prettierignore`)                                                              |
+| `pnpm typecheck`                    | Typecheck workspace packages                                                                                                           |
+| `pnpm test:unit`                    | Run tooling and workspace unit tests                                                                                                   |
+| `pnpm test:integration`             | Run native Worker/D1 integration tests                                                                                                 |
+| `pnpm test:e2e`                     | Run browser tests                                                                                                                      |
+| `pnpm test:a11y`                    | Run browser cases matching `accessibility`                                                                                             |
+| `pnpm test:security`                | Run the explicit adversarial test suite                                                                                                |
+| `pnpm db:check`                     | Run database, pipeline and lifecycle integrity suites                                                                                  |
+| `pnpm test:eval:offline`            | Run the synthetic extraction corpus; not live-model evaluation                                                                         |
+| `pnpm check:deps`                   | Check dependency policy and registry advisories                                                                                        |
+| `pnpm check:production`             | Inspect built publication artifacts and all three bundle inventories for test/debug tooling; requires a completed build                |
+| `pnpm build`                        | Build frontend/Pages Function, dry-run the Worker bundle, and check production artifacts; does not deploy                              |
 
 For a focused native test:
 
