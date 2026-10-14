@@ -1390,6 +1390,19 @@
         "evidence/implementation/langsmith-eu-release-20261014.md"
       ],
       "blockedBy": []
+    },
+    {
+      "id": "OPS-FRESH-20261014",
+      "title": "Reset mailbox import queues, processed messages and spending counters",
+      "milestone": "Operations",
+      "status": "done",
+      "dependsOn": [],
+      "ownerRole": "orchestrator",
+      "scope": "Explicitly authorized tenant import reset, extracted purchase removal and operator/tenant budget counter reset; preserve login and mailbox credentials.",
+      "completionEvidence": [
+        "evidence/implementation/import-fresh-reset-20261014.md"
+      ],
+      "blockedBy": []
     }
   ]
 }
