@@ -22,6 +22,9 @@ export function createPipelineRuntime(options: {
   classificationBinding?: ClefBinding | undefined;
   remainingStatements: () => number;
 }): JobHandler {
+  // Not a readiness rule: mailboxProcessingConfiguration decides what is
+  // runnable. This is the fail-closed boundary that keeps extraction from
+  // reading mailbox content without a mandatory classification binding.
   if (!options.ai.classification?.enabled || !options.classificationBinding) {
     return {
       async run() {
