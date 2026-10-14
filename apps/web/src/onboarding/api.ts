@@ -1,29 +1,20 @@
-import { assertPrivateIdentity, identityFailure } from "../private/api";
+import {
+  assertPrivateIdentity,
+  identityFailure,
+  RequestError,
+  type RequestJsonInit,
+  requestJson,
+} from "../private/api";
 
 export { identityFailure };
-export class OnboardingRequestError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-  ) {
-    super("Onboarding request unavailable");
-  }
-}
-const safeCodes = new Set([
-  "processing_review_required",
-  "allowance_unavailable",
-  "mailbox_reconnect_required",
-  "mailbox_api_disabled",
-  "conflict",
-  "unauthorized",
-  "origin_required",
-  "recent_auth_required",
-  "account_not_allowed",
-  "missing_permission",
-  "denied",
-  "account_mismatch",
-  "limit_reached",
-]);
+export class OnboardingRequestError extends RequestError {}
+
+const rawJson = {
+  safeParse(value: unknown) {
+    return { success: true as const, data: value };
+  },
+};
+
 export async function sendOnboarding(
   path: string,
   body: unknown,
@@ -32,41 +23,23 @@ export async function sendOnboarding(
   method: "POST" | "PUT" | "DELETE" = "POST",
   workspaceToken?: string,
 ): Promise<unknown> {
-  const response = await fetch(path, {
-    method,
-    signal,
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...(key ? { "Idempotency-Key": key } : {}),
-      ...(workspaceToken ? { "X-Workspace-Token": workspaceToken } : {}),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) {
-    let code = "request_unavailable";
-    try {
-      const value: unknown = await response.json();
-      if (
-        value &&
-        typeof value === "object" &&
-        "error" in value &&
-        value.error &&
-        typeof value.error === "object" &&
-        "code" in value.error &&
-        typeof value.error.code === "string" &&
-        safeCodes.has(value.error.code)
-      )
-        code = value.error.code;
-    } catch {
-      /* The response body is not product copy. */
-    }
-    throw new OnboardingRequestError(response.status, code);
+  try {
+    return await requestJson(path, rawJson, {
+      signal,
+      method,
+      body,
+      idempotencyKey: key,
+      workspaceToken,
+    } satisfies RequestJsonInit);
+  } catch (error) {
+    if (error instanceof RequestError)
+      throw new OnboardingRequestError(
+        error.status,
+        error.code,
+        error.retryable,
+      );
+    throw error;
   }
-  if (response.status === 204) return null;
-  return response.json();
 }
 export const confirmActor = assertPrivateIdentity;
 export function googleAuthorization(value: string): string {

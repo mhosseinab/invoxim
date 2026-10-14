@@ -7,7 +7,6 @@ import {
   type PurchaseReviews,
   type PurchaseSummary,
   profileViewSchema,
-  publicConfigSchema,
   purchaseCoverageSchema,
   purchaseDetailSchema,
   purchaseFiltersSchema,
@@ -18,7 +17,12 @@ import {
 } from "@invoxim/contracts";
 import { useEffect, useState } from "react";
 import { BrandMark, Icon } from "../icons";
-import { identityFailure, PrivateLoadError, readPrivate } from "./api";
+import {
+  identityFailure,
+  PrivateLoadError,
+  readLoginEnabled,
+  readPrivate,
+} from "./api";
 import { amount, Coverage, isPaused, PurchaseCard, Totals } from "./components";
 import {
   categoryLabel,
@@ -431,16 +435,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
         const status = error instanceof PrivateLoadError ? error.status : 502;
         let loginReady = false;
         if (active && !controller.signal.aborted && identityFailure(status)) {
-          try {
-            const config = await readPrivate(
-              "/api/public-config",
-              publicConfigSchema,
-              controller.signal,
-            );
-            loginReady = config.loginEnabled;
-          } catch {
-            // Unavailable or invalid capabilities cannot enable login.
-          }
+          loginReady = await readLoginEnabled(controller.signal);
         }
         if (active && !controller.signal.aborted)
           setState({

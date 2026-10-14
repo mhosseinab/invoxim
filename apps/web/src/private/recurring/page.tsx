@@ -2,7 +2,6 @@ import {
   type ProfileView,
   type PurchaseCoverage,
   profileViewSchema,
-  publicConfigSchema,
   purchaseCoverageSchema,
   recurringDetailResponseSchema,
   recurringListResponseSchema,
@@ -12,6 +11,7 @@ import { BrandMark, Icon } from "../../icons";
 import {
   identityFailure,
   PrivateLoadError,
+  readLoginEnabled,
   readPrivate,
   readPrivateForIdentity,
 } from "../api";
@@ -87,17 +87,7 @@ export function RecurringPage({ displayName }: { displayName: string }) {
         const status = error instanceof PrivateLoadError ? error.status : 502;
         let loginReady = false;
         if (identityFailure(status)) {
-          try {
-            loginReady = (
-              await readPrivate(
-                "/api/public-config",
-                publicConfigSchema,
-                request.signal,
-              )
-            ).loginEnabled;
-          } catch {
-            /* No verified login capability. */
-          }
+          loginReady = await readLoginEnabled(request.signal);
         }
         if (
           !request.signal.aborted &&

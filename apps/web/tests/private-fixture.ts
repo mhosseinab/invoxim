@@ -8,7 +8,7 @@ import type {
   PurchaseView,
 } from "@invoxim/contracts";
 import type { Page } from "@playwright/test";
-import { mockApi, type MockedRequest } from "./mock-api";
+import { type MockedRequest, mockApi } from "./mock-api";
 
 export const history: PurchaseView = {
   id: "qa-history",

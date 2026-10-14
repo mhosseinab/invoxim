@@ -1,60 +1,116 @@
-import { profileViewSchema } from "@invoxim/contracts";
+import { profileViewSchema, publicConfigSchema } from "@invoxim/contracts";
 
-type ProcessingFailureCode =
-  | "processing_not_configured"
-  | "processing_unavailable";
-
-export class PrivateLoadError extends Error {
+export class RequestError extends Error {
   constructor(
     readonly status: number,
-    readonly code?: ProcessingFailureCode,
+    readonly code: string = "request_unavailable",
     readonly retryable?: boolean,
   ) {
-    super("Private records unavailable");
+    super("Request unavailable");
   }
 }
-export async function readPrivate<T>(
+
+export class PrivateLoadError extends RequestError {}
+
+const safeCodes = new Set([
+  "processing_review_required",
+  "processing_not_configured",
+  "processing_unavailable",
+  "allowance_unavailable",
+  "mailbox_reconnect_required",
+  "mailbox_api_disabled",
+  "conflict",
+  "unauthorized",
+  "origin_required",
+  "recent_auth_required",
+  "account_not_allowed",
+  "missing_permission",
+  "denied",
+  "account_mismatch",
+  "limit_reached",
+]);
+
+type JsonSchema<T> = {
+  safeParse(value: unknown): { success: true; data: T } | { success: false };
+};
+
+export type RequestJsonInit = {
+  signal: AbortSignal;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | undefined;
+  body?: unknown;
+  idempotencyKey?: string | undefined;
+  workspaceToken?: string | undefined;
+};
+
+export async function requestJson<T>(
   path: string,
-  schema: {
-    safeParse(value: unknown): { success: true; data: T } | { success: false };
-  },
-  signal: AbortSignal,
+  schema: JsonSchema<T>,
+  init: RequestJsonInit,
 ): Promise<T> {
+  const write = init.method !== undefined && init.method !== "GET";
   const response = await fetch(path, {
-    signal,
+    method: init.method ?? "GET",
+    signal: init.signal,
     credentials: "same-origin",
     cache: "no-store",
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      ...(write ? { "Content-Type": "application/json" } : {}),
+      ...(init.idempotencyKey
+        ? { "Idempotency-Key": init.idempotencyKey }
+        : {}),
+      ...(init.workspaceToken
+        ? { "X-Workspace-Token": init.workspaceToken }
+        : {}),
+    },
+    ...(write ? { body: JSON.stringify(init.body) } : {}),
   });
   if (!response.ok) {
-    if (response.status === 503) {
-      const body: unknown = await response.json().catch(() => null);
-      if (body && typeof body === "object" && "error" in body) {
-        const error = body.error;
-        if (
-          error &&
-          typeof error === "object" &&
-          "code" in error &&
-          "retryable" in error
-        ) {
+    let code = "request_unavailable";
+    let retryable: boolean | undefined;
+    try {
+      const value: unknown = await response.json();
+      if (value && typeof value === "object" && "error" in value) {
+        const error = (value as { error: unknown }).error;
+        if (error && typeof error === "object") {
+          const record = error as { code?: unknown; retryable?: unknown };
           if (
-            error.code === "processing_not_configured" &&
-            error.retryable === false
+            typeof record.code === "string" &&
+            safeCodes.has(record.code)
           )
-            throw new PrivateLoadError(503, error.code, false);
-          if (
-            error.code === "processing_unavailable" &&
-            error.retryable === true
-          )
-            throw new PrivateLoadError(503, error.code, true);
+            code = record.code;
+          if (typeof record.retryable === "boolean")
+            retryable = record.retryable;
         }
       }
+    } catch {
+      /* The response body is not product copy. */
     }
-    throw new PrivateLoadError(response.status);
+    throw new RequestError(response.status, code, retryable);
   }
-  const result = schema.safeParse(await response.json());
-  if (!result.success) throw new PrivateLoadError(502);
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    throw new RequestError(502);
+  }
+  const result = schema.safeParse(json);
+  if (!result.success) throw new RequestError(502);
   return result.data;
+}
+
+export async function readPrivate<T>(
+  path: string,
+  schema: JsonSchema<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  try {
+    return await requestJson(path, schema, { signal });
+  } catch (error) {
+    if (error instanceof RequestError)
+      throw new PrivateLoadError(error.status, error.code, error.retryable);
+    throw error;
+  }
 }
 
 export async function assertPrivateIdentity(
@@ -75,9 +131,7 @@ export function identityFailure(value: unknown): boolean {
 }
 export async function readPrivateForIdentity<T>(
   path: string,
-  schema: {
-    safeParse(value: unknown): { success: true; data: T } | { success: false };
-  },
+  schema: JsonSchema<T>,
   expectedUserId: string,
   signal: AbortSignal,
 ): Promise<T> {
@@ -85,4 +139,17 @@ export async function readPrivateForIdentity<T>(
   const data = await readPrivate(path, schema, signal);
   await assertPrivateIdentity(expectedUserId, signal);
   return data;
+}
+
+export async function readLoginEnabled(signal: AbortSignal): Promise<boolean> {
+  try {
+    const config = await readPrivate(
+      "/api/public-config",
+      publicConfigSchema,
+      signal,
+    );
+    return config.loginEnabled;
+  } catch {
+    return false;
+  }
 }
