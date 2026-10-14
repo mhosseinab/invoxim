@@ -30,7 +30,7 @@ import { createCorrectionRoutes } from "./correction-routes";
 import { createFxRoutes } from "./fx-routes";
 import { createInvocationDatabase } from "./invocation-database";
 import type { JobBindings } from "./job-configuration";
-import { jobConfiguration } from "./job-configuration";
+import { jobConfiguration, QUERY_LIMIT } from "./job-configuration";
 import { createJobRoutes } from "./job-routes";
 import { createJobRuntime } from "./job-runtime";
 import { createLifecycleRoutes } from "./lifecycle-routes";
@@ -178,7 +178,7 @@ function configuredJobs(
       ? {
           ...configuredPolicy,
           queryLimit: Math.min(
-            configuredPolicy.queryLimit ?? 40,
+            configuredPolicy.queryLimit ?? QUERY_LIMIT,
             sharedDatabase.remainingStatements(),
           ),
         }
@@ -187,7 +187,7 @@ function configuredJobs(
   const queue = bindings.JOBS;
   const database =
     sharedDatabase ??
-    createInvocationDatabase(bindings.DB, policy.queryLimit ?? 40);
+    createInvocationDatabase(bindings.DB, policy.queryLimit ?? QUERY_LIMIT);
   const ai =
     bindings.EXTRACTION_ENABLED === "true" ? aiConfiguration(bindings) : null;
   const handler = createMailboxRuntime({
@@ -230,7 +230,7 @@ const worker = Object.assign(app, {
     const started = Date.now();
     const observer = configuredOperationalObserver(bindings);
     const database = bindings.DB
-      ? createInvocationDatabase(bindings.DB, 40)
+      ? createInvocationDatabase(bindings.DB, QUERY_LIMIT)
       : undefined;
     const measurements = () => ({
       consumedQueryCount: database?.executedStatements() ?? 0,
@@ -289,7 +289,7 @@ const worker = Object.assign(app, {
     const started = Date.now();
     const observer = configuredOperationalObserver(bindings);
     const database = bindings.DB
-      ? createInvocationDatabase(bindings.DB, 40)
+      ? createInvocationDatabase(bindings.DB, QUERY_LIMIT)
       : undefined;
     const measurements = () => ({
       consumedQueryCount: database?.executedStatements() ?? 0,

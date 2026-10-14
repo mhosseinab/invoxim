@@ -1,6 +1,9 @@
 import type { JobPolicy } from "@invoxim/core";
 import { z } from "zod";
 
+/** Physical D1 statement budget shared by job and route invocations. */
+export const QUERY_LIMIT = 40 as const;
+
 export interface JobBindings {
   DB?: D1Database;
   JOBS?: Queue<
@@ -18,7 +21,7 @@ export interface JobBindings {
 }
 
 const policySchema = z.strictObject({
-  queryLimit: z.number().int().min(24).max(40),
+  queryLimit: z.literal(QUERY_LIMIT),
   dispatchLimit: z.number().int().min(1).max(50),
   scheduleLimit: z.number().int().min(1).max(50),
   tenantConcurrency: z.number().int().min(1).max(2),
@@ -40,7 +43,7 @@ export function jobConfiguration(bindings: JobBindings): JobPolicy | null {
   if (bindings.JOBS_ENABLED !== "true" || !bindings.DB || !bindings.JOBS)
     return null;
   const parsed = policySchema.safeParse({
-    queryLimit: integer(bindings.JOBS_QUERY_LIMIT, 40),
+    queryLimit: integer(bindings.JOBS_QUERY_LIMIT, QUERY_LIMIT),
     dispatchLimit: integer(bindings.JOBS_DISPATCH_LIMIT, 50),
     scheduleLimit: integer(bindings.JOBS_SCHEDULE_LIMIT, 25),
     tenantConcurrency: integer(bindings.JOBS_TENANT_CONCURRENCY, 2),
