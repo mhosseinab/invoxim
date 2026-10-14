@@ -39,6 +39,65 @@ interface MoveMap {
   targetOpenAllocationIds?: string[];
   sourceOpenAllocationIds?: string[];
 }
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+function isMembership(value: unknown): value is Membership {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    isStringArray(record.evidence) &&
+    isStringArray(record.manual) &&
+    isStringArray(record.entries) &&
+    isStringArray(record.reviews)
+  );
+}
+function isDecision(value: unknown): value is Decision {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.content_hash === "string" &&
+    typeof record.segment_index === "number" &&
+    typeof record.purchase_id === "string" &&
+    (record.decision === "same-purchase" ||
+      record.decision === "different-purchase")
+  );
+}
+/** persisted move maps are untrusted until they match the MoveMap shape (C10). */
+function parseMoveMap(json: string): MoveMap {
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    throw new CorrectionError("CONFLICT");
+  }
+  if (!value || typeof value !== "object") throw new CorrectionError("CONFLICT");
+  const record = value as Record<string, unknown>;
+  if (
+    !isMembership(record.target) ||
+    !isMembership(record.source) ||
+    (record.targetStatus !== "active" && record.targetStatus !== "excluded") ||
+    (record.sourceStatus !== "active" && record.sourceStatus !== "excluded") ||
+    !Array.isArray(record.decisions) ||
+    !record.decisions.every(isDecision)
+  )
+    throw new CorrectionError("CONFLICT");
+  for (const key of [
+    "targetPaymentState",
+    "sourcePaymentState",
+  ] as const)
+    if (record[key] !== undefined && typeof record[key] !== "string")
+      throw new CorrectionError("CONFLICT");
+  for (const key of [
+    "targetOpenAllocationIds",
+    "sourceOpenAllocationIds",
+  ] as const)
+    if (record[key] !== undefined && !isStringArray(record[key]))
+      throw new CorrectionError("CONFLICT");
+  return value as MoveMap;
+}
 const empty: CorrectionResult = {
   purchaseId: null,
   version: null,
@@ -102,180 +161,187 @@ function settlementPurchase(row: PurchaseRow) {
 export async function executeMerge(
   db: D1Database,
   session: CorrectionSession,
-  command: Extract<CorrectionCommand, { kind: "merge" | "unmerge" }>,
+  command: Extract<CorrectionCommand, { kind: "merge" }>,
   key: string,
   identity: { route: string; bodyHash: string },
   clock: () => number,
 ) {
   const user = session.tenant.userId;
-  if (command.kind === "merge") {
-    const target = await purchase(db, user, command.request.target.id),
-      source = await purchase(db, user, command.request.source.id);
-    if (target.record_status !== source.record_status)
-      throw new CorrectionError("CONFLICT");
-    if (target.id === source.id) throw new CorrectionError("INVALID_REQUEST");
-    const checks = [
-      purchaseVersion(user, target, command.request.target.version),
-      purchaseVersion(user, source, command.request.source.version),
-    ];
-    const targetMembers = await membership(db, user, target.id),
-      sourceMembers = await membership(db, user, source.id);
-    if (
-      targetMembers.entries.length + sourceMembers.entries.length > 200 ||
-      targetMembers.evidence.length +
-        targetMembers.manual.length +
-        sourceMembers.evidence.length +
-        sourceMembers.manual.length >
-        200 ||
-      targetMembers.reviews.length + sourceMembers.reviews.length > 200
+  const target = await purchase(db, user, command.request.target.id),
+    source = await purchase(db, user, command.request.source.id);
+  if (target.record_status !== source.record_status)
+    throw new CorrectionError("CONFLICT");
+  if (target.id === source.id) throw new CorrectionError("INVALID_REQUEST");
+  const checks = [
+    purchaseVersion(user, target, command.request.target.version),
+    purchaseVersion(user, source, command.request.source.version),
+  ];
+  const targetMembers = await membership(db, user, target.id),
+    sourceMembers = await membership(db, user, source.id);
+  if (
+    targetMembers.entries.length + sourceMembers.entries.length > 200 ||
+    targetMembers.evidence.length +
+      targetMembers.manual.length +
+      sourceMembers.evidence.length +
+      sourceMembers.manual.length >
+      200 ||
+    targetMembers.reviews.length + sourceMembers.reviews.length > 200
+  )
+    throw new CorrectionError("TOO_LARGE");
+  const targetEvents = await events(db, user, target.id),
+    sourceEvents = await events(db, user, source.id);
+  const targetReviews = await reviews(db, user, target.id),
+    sourceReviews = await reviews(db, user, source.id);
+  const combinedEvents = [...targetEvents, ...sourceEvents],
+    combinedReviews = [...targetReviews, ...sourceReviews];
+  if (combinedReviews.some((review) => review.version >= 2147483646))
+    throw new CorrectionError("CONFLICT");
+  validateRefundAllocation(combinedEvents);
+  const credits = [
+    ...(await creditProofs(db, user, target.id)),
+    ...(await creditProofs(db, user, source.id)),
+  ];
+  const settlement = evaluateCorrectionSettlement(
+    settlementPurchase(target),
+    settlementEvents(combinedEvents, combinedReviews.map(reviewFact)),
+    credits,
+  );
+  const allocations = planAllocations(target, settlement, combinedReviews);
+  if (
+    combinedReviews.length + allocations.filter((plan) => !plan.existing).length >
+    200
+  )
+    throw new CorrectionError("TOO_LARGE");
+  checks.push(...allocationsCheck(user, allocations));
+  const old = await db
+    .prepare(
+      "SELECT content_hash,segment_index,purchase_id,decision FROM ledger_match_decisions WHERE user_id=? AND (purchase_id=? OR purchase_id=?) ORDER BY content_hash,segment_index,purchase_id LIMIT 401",
     )
-      throw new CorrectionError("TOO_LARGE");
-    const targetEvents = await events(db, user, target.id),
-      sourceEvents = await events(db, user, source.id);
-    const targetReviews = await reviews(db, user, target.id),
-      sourceReviews = await reviews(db, user, source.id);
-    const combinedEvents = [...targetEvents, ...sourceEvents],
-      combinedReviews = [...targetReviews, ...sourceReviews];
-    if (combinedReviews.some((review) => review.version >= 2147483646))
-      throw new CorrectionError("CONFLICT");
-    validateRefundAllocation(combinedEvents);
-    const credits = [
-      ...(await creditProofs(db, user, target.id)),
-      ...(await creditProofs(db, user, source.id)),
-    ];
-    const settlement = evaluateCorrectionSettlement(
-      settlementPurchase(target),
-      settlementEvents(combinedEvents, combinedReviews.map(reviewFact)),
-      credits,
-    );
-    const allocations = planAllocations(target, settlement, combinedReviews);
-    if (
-      combinedReviews.length +
-        allocations.filter((plan) => !plan.existing).length >
-      200
-    )
-      throw new CorrectionError("TOO_LARGE");
-    checks.push(...allocationsCheck(user, allocations));
-    const old = await db
-      .prepare(
-        "SELECT content_hash,segment_index,purchase_id,decision FROM ledger_match_decisions WHERE user_id=? AND (purchase_id=? OR purchase_id=?) ORDER BY content_hash,segment_index,purchase_id LIMIT 401",
+    .bind(user, target.id, source.id)
+    .all<Decision>();
+  if (old.results.length > 400) throw new CorrectionError("TOO_LARGE");
+  const map: MoveMap = {
+    target: { ...targetMembers, reviews: [...targetMembers.reviews] },
+    source: sourceMembers,
+    targetStatus: target.record_status as "active" | "excluded",
+    sourceStatus: source.record_status as "active" | "excluded",
+    decisions: old.results,
+    targetPaymentState: target.payment_state,
+    sourcePaymentState: source.payment_state,
+    targetOpenAllocationIds: targetReviews
+      .filter(
+        (row) =>
+          row.reason === "payment-allocation-review" && row.status === "open",
       )
-      .bind(user, target.id, source.id)
-      .all<Decision>();
-    if (old.results.length > 400) throw new CorrectionError("TOO_LARGE");
-    const map: MoveMap = {
-      target: { ...targetMembers, reviews: [...targetMembers.reviews] },
-      source: sourceMembers,
-      targetStatus: target.record_status as "active" | "excluded",
-      sourceStatus: source.record_status as "active" | "excluded",
-      decisions: old.results,
-      targetPaymentState: target.payment_state,
-      sourcePaymentState: source.payment_state,
-      targetOpenAllocationIds: targetReviews
-        .filter(
-          (row) =>
-            row.reason === "payment-allocation-review" && row.status === "open",
-        )
-        .map((row) => row.id),
-      sourceOpenAllocationIds: sourceReviews
-        .filter(
-          (row) =>
-            row.reason === "payment-allocation-review" && row.status === "open",
-        )
-        .map((row) => row.id),
+      .map((row) => row.id),
+    sourceOpenAllocationIds: sourceReviews
+      .filter(
+        (row) =>
+          row.reason === "payment-allocation-review" && row.status === "open",
+      )
+      .map((row) => row.id),
+  };
+  map.target.reviews.push(
+    ...allocations.filter((plan) => !plan.existing).map((plan) => plan.id),
+  );
+  const moved = JSON.stringify(map);
+  if (new TextEncoder().encode(moved).length > 2097152)
+    throw new CorrectionError("TOO_LARGE");
+  checks.push(
+    ...membershipChecks(user, target.id, targetMembers),
+    ...membershipChecks(user, source.id, sourceMembers),
+  );
+  const mergeId = crypto.randomUUID(),
+    result = {
+      ...empty,
+      purchaseId: target.id,
+      version: target.version + 1,
+      mergeId,
     };
-    map.target.reviews.push(
-      ...allocations.filter((plan) => !plan.existing).map((plan) => plan.id),
-    );
-    const moved = JSON.stringify(map);
-    if (new TextEncoder().encode(moved).length > 2097152)
-      throw new CorrectionError("TOO_LARGE");
-    checks.push(
-      ...membershipChecks(user, target.id, targetMembers),
-      ...membershipChecks(user, source.id, sourceMembers),
-    );
-    const mergeId = crypto.randomUUID(),
-      result = {
-        ...empty,
-        purchaseId: target.id,
-        version: target.version + 1,
-        mergeId,
-      };
-    const tx = correctionTransaction(
-      db,
-      session,
-      key,
-      identity,
-      result,
-      checks,
-      clock,
-    );
-    writeAllocations(tx, user, target.id, allocations, clock);
-    tx.add(
-      `INSERT INTO purchase_merges(id,user_id,target_id,source_id,target_version,source_version,moved_json,active) SELECT ?,?,?,?,?,?,?,1 WHERE ${tx.guard}`,
-      [
-        mergeId,
-        user,
-        target.id,
-        source.id,
-        target.version + 1,
-        source.version + 1,
-        moved,
-        ...tx.guardValues,
-      ],
-    );
-    tx.add(
-      `DELETE FROM ledger_match_decisions WHERE user_id=? AND purchase_id IN(?,?) AND ${tx.guard}`,
-      [user, target.id, source.id, ...tx.guardValues],
-    );
-    tx.add(
-      `INSERT INTO ledger_match_decisions(user_id,content_hash,segment_index,purchase_id,decision) SELECT DISTINCT o.user_id,d.content_hash,o.segment_index,?,'same-purchase' FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id JOIN documents d ON d.user_id=o.user_id AND d.id=o.document_id WHERE pe.user_id=? AND pe.purchase_id IN(?,?) AND ${tx.guard} ON CONFLICT(user_id,content_hash,segment_index,purchase_id) DO UPDATE SET decision='same-purchase'`,
-      [target.id, user, target.id, source.id, ...tx.guardValues],
-    );
-    tx.add(
-      `UPDATE purchase_evidence SET purchase_id=? WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
-      [target.id, user, source.id, ...tx.guardValues],
-    );
-    tx.add(
-      `INSERT INTO manual_purchase_evidence(user_id,purchase_id,document_id) SELECT user_id,?,document_id FROM manual_purchase_evidence WHERE user_id=? AND purchase_id=? AND ${tx.guard} ON CONFLICT DO NOTHING`,
-      [target.id, user, source.id, ...tx.guardValues],
-    );
-    tx.add(
-      `DELETE FROM manual_purchase_evidence WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
-      [user, source.id, ...tx.guardValues],
-    );
-    tx.add(
-      `UPDATE ledger_entries SET purchase_id=? WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
-      [target.id, user, source.id, ...tx.guardValues],
-    );
-    tx.add(
-      `UPDATE review_items SET purchase_id=?,version=version+1 WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
-      [target.id, user, source.id, ...tx.guardValues],
-    );
-    tx.add(
-      `UPDATE purchases SET payment_state=?,version=version+1 WHERE user_id=? AND id=? AND ${tx.guard}`,
-      [settlement.paymentState, user, target.id, ...tx.guardValues],
-    );
-    tx.add(
-      `UPDATE purchases SET record_status='merged',version=version+1 WHERE user_id=? AND id=? AND ${tx.guard}`,
-      [user, source.id, ...tx.guardValues],
-    );
-    tx.audit(
-      "purchase",
+  const tx = correctionTransaction(
+    db,
+    session,
+    key,
+    identity,
+    result,
+    checks,
+    clock,
+  );
+  writeAllocations(tx, user, target.id, allocations, clock);
+  tx.add(
+    `INSERT INTO purchase_merges(id,user_id,target_id,source_id,target_version,source_version,moved_json,active) SELECT ?,?,?,?,?,?,?,1 WHERE ${tx.guard}`,
+    [
+      mergeId,
+      user,
       target.id,
-      "merged",
-      { version: target.version },
-      { version: target.version + 1 },
-    );
-    tx.audit(
-      "purchase",
       source.id,
-      "merged-into-target",
-      { recordStatus: source.record_status },
-      { recordStatus: "merged" },
-    );
-    return tx.commit();
-  }
+      target.version + 1,
+      source.version + 1,
+      moved,
+      ...tx.guardValues,
+    ],
+  );
+  tx.add(
+    `DELETE FROM ledger_match_decisions WHERE user_id=? AND purchase_id IN(?,?) AND ${tx.guard}`,
+    [user, target.id, source.id, ...tx.guardValues],
+  );
+  tx.add(
+    `INSERT INTO ledger_match_decisions(user_id,content_hash,segment_index,purchase_id,decision) SELECT DISTINCT o.user_id,d.content_hash,o.segment_index,?,'same-purchase' FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id JOIN documents d ON d.user_id=o.user_id AND d.id=o.document_id WHERE pe.user_id=? AND pe.purchase_id IN(?,?) AND ${tx.guard} ON CONFLICT(user_id,content_hash,segment_index,purchase_id) DO UPDATE SET decision='same-purchase'`,
+    [target.id, user, target.id, source.id, ...tx.guardValues],
+  );
+  tx.add(
+    `UPDATE purchase_evidence SET purchase_id=? WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
+    [target.id, user, source.id, ...tx.guardValues],
+  );
+  tx.add(
+    `INSERT INTO manual_purchase_evidence(user_id,purchase_id,document_id) SELECT user_id,?,document_id FROM manual_purchase_evidence WHERE user_id=? AND purchase_id=? AND ${tx.guard} ON CONFLICT DO NOTHING`,
+    [target.id, user, source.id, ...tx.guardValues],
+  );
+  tx.add(
+    `DELETE FROM manual_purchase_evidence WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
+    [user, source.id, ...tx.guardValues],
+  );
+  tx.add(
+    `UPDATE ledger_entries SET purchase_id=? WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
+    [target.id, user, source.id, ...tx.guardValues],
+  );
+  tx.add(
+    `UPDATE review_items SET purchase_id=?,version=version+1 WHERE user_id=? AND purchase_id=? AND ${tx.guard}`,
+    [target.id, user, source.id, ...tx.guardValues],
+  );
+  tx.add(
+    `UPDATE purchases SET payment_state=?,version=version+1 WHERE user_id=? AND id=? AND ${tx.guard}`,
+    [settlement.paymentState, user, target.id, ...tx.guardValues],
+  );
+  tx.add(
+    `UPDATE purchases SET record_status='merged',version=version+1 WHERE user_id=? AND id=? AND ${tx.guard}`,
+    [user, source.id, ...tx.guardValues],
+  );
+  tx.audit(
+    "purchase",
+    target.id,
+    "merged",
+    { version: target.version },
+    { version: target.version + 1 },
+  );
+  tx.audit(
+    "purchase",
+    source.id,
+    "merged-into-target",
+    { recordStatus: source.record_status },
+    { recordStatus: "merged" },
+  );
+  return tx.commit();
+}
+export async function executeUnmerge(
+  db: D1Database,
+  session: CorrectionSession,
+  command: Extract<CorrectionCommand, { kind: "unmerge" }>,
+  key: string,
+  identity: { route: string; bodyHash: string },
+  clock: () => number,
+) {
+  const user = session.tenant.userId;
   const saved = await db
     .prepare(
       "SELECT target_id,source_id,target_version,source_version,moved_json,active FROM purchase_merges WHERE user_id=? AND id=?",
@@ -302,7 +368,7 @@ export async function executeMerge(
     source.version >= 2147483646
   )
     throw new CorrectionError("CONFLICT");
-  const map = JSON.parse(saved.moved_json) as MoveMap;
+  const map = parseMoveMap(saved.moved_json);
   const union: Membership = {
     evidence: [...new Set([...map.target.evidence, ...map.source.evidence])],
     manual: [...new Set([...map.target.manual, ...map.source.manual])],

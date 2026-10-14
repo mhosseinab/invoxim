@@ -1533,3 +1533,54 @@ it("REVIEW-DISCARD-04 concurrent manual evidence wins atomically and blocks ever
       .first("n"),
   ).toBe(0);
 });
+it("C10 unmerge rejects moved_json that is valid JSON but not a MoveMap", async () => {
+  const session = await owner("qa-moved-json");
+  await purchase(session.tenant.userId, "moved-target", 10000, "unpaid");
+  await purchase(session.tenant.userId, "moved-source", 10000, "unpaid");
+  const store = createCorrectionStore(db);
+  const merged = await store.execute(
+    session,
+    {
+      kind: "merge",
+      request: {
+        target: { id: "moved-target", version: 1 },
+        source: { id: "moved-source", version: 1 },
+      },
+    },
+    "qa-moved-json-merge",
+  );
+  if (!merged.mergeId || !merged.version)
+    throw new Error("Missing successful merge identity");
+  await db
+    .prepare(
+      "UPDATE purchase_merges SET moved_json=? WHERE user_id=? AND id=?",
+    )
+    .bind(
+      JSON.stringify({ target: { evidence: null }, source: "broken" }),
+      session.tenant.userId,
+      merged.mergeId,
+    )
+    .run();
+  const sourceVersion = await db
+    .prepare(
+      "SELECT version FROM purchases WHERE user_id=? AND id='moved-source'",
+    )
+    .bind(session.tenant.userId)
+    .first<number>("version");
+  if (!sourceVersion) throw new Error("Missing source version");
+  await expect(
+    store.execute(
+      session,
+      {
+        kind: "unmerge",
+        purchaseId: "moved-target",
+        request: {
+          mergeId: merged.mergeId,
+          version: merged.version,
+          sourceVersion,
+        },
+      },
+      "qa-moved-json-unmerge",
+    ),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+});

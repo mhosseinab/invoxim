@@ -76,6 +76,17 @@ export interface AllocationPlan {
   status: "open" | "resolved";
   existing: ReviewRow | null;
 }
+/** Open payment-allocation questions, plus resolved ones being restored (C14). */
+function isAllocationReview(
+  warning: ReviewRow,
+  restoredOpenIds: readonly string[],
+): boolean {
+  return (
+    warning.reason === "payment-allocation-review" &&
+    (warning.status === "open" ||
+      (warning.status === "resolved" && restoredOpenIds.includes(warning.id)))
+  );
+}
 export function planAllocation(
   row: PurchaseRow,
   settlement: CorrectionSettlement,
@@ -83,13 +94,8 @@ export function planAllocation(
   restoredOpenIds: readonly string[] = [],
 ): AllocationPlan | null {
   const existing =
-    warnings.find(
-      (warning) =>
-        warning.reason === "payment-allocation-review" &&
-        (warning.status === "open" ||
-          (warning.status === "resolved" &&
-            restoredOpenIds.includes(warning.id))),
-    ) ?? null;
+    warnings.find((warning) => isAllocationReview(warning, restoredOpenIds)) ??
+    null;
   const status = allocationReviewStatus(
     row.payment_state,
     settlement,
@@ -140,12 +146,8 @@ export function planAllocations(
   warnings: readonly ReviewRow[],
   restoredOpenIds: readonly string[] = [],
 ): AllocationPlan[] {
-  const existing = warnings.filter(
-    (warning) =>
-      warning.reason === "payment-allocation-review" &&
-      (warning.status === "open" ||
-        (warning.status === "resolved" &&
-          restoredOpenIds.includes(warning.id))),
+  const existing = warnings.filter((warning) =>
+    isAllocationReview(warning, restoredOpenIds),
   );
   if (!existing.length) {
     const plan = planAllocation(row, settlement, [], restoredOpenIds);

@@ -3,7 +3,7 @@ import type { CorrectionSession, CorrectionStore } from "@invoxim/core";
 import { executeCashConfirm } from "./cash-confirm-operation";
 import { executeEventEdit } from "./event-edit-operation";
 import { executeInclusion } from "./inclusion-operation";
-import { executeMerge } from "./merge-operation";
+import { executeMerge, executeUnmerge } from "./merge-operation";
 import { executePurchaseEdit } from "./purchase-edit-operation";
 import { readCorrectionPurchase, readCorrectionReview } from "./reader";
 import { executeReview } from "./review-operation";
@@ -27,8 +27,10 @@ export function createCorrectionStore(
       return executeCashConfirm(db, session, command, key, identity, clock);
     if (command.kind === "exclude" || command.kind === "restore")
       return executeInclusion(db, session, command, key, identity, clock);
-    if (command.kind === "merge" || command.kind === "unmerge")
+    if (command.kind === "merge")
       return executeMerge(db, session, command, key, identity, clock);
+    if (command.kind === "unmerge")
+      return executeUnmerge(db, session, command, key, identity, clock);
     return executeReview(db, session, command, key, identity, clock);
   }
   return {
