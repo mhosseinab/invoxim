@@ -1408,13 +1408,16 @@
       "id": "UX-REVIEW-01",
       "title": "Compact import review with on-demand processing details",
       "milestone": "Onboarding UX",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [],
       "ownerRole": "frontend",
       "reviewerRole": "principal-reviewer",
       "scope": "Native dialog/mobile sheet for long review explanations with compact material summary and unchanged explicit Start authorization.",
       "completionEvidence": [
-        "evidence/implementation/compact-import-review-plan-20261014.md"
+        "evidence/implementation/compact-import-review-plan-20261014.md",
+        "evidence/implementation/compact-import-review-completion-20261014.md",
+        "evidence/implementation/compact-review-all-browser-final-20261014.log",
+        "evidence/implementation/import-speed-observation-20261014.md"
       ],
       "blockedBy": []
     }

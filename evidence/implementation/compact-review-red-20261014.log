@@ -1,0 +1,42 @@
+[WebServer] (node:133) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:179) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/onboarding-ui.spec.ts:929:1 › UX-REVIEW-01 compact review keeps consent visible and opens keyboard-accessible details (5.2s)
+
+
+  1) tests/onboarding-ui.spec.ts:929:1 › UX-REVIEW-01 compact review keeps consent visible and opens keyboard-accessible details
+
+    Error: expect(locator).toBeInViewport() failed
+
+    Locator:  getByRole('button', { name: 'Start import', exact: true })
+    Expected: in viewport
+    Received: viewport ratio 0
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toBeInViewport" getByRole('button', { name: 'Start import', exact: true }) with timeout 5000ms
+      - waiting for getByRole('button', { name: 'Start import', exact: true })
+        13 × locator resolved to <button disabled type="button" class="primary">Start import</button>
+           - unexpected value "viewport ratio 0"
+
+
+      932 |   await page.goto("/onboarding/review");
+      933 |   const start = page.getByRole("button", { name: "Start import", exact: true });
+    > 934 |   await expect(start).toBeInViewport();
+          |                       ^
+      935 |   await expect(start).toBeDisabled();
+      936 |   await expect(page.getByText(disclosure.cutoffAt, { exact: true })).not.toBeVisible();
+      937 |   const details = page.getByRole("button", { name: "Processing and privacy details", exact: true });
+        at /home/geek/workspace/invoxim/apps/web/tests/onboarding-ui.spec.ts:934:23
+
+    Error Context: ../../evidence/implementation/t28-browser-results/onboarding-ui-UX-REVIEW-01-1bb6e-keyboard-accessible-details/error-context.md
+
+  1 failed
+    tests/onboarding-ui.spec.ts:929:1 › UX-REVIEW-01 compact review keeps consent visible and opens keyboard-accessible details
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /home/geek/workspace/invoxim/apps/web
