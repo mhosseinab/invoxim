@@ -63,6 +63,7 @@ temp/
 *.pid.lock
 .playwright-mcp/
 spikes/
+evidence/implementation/
 
 # Private production bundle inventories
 .production/
