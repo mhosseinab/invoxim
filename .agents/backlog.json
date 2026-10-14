@@ -884,7 +884,7 @@
       "id": "T17",
       "title": "Implement Outlook mail adapter",
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "review",
       "dependsOn": [
         "T16"
       ],
@@ -903,7 +903,9 @@
       ],
       "redFirst": "Before behavior changes, add a named failing behavioral test from the linked cases and confirm its intended failure. For discovery/configuration tasks record actual validation instead.",
       "deliverableEvidence": "Personal/work account protocol fixtures, moved/archive mail and opaque continuation tests.",
-      "completionEvidence": [],
+      "completionEvidence": [
+        "evidence/implementation/t17-outlook-completion-20261014.md"
+      ],
       "blockedBy": [],
       "localProgressEvidence": [
         "evidence/implementation/m1-local-dependency-decision.md",
@@ -919,7 +921,12 @@
         "evidence/implementation/t17-outlook-floor-review-20261013.md",
         "evidence/implementation/t17-outlook-factories-checkpoint-20261013.md",
         "evidence/implementation/t17-provider-start-20261013.md",
-        "evidence/implementation/t17-outlook-orchestration-plan-20261014.md"
+        "evidence/implementation/t17-outlook-orchestration-plan-20261014.md",
+        "evidence/implementation/t17-outlook-ui-checkpoint-20261014.md",
+        "evidence/implementation/t17-outlook-completion-20261014-checkpoint.md",
+        "evidence/implementation/t17-outlook-completion-20261014-runtime-and-metadata.md",
+        "evidence/implementation/t17-outlook-disconnect-20261014.md",
+        "evidence/implementation/t17-outlook-independent-review-20261014.md"
       ]
     },
     {
