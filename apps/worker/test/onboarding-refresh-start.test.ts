@@ -11,7 +11,6 @@ import { createOnboardingImportPreparation } from "../../../packages/adapters/sr
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createOnboardingRoutes } from "../src/onboarding-routes";
-import { faultingDatabase } from "./support/faults";
 import { syntheticClassificationBindings } from "./classification-fixture";
 import {
   configuredAi,
@@ -20,6 +19,7 @@ import {
   query,
   startBody,
 } from "./onboarding-qa-fixture";
+import { faultingDatabase } from "./support/faults";
 
 afterEach(() => vi.restoreAllMocks());
 it.each(["none", "credential", "profile", "route"] as const)(

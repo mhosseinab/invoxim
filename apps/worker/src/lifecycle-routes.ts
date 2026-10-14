@@ -287,7 +287,7 @@ export function createLifecycleRoutes() {
   // confirmed/revocation disconnect only while its flag is on; otherwise this
   // route yields to the mailbox handler instead of failing the request.
   app.delete("/api/connections/:id", async (c, next) => {
-    if ((c.env ?? {}).LIFECYCLE_ENABLED !== "true") return next();
+    if (c.env?.LIFECYCLE_ENABLED !== "true") return next();
     try {
       const ready = await authorized(c.req.raw, c.env ?? {});
       if ("response" in ready) return ready.response;

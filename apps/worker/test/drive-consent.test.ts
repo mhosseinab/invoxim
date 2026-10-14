@@ -5,7 +5,6 @@ import type { MailboxSession, TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
 import { createArchiveConsentRepository } from "../../../packages/adapters/src/drive/archive-consent";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { faultingDatabase } from "./support/faults";
 import m1 from "./migrations/historical/0001_auth.sql?raw";
 import m2 from "./migrations/historical/0002_records.sql?raw";
 import m3 from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
@@ -23,6 +22,7 @@ import m14 from "./migrations/historical/0014_onboarding.sql?raw";
 import m15 from "./migrations/historical/0015_fx.sql?raw";
 import m16 from "./migrations/historical/0016_outlook_folders.sql?raw";
 import m17 from "./migrations/historical/0017_drive_storage.sql?raw";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
