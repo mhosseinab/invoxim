@@ -264,6 +264,7 @@ export function createDiscoveryPages(
             }),
           );
       }
+      diagnosticStage = "capacity";
       if (state.page_token !== null && page.nextPageToken === state.page_token)
         throw new DiscoveryError("UNAVAILABLE");
       const deleted = [...new Set(page.deletedIds ?? [])];

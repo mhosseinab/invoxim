@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { TenantContext } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
+import { createGmailDiscovery } from "../../../packages/adapters/src/discovery/gmail";
 import { createDiscoveryPages } from "../../../packages/adapters/src/discovery/pages";
 
 afterEach(() => vi.restoreAllMocks());
@@ -49,6 +50,25 @@ it("reports a fixed discovery stage without retaining database or mailbox error 
   expect(warn).toHaveBeenCalledWith("gmail_discovery_retry", {
     stage: "state",
     reason: "UNEXPECTED",
+  });
+  expect(JSON.stringify(warn.mock.calls)).not.toContain("PRIVATE");
+});
+
+it("never logs provider network exception content", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  vi.spyOn(globalThis, "fetch").mockRejectedValue(
+    new Error("PRIVATE NETWORK VALUE"),
+  );
+  await expect(
+    createGmailDiscovery("PRIVATE TOKEN").list({
+      range: { startMs: 1, cutoffMs: 1000, timezone: "UTC" },
+      queryMode: "filtered",
+      signal: new AbortController().signal,
+    }),
+  ).rejects.toMatchObject({ code: "UNAVAILABLE" });
+  expect(warn).toHaveBeenCalledWith("gmail_discovery_transport_failure", {
+    operation: "list",
+    reason: "invalid-response-or-network",
   });
   expect(JSON.stringify(warn.mock.calls)).not.toContain("PRIVATE");
 });

@@ -273,6 +273,22 @@ export function createGmailDiscovery(
         ),
       );
     } catch (cause) {
+      if (!(cause instanceof DiscoveryError) || controller.signal.aborted)
+        console.warn("gmail_discovery_transport_failure", {
+          operation:
+            path === "profile"
+              ? "profile"
+              : path === "messages"
+                ? "list"
+                : path === "history"
+                  ? "history"
+                  : "metadata",
+          reason: controller.signal.aborted
+            ? "timeout"
+            : cause instanceof DiscoveryError
+              ? cause.code
+              : "invalid-response-or-network",
+        });
       if (cause instanceof DiscoveryError) throw cause;
       throw new DiscoveryError("UNAVAILABLE");
     } finally {
@@ -282,7 +298,12 @@ export function createGmailDiscovery(
   }
   function parsed<T>(schema: z.ZodType<T>, value: unknown): T {
     const result = schema.safeParse(value);
-    if (!result.success) throw new DiscoveryError("UNAVAILABLE");
+    if (!result.success) {
+      console.warn("gmail_discovery_response_invalid", {
+        codes: result.error.issues.slice(0, 4).map((issue) => issue.code),
+      });
+      throw new DiscoveryError("UNAVAILABLE");
+    }
     return result.data;
   }
   return {
