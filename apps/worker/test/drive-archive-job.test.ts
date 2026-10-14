@@ -8,7 +8,9 @@ import { createArchiveDispatchStore } from "../../../packages/adapters/src/drive
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 const db = env.DB;
 const bytes = new Uint8Array([

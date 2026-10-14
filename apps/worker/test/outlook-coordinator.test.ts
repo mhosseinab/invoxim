@@ -8,7 +8,9 @@ import { createOutlookFolderStore } from "../../../packages/adapters/src/discove
 import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 beforeAll(async () => {
   await env.DB.prepare(folderExclusionsMigration).run();
@@ -240,7 +242,7 @@ it("OUTLOOK-02 canceled control and insufficient combined invocation allowance p
       checkpoint: async () => true,
     }),
   ).toEqual({ kind: "budget" });
-  expect(meter.executedStatements()).toBe(0);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(0);
   const controller = new AbortController();
   controller.abort();
   expect(

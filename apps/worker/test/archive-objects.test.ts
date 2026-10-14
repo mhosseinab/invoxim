@@ -389,7 +389,7 @@ it("ARCH-02: request/claim/save/check/complete use at most six invocation querie
   expect(await repository.savePlan(owner, work.lease, plan)).toBe(true);
   expect(await repository.authorized(owner, work.lease)).toBe(true);
   expect(await repository.complete(owner, work.lease)).toBe(true);
-  expect(metered.executedStatements()).toBe(6);
+  expect(metered.executedStatements()).toBeLessThanOrEqual(6);
 });
 it("ARCH-02: bounded account cleanup removes archive objects before legacy document cascade", async () => {
   await claimed();

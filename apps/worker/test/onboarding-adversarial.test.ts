@@ -16,8 +16,9 @@ import {
   owner,
   query,
   runtime,
-  startBody,
-} from "./onboarding-qa-fixture";
+  startBody, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 const db = env.DB;
 

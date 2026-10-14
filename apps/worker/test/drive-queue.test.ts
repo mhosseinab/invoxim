@@ -122,7 +122,7 @@ it("consumes only a strict opaque archive envelope, captures the exact object le
       userId: foreign.userId,
     }),
   ).resolves.toBe("ack");
-  expect(meter.executedStatements()).toBe(0);
+  expect(meter.executedStatements()).toBeLessThanOrEqual(0);
   expect(run).not.toHaveBeenCalled();
   await expect(
     engine.consume({ schemaVersion: 2, archiveId: "synthetic-consume-id" }),

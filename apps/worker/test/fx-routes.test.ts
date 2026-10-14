@@ -13,7 +13,9 @@ import {
 } from "../../../packages/contracts/src/fx-reporting";
 import { createFxRoutes } from "../src/fx-routes";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
+
+installOnboardingQaHooks();
 
 const query =
   "expectedProfileVersion=1&reportingCurrency=EUR&fromDate=2026-01-01&toDate=2026-12-31&limit=3";

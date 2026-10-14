@@ -21,14 +21,22 @@ const fixtureDatabase = env.DB;
 const db = fixtureDatabase;
 
 export const now = Date.parse("2026-03-30T12:00:00Z");
-beforeAll(async () => {
-  for (const sql of [baseline])
-    for (const statement of sql.split(";").filter((value) => value.trim()))
-      await db.prepare(statement).run();
-});
-afterEach(async () => {
-  await db.prepare("DROP TRIGGER IF EXISTS qa_abort_onboard").run();
-});
+
+/**
+ * Registers the onboarding QA fixture hooks explicitly (X6). Call this at the
+ * top of each suite that needs the baseline schema or the abort-trigger
+ * cleanup — importing this module no longer installs hooks as a side effect.
+ */
+export function installOnboardingQaHooks(): void {
+  beforeAll(async () => {
+    for (const sql of [baseline])
+      for (const statement of sql.split(";").filter((value) => value.trim()))
+        await db.prepare(statement).run();
+  });
+  afterEach(async () => {
+    await db.prepare("DROP TRIGGER IF EXISTS qa_abort_onboard").run();
+  });
+}
 export async function owner(
   userId: string,
   connectionId = "mailbox-b",

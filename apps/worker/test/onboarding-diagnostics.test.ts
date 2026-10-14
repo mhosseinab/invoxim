@@ -7,8 +7,10 @@ import {
 import { OnboardingError } from "@invoxim/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { createOnboardingRoutes } from "../src/onboarding-routes";
-import { owner } from "./onboarding-qa-fixture";
+import { owner, installOnboardingQaHooks } from "./onboarding-qa-fixture";
 import { faultingDatabase } from "./support/faults";
+
+installOnboardingQaHooks();
 
 const origin = "https://qa-start-diagnostics.example.invalid";
 afterEach(() => vi.restoreAllMocks());

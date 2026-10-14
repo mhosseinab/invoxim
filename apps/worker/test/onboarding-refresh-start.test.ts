@@ -17,9 +17,10 @@ import {
   now,
   owner,
   query,
-  startBody,
-} from "./onboarding-qa-fixture";
+  startBody, installOnboardingQaHooks } from "./onboarding-qa-fixture";
 import { faultingDatabase } from "./support/faults";
+
+installOnboardingQaHooks();
 
 afterEach(() => vi.restoreAllMocks());
 it.each(["none", "credential", "profile", "route"] as const)(
