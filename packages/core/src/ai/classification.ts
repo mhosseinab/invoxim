@@ -1,6 +1,6 @@
 import { type Extraction, extractionSchema } from "@invoxim/contracts";
 import type { TenantContext } from "../tenant-context";
-import { aiRunIdentityKey } from "./engine";
+import { aiRunIdentityKey, settleReservedAttempt } from "./engine";
 import type {
   AiCheckpoint,
   AiResponse,
@@ -12,6 +12,20 @@ import type {
 
 export type ReceiptCategory = Extraction["records"][number]["category"];
 export const EMAIL_CLASSIFICATION_VERSION = "email-classification-v1";
+/** Classification review reasons (K8). Type union derived from this array. */
+export const EMAIL_CLASSIFICATION_REASONS = [
+  "schema",
+  "uncertain",
+  "input-limit",
+  "budget",
+  "in-progress",
+  "settings-changed",
+  "timeout",
+  "rate-limit",
+  "outage",
+] as const;
+export type EmailClassificationReason =
+  (typeof EMAIL_CLASSIFICATION_REASONS)[number];
 export type EmailClassification =
   | {
       readonly status: "classified";
@@ -20,16 +34,7 @@ export type EmailClassification =
     }
   | {
       readonly status: "needs-review";
-      readonly reason:
-        | "schema"
-        | "uncertain"
-        | "input-limit"
-        | "budget"
-        | "in-progress"
-        | "settings-changed"
-        | "timeout"
-        | "rate-limit"
-        | "outage";
+      readonly reason: EmailClassificationReason;
     };
 export interface EmailClassifier {
   classify(
@@ -75,17 +80,9 @@ export function validateEmailClassification(
   }
   return row.status === "needs-review" &&
     Object.keys(row).length === 2 &&
-    [
-      "schema",
-      "uncertain",
-      "input-limit",
-      "budget",
-      "in-progress",
-      "settings-changed",
-      "timeout",
-      "rate-limit",
-      "outage",
-    ].includes(typeof row.reason === "string" ? row.reason : "")
+    (EMAIL_CLASSIFICATION_REASONS as readonly string[]).includes(
+      typeof row.reason === "string" ? row.reason : "",
+    )
     ? (row as unknown as EmailClassification)
     : null;
 }
@@ -123,46 +120,13 @@ export function createClassificationEngine(dependencies: {
         attemptId: `${await aiRunIdentityKey(checkpoint)}:1`,
         attemptNumber: 1,
       };
-      const reservation = await dependencies.store.reserve(attempt);
-      if (reservation !== "reserved")
-        return {
-          status: "needs-review",
-          reason: reservation === "budget" ? "budget" : "in-progress",
-        };
-      if (!(await dependencies.store.authorize(attempt)))
-        return { status: "needs-review", reason: "settings-changed" };
-      let response: AiResponse;
-      try {
-        response = await dependencies.classifier.classify(
-          parts,
-          config,
-          signal,
-        );
-      } catch {
-        await dependencies.store.settle(attempt, {
-          state: "uncertain",
-          usage: null,
-        });
-        return { status: "needs-review", reason: "outage" };
-      }
-      const usage = response.usage;
-      const validUsage =
-        usage !== null &&
-        [usage.input, usage.output, usage.other].every(
-          (value) => Number.isSafeInteger(value) && value >= 0,
-        );
-      const exceeded =
-        validUsage &&
-        BigInt(usage.input) + BigInt(usage.output) + BigInt(usage.other) >
-          BigInt(config.reservationUnits);
-      await dependencies.store.settle(attempt, {
-        state:
-          validUsage && usage.source === "reported" && !exceeded
-            ? "known"
-            : "uncertain",
-        usage: validUsage ? usage : null,
-      });
-      if (exceeded) return { status: "needs-review", reason: "budget" };
+      const reserved = await settleReservedAttempt(
+        dependencies.store,
+        attempt,
+        () => dependencies.classifier.classify(parts, config, signal),
+      );
+      if (reserved.status === "needs-review") return reserved;
+      const { response } = reserved;
       let result: EmailClassification;
       if (response.status === "failed")
         result = {

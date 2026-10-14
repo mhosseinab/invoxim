@@ -1,5 +1,6 @@
 import type { TenantContext } from "../tenant-context";
 import type {
+  AiAttemptIdentity,
   AiCheckpoint,
   AiResponse,
   AiRunIdentity,
@@ -10,6 +11,69 @@ import type {
   PersistableAiResult,
 } from "./types";
 import { validateExtraction, validateModelExtraction } from "./validation";
+
+/**
+ * One reserve → authorize → call → settle path (K3, ext#21).
+ * Classification and extraction both settle through here so usage,
+ * over-budget detection and rate-limit cooldown stay identical.
+ */
+export type ReservedAttemptResult =
+  | {
+      readonly status: "needs-review";
+      readonly reason: "budget" | "in-progress" | "settings-changed" | "outage";
+    }
+  | {
+      readonly status: "settled";
+      readonly response: AiResponse;
+      readonly known: boolean;
+    };
+
+export async function settleReservedAttempt(
+  store: Pick<AiUsageStore, "reserve" | "authorize" | "settle">,
+  attempt: AiAttemptIdentity,
+  call: () => Promise<AiResponse>,
+): Promise<ReservedAttemptResult> {
+  const reservation = await store.reserve(attempt);
+  if (reservation !== "reserved")
+    return {
+      status: "needs-review",
+      reason: reservation === "budget" ? "budget" : "in-progress",
+    };
+  if (!(await store.authorize(attempt)))
+    return { status: "needs-review", reason: "settings-changed" };
+  let response: AiResponse;
+  try {
+    response = await call();
+  } catch {
+    await store.settle(attempt, { state: "uncertain", usage: null });
+    return { status: "needs-review", reason: "outage" };
+  }
+  const usage = response.usage;
+  const validUsage =
+    usage !== null &&
+    [usage.input, usage.output, usage.other].every(
+      (value) => Number.isSafeInteger(value) && value >= 0,
+    );
+  const exceeded =
+    validUsage &&
+    BigInt(usage.input) + BigInt(usage.output) + BigInt(usage.other) >
+      BigInt(attempt.config.reservationUnits);
+  const known = validUsage && usage.source === "reported" && !exceeded;
+  await store.settle(attempt, {
+    state: known ? "known" : "uncertain",
+    usage: validUsage ? usage : null,
+    ...(response.status === "failed" &&
+    response.reason === "rate-limit" &&
+    response.retryAfterMs !== undefined &&
+    Number.isSafeInteger(response.retryAfterMs) &&
+    response.retryAfterMs >= 0
+      ? { retryAfterMs: response.retryAfterMs }
+      : {}),
+  });
+  if (exceeded) return { status: "needs-review", reason: "budget" };
+  return { status: "settled", response, known };
+}
+
 export function verifyFinancialDocumentResult(
   result: PersistableAiResult,
 ): PersistableAiResult {
@@ -96,49 +160,16 @@ export function createInferenceEngine(dependencies: {
           attemptNumber: number,
           attemptId: `${prefix}:${number}`,
         };
-        const reservation = await store.reserve(attempt);
-        if (reservation !== "reserved")
-          return {
-            status: "needs-review",
-            reason: reservation === "budget" ? "budget" : "in-progress",
-          };
-        if (!(await store.authorize(attempt)))
-          return { status: "needs-review", reason: "settings-changed" };
-        let response: AiResponse;
-        try {
-          response = await extractor.extract(
+        const reserved = await settleReservedAttempt(store, attempt, () =>
+          extractor.extract(
             snapshot,
             config,
             { id: attempt.attemptId, repair: number > 1 },
             signal,
-          );
-        } catch {
-          await store.settle(attempt, { state: "uncertain", usage: null });
-          return { status: "needs-review", reason: "outage" };
-        }
-        const usage = response.usage;
-        const validUsage =
-          usage !== null &&
-          [usage.input, usage.output, usage.other].every(
-            (value) => Number.isSafeInteger(value) && value >= 0,
-          );
-        const exceeded =
-          validUsage &&
-          BigInt(usage.input) + BigInt(usage.output) + BigInt(usage.other) >
-            BigInt(config.reservationUnits);
-        const known = validUsage && usage.source === "reported" && !exceeded;
-        await store.settle(attempt, {
-          state: known ? "known" : "uncertain",
-          usage: validUsage ? usage : null,
-          ...(response.status === "failed" &&
-          response.reason === "rate-limit" &&
-          response.retryAfterMs !== undefined &&
-          Number.isSafeInteger(response.retryAfterMs) &&
-          response.retryAfterMs >= 0
-            ? { retryAfterMs: response.retryAfterMs }
-            : {}),
-        });
-        if (exceeded) return { status: "needs-review", reason: "budget" };
+          ),
+        );
+        if (reserved.status === "needs-review") return reserved;
+        const { response, known } = reserved;
         if (response.status === "failed")
           return { status: "needs-review", reason: response.reason };
         result =

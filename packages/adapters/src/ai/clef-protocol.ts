@@ -2,6 +2,25 @@ import type { ReceiptCategory } from "@invoxim/core";
 import { z } from "zod";
 
 export const CLEF_RECEIPT_POLICY_VERSION = "document-type-classification-v4";
+/** Clef identity strings (A4). One source for model ids used in config, guard and logs. */
+export const CLEF_MODEL_ID = "@cf/cloudflare/clef";
+export const CLEF_REQUEST_MODEL = "clef";
+export const CLEF_DESTINATION_ID = "cloudflare-clef";
+/** Shared receipt thresholds (A3). Defaults live here, not at each call site. */
+export const DEFAULT_POSITIVE_THRESHOLD = 0.9;
+export const DEFAULT_NEGATIVE_THRESHOLD = 0.1;
+export function resolveClefThresholds(
+  options: {
+    negativeThreshold?: number;
+    positiveThreshold?: number | undefined;
+  } = {},
+): { negativeThreshold: number; positiveThreshold: number } {
+  return {
+    negativeThreshold: options.negativeThreshold ?? DEFAULT_NEGATIVE_THRESHOLD,
+    positiveThreshold: options.positiveThreshold ?? DEFAULT_POSITIVE_THRESHOLD,
+  };
+}
+
 const criteria: Record<ReceiptCategory, string> = {
   groceries: "Food and household consumables from grocery stores",
   dining: "Restaurants, cafes and prepared meals",
@@ -49,7 +68,7 @@ const financialTypes = new Set([
 ]);
 
 const clefResponseSchema = z.object({
-  model: z.enum(["clef", "@cf/cloudflare/clef"]),
+  model: z.enum([CLEF_REQUEST_MODEL, CLEF_MODEL_ID]),
   answers: z.object({
     receipt: z.strictObject({ type: z.literal("noul"), noul: probability }),
     documentType: z.strictObject({
@@ -98,7 +117,7 @@ export function buildClefRequest(
 ) {
   const state = parts.map((part) => ({ id: part.id, text: part.text }));
   return {
-    model: "clef",
+    model: CLEF_REQUEST_MODEL,
     state,
     questions: {
       receipt: {
@@ -133,38 +152,47 @@ export function routeClefReceipt(
     positiveThreshold?: number | undefined;
   } = {},
 ) {
-  if (probability <= (options.negativeThreshold ?? 0.1))
-    return "non-document" as const;
-  if (probability >= (options.positiveThreshold ?? 0.9))
-    return "candidate" as const;
+  const { negativeThreshold, positiveThreshold } =
+    resolveClefThresholds(options);
+  if (probability <= negativeThreshold) return "non-document" as const;
+  if (probability >= positiveThreshold) return "candidate" as const;
   return "uncertain" as const;
 }
 
-/** Cross-check both decisions; neither question alone authorizes financial facts. */
+/**
+ * Cross-check both decisions; neither question alone authorizes financial facts.
+ * `isReceipt` is decided here (A3) so callers do not re-derive it from the outcome.
+ */
 export function routeClefDocument(
   answer: NonNullable<ReturnType<typeof parseClefResponse>>,
   options: {
     negativeThreshold?: number;
     positiveThreshold?: number | undefined;
   } = {},
-) {
+): {
+  readonly outcome: "candidate" | "non-document" | "uncertain";
+  readonly isReceipt: boolean;
+} {
+  const { positiveThreshold } = resolveClefThresholds(options);
   const receipt = routeClefReceipt(answer.answers.receipt.noul, options);
   const type = answer.answers.documentType;
   const financial = financialTypes.has(type.choice);
   if (receipt === "non-document")
-    return financial ? ("uncertain" as const) : receipt;
+    return financial
+      ? { outcome: "uncertain", isReceipt: false }
+      : { outcome: "non-document", isReceipt: false };
   if (
     receipt !== "candidate" &&
     !financial &&
     type.choice !== "unknown" &&
-    (type.probabilities[type.choice] ?? 0) >= (options.positiveThreshold ?? 0.9)
+    (type.probabilities[type.choice] ?? 0) >= positiveThreshold
   )
-    return "non-document" as const;
+    return { outcome: "non-document", isReceipt: false };
   if (
     receipt === "candidate" &&
     financial &&
-    (type.probabilities[type.choice] ?? 0) >= (options.positiveThreshold ?? 0.9)
+    (type.probabilities[type.choice] ?? 0) >= positiveThreshold
   )
-    return "candidate" as const;
-  return "uncertain" as const;
+    return { outcome: "candidate", isReceipt: true };
+  return { outcome: "uncertain", isReceipt: false };
 }

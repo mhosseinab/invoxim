@@ -13,7 +13,9 @@ import {
   validateEmailClassification,
   validatePersistableAiResult,
 } from "@invoxim/core";
+import { CLEF_DESTINATION_ID, CLEF_MODEL_ID } from "./clef-protocol";
 import { buildFingerprintTuple } from "./configuration";
+import type { AiPricing } from "./pricing";
 export interface AiBudgetPolicy {
   readonly dailyDocuments: number;
   readonly monthlyDocuments: number;
@@ -22,22 +24,15 @@ export interface AiBudgetPolicy {
   readonly globalDailyUsdMicros: string;
   readonly globalMonthlyUsdMicros: string;
 }
-export interface AiPriceSnapshot {
+/** Identity fields wrapped around the one shared pricing shape (A5). */
+export type AiPriceSnapshot = AiPricing & {
   readonly destinationId: string;
   readonly modelId: string;
   readonly configVersion: string;
   readonly policyVersion: number;
   readonly configurationDigest: string;
   readonly acceptedConfigurationDigest?: string;
-  readonly version: string;
-  readonly approved: true;
-  readonly currency: "USD";
-  readonly source: string;
-  readonly checkedAt: string;
-  readonly inputUsdMicrosPerMillion: string;
-  readonly outputUsdMicrosPerMillion: string;
-  readonly otherUsdMicrosPerMillion: string;
-}
+};
 export interface AiBudgetOptions {
   readonly lease: JobLease;
   readonly policy: AiBudgetPolicy;
@@ -326,8 +321,8 @@ function createMeter(
       !(options.classificationAuthorization
         ? input.config.promptVersion === EMAIL_CLASSIFICATION_VERSION &&
           input.config.mode === "hosted" &&
-          input.config.destinationId === "cloudflare-clef" &&
-          input.config.modelId === "@cf/cloudflare/clef" &&
+          input.config.destinationId === CLEF_DESTINATION_ID &&
+          input.config.modelId === CLEF_MODEL_ID &&
           options.classificationAuthorization.config.settingsRevision ===
             input.config.settingsRevision &&
           options.classificationAuthorization.config.consentId ===

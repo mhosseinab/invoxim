@@ -2,15 +2,23 @@ import type { AiResponse, EmailClassifier } from "@invoxim/core";
 import { z } from "zod";
 import {
   buildClefRequest,
+  CLEF_DESTINATION_ID,
+  CLEF_MODEL_ID,
   CLEF_RECEIPT_POLICY_VERSION,
   parseClefResponse,
+  resolveClefThresholds,
   routeClefDocument,
 } from "./clef-protocol";
+import { aiPricingSchema } from "./pricing";
 
-export { CLEF_RECEIPT_POLICY_VERSION } from "./clef-protocol";
+export {
+  CLEF_DESTINATION_ID,
+  CLEF_MODEL_ID,
+  CLEF_RECEIPT_POLICY_VERSION,
+} from "./clef-protocol";
 export const receiptClassificationConfigurationSchema = z.strictObject({
   enabled: z.boolean(),
-  model: z.literal("@cf/cloudflare/clef"),
+  model: z.literal(CLEF_MODEL_ID),
   version: z.string().min(1).max(120),
   maxInputBytes: z.number().int().min(100).max(24000),
   timeoutMs: z.number().int().min(100).max(30000),
@@ -18,13 +26,7 @@ export const receiptClassificationConfigurationSchema = z.strictObject({
   positiveThreshold: z.number().min(0.5).max(1).optional(),
   uncertainAction: z.enum(["review", "extract"]).optional(),
   categoryThreshold: z.number().min(0.5).max(1),
-  pricing: z.strictObject({
-    version: z.string().min(1).max(120),
-    approved: z.literal(true),
-    currency: z.literal("USD"),
-    source: z.string().url(),
-    checkedAt: z.iso.datetime(),
-    inputUsdMicrosPerMillion: z.string().regex(/^[0-9]{1,15}$/),
+  pricing: aiPricingSchema.extend({
     outputUsdMicrosPerMillion: z.literal("0"),
     otherUsdMicrosPerMillion: z.literal("0"),
   }),
@@ -51,7 +53,7 @@ export function createClefEmailClassifier(
         JSON.stringify(input.state),
       ).byteLength;
       if (
-        config.modelId !== "@cf/cloudflare/clef" ||
+        config.modelId !== CLEF_MODEL_ID ||
         signal?.aborted ||
         inputBytes > config.maxInputBytes
       )
@@ -85,8 +87,8 @@ export function createClefEmailClassifier(
         const answer = parsed.answers.category;
         const chosenProbability = answer.probabilities[answer.choice] ?? 0;
         const receiptProbability = parsed.answers.receipt.noul;
-        const positiveThreshold = options.positiveThreshold ?? 0.9;
-        const negativeThreshold = options.negativeThreshold ?? 0.1;
+        const { negativeThreshold, positiveThreshold } =
+          resolveClefThresholds(options);
         const usage = parsed.usage
           ? {
               input: parsed.usage.input_tokens,
@@ -97,11 +99,10 @@ export function createClefEmailClassifier(
           : null;
         if (!usage)
           console.warn("ai_usage_unavailable", {
-            destinationId: "cloudflare-clef",
-            modelId: "@cf/cloudflare/clef",
+            destinationId: CLEF_DESTINATION_ID,
+            modelId: CLEF_MODEL_ID,
           });
-        const outcome = routeClefDocument(parsed, options);
-        const uncertain = outcome === "uncertain";
+        const decision = routeClefDocument(parsed, options);
         console.info("ai_classification_decision", {
           policyVersion: CLEF_RECEIPT_POLICY_VERSION,
           partCount: parts.length,
@@ -109,16 +110,16 @@ export function createClefEmailClassifier(
           receiptProbability,
           negativeThreshold,
           positiveThreshold,
-          outcome,
+          outcome: decision.outcome,
         });
         return {
           status: "ok",
           output: JSON.stringify(
-            uncertain
+            decision.outcome === "uncertain"
               ? { status: "needs-review", reason: "uncertain" }
               : {
                   status: "classified",
-                  isReceipt: outcome === "candidate",
+                  isReceipt: decision.isReceipt,
                   category:
                     chosenProbability >= (options.categoryThreshold ?? 0.5)
                       ? answer.choice
