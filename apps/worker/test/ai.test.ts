@@ -720,3 +720,34 @@ it("AI-06 ordinary numeric and HTTP-date Retry-After floors retain their full tw
   expect(dated.retryAfterMs).toBeGreaterThanOrEqual(7199000);
   expect(dated.retryAfterMs).toBeLessThanOrEqual(7200000);
 });
+it("AI-06 non-HTTP-date Retry-After uses the shared G5 fallback instead of loose Date.parse", async () => {
+  const start = Date.now();
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(null, {
+      status: 429,
+      headers: { "Retry-After": new Date(start + 7200000).toISOString() },
+    }),
+  );
+  const model = destination.models[0];
+  if (!model) throw new Error("fixture");
+  const parts = [{ id: "receipt", text: "Paid EUR24.90" }];
+  const reserved = {
+    ...config,
+    reservationUnits: chatReservationUnits(
+      parts,
+      model,
+      config.maxOutputTokens,
+    ),
+  };
+  const result = await createChatCompletionsExtractor(
+    destination,
+    model,
+    "synthetic-private-key",
+  ).extract(parts, reserved, { id: "iso-retry", repair: false });
+  expect(result).toEqual({
+    status: "failed",
+    reason: "rate-limit",
+    usage: null,
+    retryAfterMs: 30000,
+  });
+});
