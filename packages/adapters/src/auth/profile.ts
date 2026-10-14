@@ -5,6 +5,7 @@ import {
 } from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
 import type { LoginConfiguration } from "./configuration";
+import { allowedEmailSet, isAllowedEmail } from "./configuration";
 import type { LoginAuth } from "./login";
 export const preferencesSchema = preferencesRequestSchema;
 export interface ProfileRow {
@@ -19,14 +20,12 @@ export function createProfileService(
   auth: LoginAuth,
   configuration: LoginConfiguration,
 ) {
-  const allowed = new Set(
-    configuration.allowedEmails.map((email) => email.toLowerCase()),
-  );
+  const allowed = allowedEmailSet(configuration.allowedEmails);
   async function current(headers: Headers) {
     const session = await auth.api.getSession({ headers });
     if (
       !session?.user.emailVerified ||
-      !allowed.has(session.user.email.toLowerCase())
+      !isAllowedEmail(session.user.email, allowed)
     )
       return null;
     const profile = await db
