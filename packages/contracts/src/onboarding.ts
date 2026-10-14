@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { onboardingViewSchema } from "./designs";
 import {
-  currencyMinorDigits,
+  MINOR_BOUND,
   hasControlCharacters,
+  supportedCurrency,
   validCalendarDate,
   validTimezone,
 } from "./primitives";
@@ -15,12 +16,10 @@ const id = z
 const date = z.string().refine(validCalendarDate);
 const version = z.number().int().min(0).max(2147483646);
 const generation = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
-const count = z.number().int().min(0).max(9000000000000);
+const count = z.number().int().min(0).max(Number(MINOR_BOUND));
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const timezone = z.string().max(80).refine(validTimezone);
-const currency = z.enum(
-  Object.keys(currencyMinorDigits) as [string, ...string[]],
-);
+const currency = supportedCurrency;
 export const onboardingQuerySchema = z.strictObject({
   connectionId: id.optional(),
 });

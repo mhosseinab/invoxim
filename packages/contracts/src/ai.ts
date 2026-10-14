@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { hasControlCharacters } from "./primitives";
+import { MINOR_BOUND, hasControlCharacters } from "./primitives";
 
 const version = z.number().int().min(0).max(2147483646);
 const identifier = z
@@ -46,10 +46,10 @@ export const aiSettingsResponseSchema = z.strictObject({
   processingReviewRequired: z.literal(true),
   configured: z.boolean(),
   allowance: z.strictObject({
-    dailyDocumentsRemaining: z.number().int().min(0).max(9_000_000_000_000),
-    monthlyDocumentsRemaining: z.number().int().min(0).max(9_000_000_000_000),
-    dailyUnitsRemaining: z.number().int().min(0).max(9_000_000_000_000),
-    monthlyUnitsRemaining: z.number().int().min(0).max(9_000_000_000_000),
+    dailyDocumentsRemaining: z.number().int().min(0).max(Number(MINOR_BOUND)),
+    monthlyDocumentsRemaining: z.number().int().min(0).max(Number(MINOR_BOUND)),
+    dailyUnitsRemaining: z.number().int().min(0).max(Number(MINOR_BOUND)),
+    monthlyUnitsRemaining: z.number().int().min(0).max(Number(MINOR_BOUND)),
     hostedFundingAvailable: z.boolean(),
     cooldownActive: z.boolean(),
   }),

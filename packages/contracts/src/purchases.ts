@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { extractionSchema } from "./designs";
-import { hasControlCharacters, validCalendarDate } from "./primitives";
+import {
+  MINOR_BOUND,
+  hasControlCharacters,
+  supportedCurrency,
+  validCalendarDate,
+} from "./primitives";
 
 const date = z.string().refine(validCalendarDate);
 const id = z
@@ -9,12 +14,12 @@ const id = z
   .max(4096)
   .refine((value) => !hasControlCharacters(value));
 const category = extractionSchema.shape.records.element.shape.category;
-const currency = z.string().regex(/^[A-Z]{3}$/);
+const currency = supportedCurrency;
 const documentMinor = z
   .string()
   .regex(/^(0|[1-9][0-9]*)$/)
   .max(13)
-  .pipe(z.string().refine((value) => BigInt(value) <= 9000000000000n));
+  .pipe(z.string().refine((value) => BigInt(value) <= MINOR_BOUND));
 const unsignedMinor = z
   .string()
   .regex(/^(0|[1-9][0-9]*)$/)
@@ -29,10 +34,7 @@ export const purchaseFiltersSchema = z
     to: date.optional(),
     q: z.string().trim().max(120).optional(),
     category: category.optional(),
-    currency: z
-      .string()
-      .regex(/^[A-Z]{3}$/)
-      .optional(),
+    currency: supportedCurrency.optional(),
     mailbox: z.string().min(1).max(160).optional(),
     paymentState: z
       .enum(["unknown", "unpaid", "partially_paid", "paid"])

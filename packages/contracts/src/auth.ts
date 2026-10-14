@@ -1,11 +1,8 @@
 import { z } from "zod";
-import { currencyMinorDigits, validTimezone } from "./primitives";
+import { supportedCurrency, validTimezone } from "./primitives";
 
 const timezone = z.string().min(1).max(80).refine(validTimezone);
-const reportingCurrency = z
-  .string()
-  .length(3)
-  .refine((currency) => Object.hasOwn(currencyMinorDigits, currency));
+const reportingCurrency = supportedCurrency;
 export const MAX_PROFILE_VERSION = 2_147_483_646;
 const version = z.number().int().min(1).max(MAX_PROFILE_VERSION);
 

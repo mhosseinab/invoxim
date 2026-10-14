@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { extractionSchema } from "./designs";
 import {
+  MINOR_BOUND,
   hasControlCharacters,
-  minorDigits,
+  supportedCurrency,
   validCalendarDate,
 } from "./primitives";
 
@@ -13,22 +14,12 @@ const id = z
   .refine((value) => !hasControlCharacters(value));
 const version = z.number().int().min(1).max(2147483646);
 const date = z.string().refine(validCalendarDate);
-const currency = z
-  .string()
-  .length(3)
-  .refine((value) => {
-    try {
-      minorDigits(value);
-      return true;
-    } catch {
-      return false;
-    }
-  });
+const currency = supportedCurrency;
 const amount = z
   .string()
   .regex(/^(0|[1-9][0-9]*)$/)
   .max(13)
-  .refine((value) => BigInt(value) <= 9000000000000n);
+  .refine((value) => BigInt(value) <= MINOR_BOUND);
 const positive = amount.refine((value) => BigInt(value) > 0n);
 const merchant = z
   .string()
