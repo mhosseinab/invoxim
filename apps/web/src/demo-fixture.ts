@@ -1,3 +1,6 @@
+import { ledgerTotals } from "@invoxim/core";
+import { amount } from "./format";
+
 export const demoFixture = {
   schemaVersion: 1,
   exampleData: true,
@@ -135,3 +138,29 @@ export const demoFixture = {
     unpaidDocumentTotalMinor: "8000",
   },
 } as const;
+
+export type DemoPurchase = (typeof demoFixture.purchases)[number];
+export function demoTotals(purchase?: DemoPurchase) {
+  const entries = demoFixture.ledgerEntries
+    .filter((entry) => !purchase || entry.purchaseId === purchase.id)
+    .map((entry) => ({
+      kind: entry.kind,
+      minor: entry.amountMinor,
+      currency: demoFixture.currency,
+      date: entry.date,
+      eligible: true,
+    }));
+  return ledgerTotals(
+    entries,
+    demoFixture.currency,
+    purchase
+      ? undefined
+      : {
+          startDate: demoFixture.range.start,
+          endExclusive: demoFixture.range.endExclusive,
+        },
+  );
+}
+export function demoMoney(minor: string) {
+  return amount(minor, demoFixture.currency);
+}

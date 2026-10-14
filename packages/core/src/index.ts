@@ -79,6 +79,8 @@ export {
 export { convertMinor } from "./money-conversion";
 export { createOnboardingUsecases } from "./onboarding/service";
 export * from "./onboarding/types";
-export { deriveRecurringSuggestion } from "./recurring/derive";
-export * from "./recurring/types";
+export {
+  deriveRecurringSuggestion,
+  RecurringInputError,
+} from "./recurring/derive";
 export type { TenantContext } from "./tenant-context";

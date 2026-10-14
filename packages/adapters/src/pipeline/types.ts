@@ -7,7 +7,7 @@ import type {
   JobOutcome,
 } from "@invoxim/core";
 import type { AiBudgetPolicy, AiPriceSnapshot } from "../ai/budget";
-import type { TransientContentReader } from "./gmail-content";
+import type { TransientContentReader } from "./content-types";
 import type { PipelineRepository, PipelineWork } from "./repository";
 
 export interface PipelineControl {

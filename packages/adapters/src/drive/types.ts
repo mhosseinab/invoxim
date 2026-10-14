@@ -1,3 +1,5 @@
+import type { CredentialCipher } from "../security/types";
+
 /** Trusted caller persists these IDs and binds token/marker to authorized Drive consent. */
 export interface DriveFolderPlan {
   fileId: string;
@@ -42,3 +44,11 @@ export interface DriveArchiveTransport {
   ): Promise<void>;
 }
 export type DriveHttpTransport = (request: Request) => Promise<Response>;
+/** Server-composed configuration; account and storage consent remain separate from login/mail. */
+export interface DriveServiceConfiguration {
+  provider: "google-drive";
+  oauthProvider: "google";
+  callback: string;
+  cipher: CredentialCipher;
+  scopes: readonly string[];
+}

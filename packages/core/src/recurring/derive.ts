@@ -11,7 +11,13 @@ import {
 } from "@invoxim/contracts";
 import { monthlyAnchor } from "../calendar-anchor";
 import { roundRatio } from "../money-conversion";
-import { RecurringInputError } from "./types";
+
+export class RecurringInputError extends Error {
+  constructor() {
+    super("INVALID_RECURRING_INPUT");
+    this.name = "RecurringInputError";
+  }
+}
 
 type Series = Extract<RecurringResult, { status: "series" }>;
 const day = (date: string) => Date.parse(`${date}T00:00:00.000Z`) / 86400000;

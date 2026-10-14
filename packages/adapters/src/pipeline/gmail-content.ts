@@ -1,9 +1,11 @@
 import { DOCUMENT_LIMITS } from "@invoxim/core";
-import type {
-  GmailAttachmentContent,
-  GmailDocumentInputResult,
-} from "../documents/gmail";
+import type { GmailAttachmentContent } from "../documents/gmail";
 import { normalizeGmailDocumentInput } from "../documents/gmail";
+import {
+  ContentError,
+  type ContentLoadInput,
+  type TransientContentReader,
+} from "./content-types";
 import {
   attachmentBatchRequest,
   GMAIL_BATCH_URL,
@@ -12,30 +14,8 @@ import {
   retryAfterMs,
 } from "./gmail-batch";
 
-export class ContentError extends Error {
-  constructor(
-    readonly code:
-      | "CONTENT_AUTH_CHANGED"
-      | "CONTENT_UNAVAILABLE"
-      | "CONTENT_AUTH_REQUIRED"
-      | "CONTENT_SOURCE_UNAVAILABLE"
-      | "CONTENT_BYTE_LIMIT",
-    readonly retryAfterMs?: number,
-  ) {
-    super(code);
-  }
-}
-export interface ContentLoadInput {
-  connectionId: string;
-  providerMessageId: string;
-  /** Server-owned persisted part identity for one inference stage. */
-  partKey?: string;
-  signal: AbortSignal;
-  checkpoint: () => Promise<boolean>;
-}
-export interface TransientContentReader {
-  load(input: ContentLoadInput): Promise<GmailDocumentInputResult>;
-}
+export { ContentError, type ContentLoadInput, type TransientContentReader };
+
 const validId = (value: unknown): value is string =>
   typeof value === "string" && /^[A-Za-z0-9_-]{1,256}$/.test(value);
 

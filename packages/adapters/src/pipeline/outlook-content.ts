@@ -2,8 +2,8 @@ import type { MimePart } from "@invoxim/core";
 import { DOCUMENT_LIMITS } from "@invoxim/core";
 import { z } from "zod";
 import { hashJsonValue } from "../hash";
-import type { ContentLoadInput, TransientContentReader } from "./gmail-content";
-import { ContentError } from "./gmail-content";
+import type { ContentLoadInput, TransientContentReader } from "./content-types";
+import { ContentError } from "./content-types";
 
 const idSchema = z.string().regex(/^[A-Za-z0-9_+=/-]{1,256}$/);
 const bodySchema = z.object({

@@ -15,10 +15,8 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { createOriginalMailReader } from "../documents/original-mail";
-import {
-  ContentError,
-  createGmailContentReader,
-} from "../pipeline/gmail-content";
+import { ContentError } from "../pipeline/content-types";
+import { createGmailContentReader } from "../pipeline/gmail-content";
 import { createOutlookContentReader } from "../pipeline/outlook-content";
 import { sha256Hex } from "../security/helpers";
 import type { CredentialCipher, ProviderCredentials } from "../security/types";

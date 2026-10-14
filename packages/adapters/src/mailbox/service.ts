@@ -13,8 +13,18 @@ import {
 import { activeProfile, activeProfileSql } from "../pipeline/repository-guards";
 import { stateHash } from "../security/helpers";
 import { createOAuthStateStore } from "../security/oauth-state";
+import type { CredentialCipher } from "../security/types";
 import { createCredentialVault } from "../security/vault";
-import type { MailboxServiceConfiguration } from "./types";
+
+/** Server-composed configuration; account and storage consent remain separate from login/mail. */
+export interface MailboxServiceConfiguration {
+  provider: "gmail" | "outlook";
+  oauthProvider: "google" | "microsoft";
+  callback: string;
+  limit: number;
+  cipher: CredentialCipher;
+  scopes: readonly string[];
+}
 
 interface ConnectionRow {
   id: string;
