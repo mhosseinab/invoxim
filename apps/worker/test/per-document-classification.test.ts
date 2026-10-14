@@ -242,7 +242,9 @@ function flow(
   async function stage(current: JobLease) {
     const meter = createInvocationDatabase(db, 40);
     const pipeline = createPipelineService(meter.db, {
-      repository: createPipelineRepository(meter.db),
+      repository: createPipelineRepository(meter.db, {
+        processingDigest: async () => "f".repeat(64),
+      }),
       documents: documentExtractor,
       directModelInputs: true,
       content: {
@@ -507,7 +509,9 @@ it("DOC-CLASSIFICATION-05 a sibling's negative cache cannot skip another documen
   if (!firstCache || !secondDocument)
     throw new Error("Synthetic cache missing");
   const second = await nextLease(),
-    repo = createPipelineRepository(db);
+    repo = createPipelineRepository(db, {
+      processingDigest: async () => "f".repeat(64),
+    });
   if (!repo.skipDocument || !repo.skipSource)
     throw new Error("Synthetic skip methods unavailable");
   expect(await repo.checkpoint(second)).toBe(true);
@@ -599,7 +603,9 @@ it("DOC-CLASSIFICATION-07 stale cached content hash cannot authorize a negative 
     )
     .bind("c".repeat(64), tenant.userId, cached.run_key)
     .run();
-  const repo = createPipelineRepository(db);
+  const repo = createPipelineRepository(db, {
+    processingDigest: async () => "f".repeat(64),
+  });
   if (!repo.skipDocument) throw new Error("Synthetic skip unavailable");
   expect(
     await repo.skipDocument(first, {

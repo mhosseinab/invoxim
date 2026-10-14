@@ -109,6 +109,14 @@ it("T12 DB populated upgrade preserves original observations and adds financial 
 });
 
 const now = Date.UTC(2026, 9, 12);
+/** P7: tests pass processingDigest explicitly; fixtures accept this digest. */
+const acceptedDigest = "d".repeat(64);
+function repoOptions() {
+  return {
+    clock: () => now,
+    processingDigest: async () => acceptedDigest,
+  };
+}
 function lease(user = "pipeline-a", id = `job-${user}`): JobLease {
   return {
     context: { userId: user, authority: "job" } as TenantContext,
@@ -190,9 +198,9 @@ beforeEach(async () => {
       .run();
     await db
       .prepare(
-        "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES('consent',?,'c',1,'processor','local',1,?,1)",
+        "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized,accepted_configuration_digest) VALUES('consent',?,'c',1,'processor','local',1,?,1,?)",
       )
-      .bind(user, now)
+      .bind(user, now, acceptedDigest)
       .run();
     await db
       .prepare(
@@ -257,7 +265,7 @@ async function tableCount(
     .first<number>("count");
 }
 it("T12 LEDGER-01 native atomic accepted observation/evidence/event and completed job", async () => {
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const current = lease();
   const candidate = input();
   const snapshot = await repo.loadSnapshot(current, candidate);
@@ -291,7 +299,7 @@ it("T12 LEDGER-01 native atomic accepted observation/evidence/event and complete
   expect(await tableCount("ledger_entries")).toBe(1);
 });
 it("T12 LEDGER-08 same document ID/hash are completely independent across tenants", async () => {
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   for (const user of ["pipeline-a", "pipeline-b"]) {
     const current = lease(user);
     const candidate = input();
@@ -323,7 +331,7 @@ it("T12 LEDGER-08 same document ID/hash are completely independent across tenant
   );
 });
 it("T12 native D1 injected financial write failure rolls back observation, purchase, evidence and source completion", async () => {
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const current = lease();
   const candidate = input();
   const snapshot = await repo.loadSnapshot(current, candidate);
@@ -375,7 +383,7 @@ for (const mutation of [
   "UPDATE source_messages SET available=0 WHERE user_id='pipeline-a'",
 ])
   it(`T12 stale lease/identity/config cannot write: ${mutation.split(" SET ")[1]}`, async () => {
-    const repo = createPipelineRepository(db, { clock: () => now });
+    const repo = createPipelineRepository(db, repoOptions());
     const current = lease();
     const candidate = input();
     const snapshot = await repo.loadSnapshot(current, candidate);
@@ -393,7 +401,7 @@ for (const mutation of [
     expect(await tableCount("ledger_entries")).toBe(0);
   });
 it("T12 populated upgrade and account deletion cascade retained financial/review rows without orphan ownership", async () => {
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const candidate = input();
   const current = lease();
   const snapshot = await repo.loadSnapshot(current, candidate);
@@ -433,7 +441,7 @@ it("T12 populated upgrade and account deletion cascade retained financial/review
   );
 });
 it("T12 observation payload rejects raw text and quotes before any native D1 financial write", async () => {
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const candidate = input();
   const current = lease();
   const snapshot = await repo.loadSnapshot(current, candidate);
@@ -513,7 +521,7 @@ it("T12 failed first document persists an operational review and continues the n
     )
     .bind("c".repeat(64))
     .run();
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   expect(
     await repo.failDocument(lease(), {
       documentId: "d",
@@ -556,7 +564,7 @@ it("T12 typed unsupported ZIP metadata remains alongside supported receipt metad
       "UPDATE discovery_source_jobs SET pipeline_stage='parse',extraction_fingerprint=NULL WHERE user_id='pipeline-a'",
     )
     .run();
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   await expect(
     repo.stageDocuments(lease(), [
       {
@@ -591,7 +599,7 @@ it("T12 typed unsupported ZIP metadata remains alongside supported receipt metad
 
 it("T12 actual bounded snapshot candidate query uses reference/content/event indexes", async () => {
   const spy = vi.spyOn(db, "prepare");
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   let sql: string | undefined;
   try {
     expect(await repo.loadSnapshot(lease(), input())).not.toBeNull();
@@ -625,7 +633,7 @@ it("T12 an external version bump cannot masquerade as this batch's financial pro
     .run();
   const current = lease();
   const candidate = input();
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const snapshot = await repo.loadSnapshot(current, candidate);
   if (!snapshot) throw new Error("missing synthetic snapshot");
   const plan = planLedgerIngestion(candidate, snapshot);
@@ -681,7 +689,7 @@ async function twoExistingPurchases() {
     )
     .bind(JSON.stringify(multiple.result))
     .run();
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const snapshot = await repo.loadSnapshot(lease(), multiple);
   if (!snapshot) throw new Error("missing synthetic snapshot");
   const plan = planLedgerIngestion(multiple, snapshot);
@@ -790,7 +798,7 @@ it("T13 HOME05 incomplete extraction persists an unlinked question without creat
     )
     .bind(JSON.stringify(candidate.result))
     .run();
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const snapshot = await repo.loadSnapshot(lease(), candidate);
   if (!snapshot) throw new Error("missing synthetic snapshot");
   expect(
@@ -828,7 +836,7 @@ it("T13 HOME05 populated review upgrade leaves legacy context unknown", async ()
 });
 
 it("T14 EDIT-01 trusted pipeline snapshot loads durable purchase overrides and original corrected cash values", async () => {
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const candidate = input();
   const emptySnapshot = await repo.loadSnapshot(lease(), candidate);
   if (!emptySnapshot) throw new Error("missing synthetic snapshot");
@@ -920,6 +928,12 @@ it("T29 processing digest gates initial checkpoint and changed-consent writes wi
     clock: () => now,
     processingDigest: async () => accepted,
   });
+  await db
+    .prepare(
+      "UPDATE processing_consents SET accepted_configuration_digest=? WHERE user_id=? AND id=?",
+    )
+    .bind("f".repeat(64), current.context.userId, current.consentId)
+    .run();
   expect(await repository.checkpoint(current)).toBe(false);
   await db
     .prepare(
@@ -947,6 +961,32 @@ it("T29 processing digest gates initial checkpoint and changed-consent writes wi
   ).toBe("leased");
 });
 
+// P0.9 / P7: processingDigest is not a test-only optional mode. The
+// accepted-configuration-digest consent gate must run for every pipeline
+// repository; a caller cannot disable it by omitting the option.
+it("P0.9 omitting processingDigest must fail closed on the consent digest gate", async () => {
+  const current = lease();
+  await db
+    .prepare(
+      "UPDATE processing_consents SET accepted_configuration_digest=? WHERE user_id=? AND id=?",
+    )
+    .bind("d".repeat(64), current.context.userId, current.consentId)
+    .run();
+  // A resolver that rejects the consent's digest must fence checkpoint.
+  const rejecting = createPipelineRepository(db, {
+    clock: () => now,
+    processingDigest: async () => "e".repeat(64),
+  });
+  expect(await rejecting.checkpoint(current)).toBe(false);
+  // Omitting processingDigest must not silently skip the gate (P7).
+  // Intended: this construction fails closed — checkpoint refuses — rather
+  // than returning true with the consent digest unchecked.
+  const omitted = createPipelineRepository(db, {
+    clock: () => now,
+  } as Parameters<typeof createPipelineRepository>[1]);
+  await expect(omitted.checkpoint(current)).rejects.toThrow();
+});
+
 it("T14 pipeline snapshot preserves a manual source association without model observations", async () => {
   const current = lease();
   await db
@@ -962,9 +1002,10 @@ it("T14 pipeline snapshot preserves a manual source association without model ob
     .bind(current.context.userId)
     .run();
   const candidate = input();
-  const snapshot = await createPipelineRepository(db, {
-    clock: () => now,
-  }).loadSnapshot(current, candidate);
+  const snapshot = await createPipelineRepository(db, repoOptions()).loadSnapshot(
+    current,
+    candidate,
+  );
   expect(snapshot?.manualEvidence).toEqual([
     {
       contentHash: candidate.identity.contentHash,
@@ -1001,7 +1042,7 @@ for (const column of [
       )
       .bind(current.context.userId)
       .run();
-    const repo = createPipelineRepository(db, { clock: () => now });
+    const repo = createPipelineRepository(db, repoOptions());
     await expect(repo.loadSnapshot(current, input())).rejects.toThrow(
       "PIPELINE_CONFLICT",
     );
@@ -1029,7 +1070,7 @@ it("T14 reprocessing an excluded purchase keeps new cash excluded in list summar
     )
     .bind(current.context.userId)
     .run();
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const candidate = input();
   const snapshot = await repo.loadSnapshot(current, candidate);
   if (!snapshot) throw new Error("missing owned synthetic snapshot");
@@ -1056,7 +1097,7 @@ it("T14 reprocessing an excluded purchase keeps new cash excluded in list summar
 });
 
 it("manual false-positive decision fences future checkpoints and stale financial commits without crossing tenants", async () => {
-  const repo = createPipelineRepository(db, { clock: () => now });
+  const repo = createPipelineRepository(db, repoOptions());
   const current = lease();
   const candidate = input();
   const snapshot = await repo.loadSnapshot(current, candidate);
@@ -1103,7 +1144,7 @@ it("P0.5 commit and skipDocument share one source status rule for an unresolved 
       .bind(user, "e".repeat(64))
       .run();
   }
-  const commitRepo = createPipelineRepository(db, { clock: () => now });
+  const commitRepo = createPipelineRepository(db, repoOptions());
   const commitLease = lease("pipeline-a");
   const candidate = input();
   const snapshot = await commitRepo.loadSnapshot(commitLease, candidate);
@@ -1141,7 +1182,7 @@ it("P0.5 commit and skipDocument share one source status rule for an unresolved 
       now,
     )
     .run();
-  const skipRepo = createPipelineRepository(db, { clock: () => now });
+  const skipRepo = createPipelineRepository(db, repoOptions());
   expect(
     await skipRepo.skipDocument?.(lease("pipeline-b"), {
       documentId: "d",

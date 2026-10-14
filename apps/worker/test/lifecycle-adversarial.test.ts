@@ -129,9 +129,9 @@ async function seed(name: string, merchant = "QA shared purchase") {
       .run();
     await db
       .prepare(
-        "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,?,1,'synthetic','local',1,0,1)",
+        "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized,accepted_configuration_digest) VALUES(?,?,?,1,'synthetic','local',1,0,1,?)",
       )
-      .bind(`pc-${c}`, name, c)
+      .bind(`pc-${c}`, name, c, "f".repeat(64))
       .run();
     await db
       .prepare(
@@ -419,7 +419,9 @@ it("LIFECYCLE-03 configured journal refusal atomically disables access but canno
   expect(await jobStore.checkpoint(lease)).toBe(false);
   expect(await jobStore.claim(lease.jobId)).toBeNull();
   expect(
-    await createPipelineRepository(db).stageDocuments(lease, [
+    await createPipelineRepository(db, {
+      processingDigest: async () => "f".repeat(64),
+    }).stageDocuments(lease, [
       {
         id: "late-account-doc",
         partKey: "late",
@@ -523,7 +525,9 @@ it("LIFECYCLE-04 local disconnect preserves shared cash, cancels a leased consum
   });
   expect(await store.checkpoint(lease)).toBe(false);
   expect(
-    await createPipelineRepository(db).stageDocuments(lease, [
+    await createPipelineRepository(db, {
+      processingDigest: async () => "f".repeat(64),
+    }).stageDocuments(lease, [
       {
         id: "late-doc",
         partKey: "late",

@@ -217,7 +217,9 @@ function flow(
   async function stage(current: JobLease) {
     const meter = createInvocationDatabase(db, 40);
     const pipeline = createPipelineService(meter.db, {
-      repository: createPipelineRepository(meter.db),
+      repository: createPipelineRepository(meter.db, {
+        processingDigest: async () => "f".repeat(64),
+      }),
       documents,
       directModelInputs: true,
       content: {
@@ -422,7 +424,9 @@ it.each([
       jobId: "guarded-skip",
       leaseId: "guarded-lease",
     };
-    const repo = createPipelineRepository(db);
+    const repo = createPipelineRepository(db, {
+      processingDigest: async () => "f".repeat(64),
+    });
     expect(await repo.checkpoint(current)).toBe(true);
     if (change === "stale-lease") current.fence = 2;
     else if (change === "other-tenant")

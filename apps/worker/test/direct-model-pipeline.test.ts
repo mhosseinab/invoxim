@@ -273,7 +273,9 @@ function flow(
   async function stage(current: JobLease) {
     const meter = createInvocationDatabase(db, 40);
     const pipeline = createPipelineService(meter.db, {
-      repository: createPipelineRepository(meter.db),
+      repository: createPipelineRepository(meter.db, {
+        processingDigest: async () => "f".repeat(64),
+      }),
       documents,
       directModelInputs: true,
       content: {

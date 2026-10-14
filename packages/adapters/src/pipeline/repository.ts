@@ -456,10 +456,11 @@ export function createPipelineRepository(
   options: {
     clock?: () => number;
     remainingStatements?: () => number;
-    processingDigest?: (
+    /** P7: required so no caller can silently skip the consent digest gate. */
+    processingDigest: (
       selection: PipelineProcessingSelection,
     ) => Promise<string | null>;
-  } = {},
+  },
 ): PipelineRepository {
   const clock = options.clock ?? Date.now;
   const acceptedDigests = new Map<string, string>();
@@ -474,7 +475,6 @@ export function createPipelineRepository(
     ]);
   }
   async function acceptSelection(lease: JobLease, encoded: string | undefined) {
-    if (!options.processingDigest) return true;
     acceptedDigests.delete(leaseKey(lease));
     if (!encoded) return false;
     const selection = z
@@ -496,8 +496,21 @@ export function createPipelineRepository(
     acceptedDigests.set(leaseKey(lease), expected);
     return true;
   }
+  async function loadSelection(lease: JobLease): Promise<string | undefined> {
+    const where = baseLiveWhere(lease, clock());
+    const row = await db
+      .prepare(
+        `SELECT ${selectionProjection} AS processing_selection FROM ${LIVE_FROM} WHERE ${where.sql}`,
+      )
+      .bind(...where.values)
+      .first<{ processing_selection: string }>();
+    return row?.processing_selection;
+  }
+  async function ensureAccepted(lease: JobLease): Promise<boolean> {
+    if (acceptedDigests.has(leaseKey(lease))) return true;
+    return acceptSelection(lease, await loadSelection(lease));
+  }
   function reviewed(lease: JobLease, predicate: Predicate): Predicate {
-    if (!options.processingDigest) return predicate;
     const expected = acceptedDigests.get(leaseKey(lease));
     if (!expected) return { sql: "0", values: [] };
     return {
@@ -531,7 +544,7 @@ export function createPipelineRepository(
     );
     if (!compatibility) return base;
     return {
-      sql: `(${base.sql}) AND EXISTS(SELECT 1 FROM ai_extractions compatible JOIN usage_events ev ON ev.user_id=compatible.user_id AND ev.run_key=compatible.run_key WHERE compatible.user_id=? AND compatible.document_id=? AND compatible.run_key=? AND compatible.extraction_version=? AND json_extract(ev.price_snapshot,'$.configurationDigest')=? AND json_extract(ev.price_snapshot,'$.policyVersion')=?${options.processingDigest ? " AND json_extract(ev.price_snapshot,'$.acceptedConfigurationDigest')=?" : ""})`,
+      sql: `(${base.sql}) AND EXISTS(SELECT 1 FROM ai_extractions compatible JOIN usage_events ev ON ev.user_id=compatible.user_id AND ev.run_key=compatible.run_key WHERE compatible.user_id=? AND compatible.document_id=? AND compatible.run_key=? AND compatible.extraction_version=? AND json_extract(ev.price_snapshot,'$.configurationDigest')=? AND json_extract(ev.price_snapshot,'$.policyVersion')=? AND json_extract(ev.price_snapshot,'$.acceptedConfigurationDigest')=?)`,
       values: [
         ...base.values,
         lease.context.userId,
@@ -540,9 +553,7 @@ export function createPipelineRepository(
         compatibility.extractionVersion,
         compatibility.configurationDigest,
         compatibility.policyVersion,
-        ...(options.processingDigest
-          ? [acceptedDigests.get(leaseKey(lease)) ?? ""]
-          : []),
+        acceptedDigests.get(leaseKey(lease)) ?? "",
       ],
     };
   }
@@ -581,7 +592,7 @@ export function createPipelineRepository(
     const where = baseLiveWhere(lease, clock());
     const row = await db
       .prepare(
-        `SELECT sm.id AS source_id,sm.provider_message_id,pc.ai_settings_revision,pc.disclosure_version,${previousFinancialProjection} AS previous_extraction,dj.pipeline_stage,dj.document_index,dj.extraction_fingerprint,${options.processingDigest ? `${selectionProjection} AS processing_selection,` : ""}(SELECT COALESCE(json_group_array(json_object('id',dd.id,'partKey',dd.part_key,'contentHash',dd.content_hash,'mime',dd.mime,'byteLength',dd.byte_length,'parseState',dd.parse_state,'parserVersion',dd.parser_version,'code',dd.parse_code)),'[]') FROM (SELECT id,part_key,content_hash,mime,byte_length,parse_state,parser_version,parse_code FROM documents WHERE user_id=sm.user_id AND source_message_id=sm.id AND pipeline_index IS NOT NULL ORDER BY pipeline_index LIMIT 65) dd) AS documents FROM ${LIVE_FROM} WHERE ${where.sql}`,
+        `SELECT sm.id AS source_id,sm.provider_message_id,pc.ai_settings_revision,pc.disclosure_version,${previousFinancialProjection} AS previous_extraction,dj.pipeline_stage,dj.document_index,dj.extraction_fingerprint,${selectionProjection} AS processing_selection,(SELECT COALESCE(json_group_array(json_object('id',dd.id,'partKey',dd.part_key,'contentHash',dd.content_hash,'mime',dd.mime,'byteLength',dd.byte_length,'parseState',dd.parse_state,'parserVersion',dd.parser_version,'code',dd.parse_code)),'[]') FROM (SELECT id,part_key,content_hash,mime,byte_length,parse_state,parser_version,parse_code FROM documents WHERE user_id=sm.user_id AND source_message_id=sm.id AND pipeline_index IS NOT NULL ORDER BY pipeline_index LIMIT 65) dd) AS documents FROM ${LIVE_FROM} WHERE ${where.sql}`,
       )
       .bind(...where.values)
       .first<SourceRow>();
@@ -698,6 +709,7 @@ export function createPipelineRepository(
       documents.some((document) => document.parseState === "extracted")
     )
       throw new PipelinePersistenceError("INVALID_PIPELINE");
+    if (!(await ensureAccepted(lease))) return "stale";
     const guard = liveGuard(lease, clock());
     guard.sql += ` AND EXISTS(SELECT 1 FROM discovery_source_jobs WHERE user_id=? AND job_id=? AND pipeline_stage='parse')`;
     guard.values.push(lease.context.userId, lease.jobId);
@@ -795,6 +807,7 @@ export function createPipelineRepository(
     lease: JobLease,
     input: LedgerInput,
   ): Promise<LedgerSnapshot | null> {
+    if (!(await ensureAccepted(lease))) return null;
     const guard = inputGuard(lease, input);
     const records =
       input.result.status === "accepted" ? input.result.records : [];
@@ -1067,6 +1080,7 @@ export function createPipelineRepository(
   ): Promise<"committed" | "stale"> {
     const { input, plan, nextDocumentIndex } = operation;
     validatePlan(input, plan);
+    if (!(await ensureAccepted(lease))) return "stale";
     const guard = versionGuard(inputGuard(lease, input), lease, plan);
     const statements: D1PreparedStatement[] = [];
     const add = (sql: string, values: (string | number | null)[]) =>
@@ -1207,6 +1221,7 @@ export function createPipelineRepository(
     },
   ): Promise<"committed" | "stale"> {
     identifier.parse(outcome.documentId);
+    if (!(await ensureAccepted(lease))) return "stale";
     const guard = negativeClassificationGuard(
       lease,
       outcome.classificationFingerprint,
@@ -1250,6 +1265,7 @@ export function createPipelineRepository(
     lease: JobLease,
     classificationFingerprint: string,
   ): Promise<"committed" | "stale"> {
+    if (!(await ensureAccepted(lease))) return "stale";
     const guard = negativeClassificationGuard(lease, classificationFingerprint);
     guard.sql += ` AND EXISTS(SELECT 1 FROM discovery_source_jobs current WHERE current.user_id=? AND current.job_id=? AND current.document_index=0 AND (SELECT COUNT(*) FROM documents d WHERE d.user_id=current.user_id AND d.source_message_id=current.source_message_id)=1)`;
     guard.values.push(lease.context.userId, lease.jobId);
@@ -1277,6 +1293,7 @@ export function createPipelineRepository(
       !/^[a-zA-Z0-9_-]{1,80}$/.test(outcome.code)
     )
       throw new PipelinePersistenceError("INVALID_PIPELINE");
+    if (!(await ensureAccepted(lease))) return "stale";
     const guard = liveGuard(lease, clock());
     return batch([
       stmt(
@@ -1294,23 +1311,7 @@ export function createPipelineRepository(
     ]);
   }
   async function checkpoint(lease: JobLease): Promise<boolean> {
-    if (options.processingDigest) {
-      const where = baseLiveWhere(lease, clock());
-      const row = await db
-        .prepare(
-          `SELECT ${selectionProjection} AS processing_selection FROM ${LIVE_FROM} WHERE ${where.sql}`,
-        )
-        .bind(...where.values)
-        .first<{ processing_selection: string }>();
-      return acceptSelection(lease, row?.processing_selection);
-    }
-    const guard = liveGuard(lease, clock());
-    return (
-      (await db
-        .prepare(`SELECT 1 AS valid WHERE ${guard.sql}`)
-        .bind(...guard.values)
-        .first<number>("valid")) === 1
-    );
+    return acceptSelection(lease, await loadSelection(lease));
   }
   async function failDocument(
     lease: JobLease,
@@ -1323,6 +1324,7 @@ export function createPipelineRepository(
     identifier.parse(outcome.documentId);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(outcome.code))
       throw new PipelinePersistenceError("INVALID_PIPELINE");
+    if (!(await ensureAccepted(lease))) return "stale";
     const guard = liveGuard(lease, clock());
     guard.sql += ` AND EXISTS(SELECT 1 FROM documents d JOIN discovery_source_jobs dj ON dj.user_id=d.user_id AND dj.source_message_id=d.source_message_id WHERE d.user_id=? AND d.id=? AND dj.job_id=? AND d.pipeline_index=dj.document_index)`;
     guard.values.push(lease.context.userId, outcome.documentId, lease.jobId);

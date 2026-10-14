@@ -129,9 +129,9 @@ beforeEach(async () => {
       .run();
     await db
       .prepare(
-        "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES('consent',?,'c',1,'processor','local',1,?,1)",
+        "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized,accepted_configuration_digest) VALUES('consent',?,'c',1,'processor','local',1,?,1,?)",
       )
-      .bind(user, now)
+      .bind(user, now, "f".repeat(64))
       .run();
     await db
       .prepare(
@@ -193,6 +193,7 @@ async function operation() {
   const repository = createPipelineRepository(meter.db, {
     clock: () => now,
     remainingStatements: () => 40 - meter.executedStatements(),
+    processingDigest: async () => "f".repeat(64),
   });
   const candidate = input();
   const snapshot = await repository.loadSnapshot(lease(), candidate);
