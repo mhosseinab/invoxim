@@ -4,19 +4,11 @@ import { env } from "cloudflare:workers";
 import { createPurchaseRepository } from "@invoxim/adapters";
 import type { TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
-import auth from "./migrations/historical/0001_auth.sql?raw";
-import records from "./migrations/historical/0002_records.sql?raw";
-import indexes from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
-async function apply(sql: string) {
-  for (const statement of sql.split(";").filter((s) => s.trim()))
-    await db.prepare(statement).run();
-}
 beforeAll(async () => {
-  await apply(auth);
-  await apply(records);
+  await useCurrentSchema(db);
   for (const id of ["a", "b"]) {
     await db
       .prepare(
@@ -56,7 +48,6 @@ beforeAll(async () => {
       "INSERT INTO purchases(id,user_id,merchant_raw,merchant_normalized,document_date,currency,payment_state) VALUES('p-a','a','Synthetic','synthetic','2026-01-01','EUR','paid')",
     )
     .run();
-  await apply(indexes);
 });
 it("DB-01: rejects cross-tenant purchase observation association at database boundary", async () => {
   await expect(

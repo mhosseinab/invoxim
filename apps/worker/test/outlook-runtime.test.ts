@@ -14,15 +14,15 @@ import {
   onboardingStartResponseSchema,
 } from "@invoxim/contracts";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
-import exclusions from "../../../packages/adapters/migrations/0004_outlook_folder_exclusions.sql?raw";
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { syntheticClassificationBindings } from "./classification-fixture";
 import { owner, startBody } from "./onboarding-qa-fixture";
+import { useCurrentSchema } from "./support/db";
 
 const db = env.DB;
 beforeAll(async () => {
-  await db.prepare(exclusions).run();
+  await useCurrentSchema(db);
 });
 const keyring = {
   activeVersion: 1,

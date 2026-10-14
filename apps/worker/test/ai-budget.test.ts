@@ -11,16 +11,7 @@ import {
   readAiAllowance,
 } from "../../../packages/adapters/src/ai/budget";
 import { createInvocationDatabase } from "../src/invocation-database";
-import auth from "./migrations/historical/0001_auth.sql?raw";
-import records from "./migrations/historical/0002_records.sql?raw";
-import indexes from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import vault from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import profile from "./migrations/historical/0005_profile_version.sql?raw";
-import jobs from "./migrations/historical/0006_jobs.sql?raw";
-import mailbox from "./migrations/historical/0007_mailbox.sql?raw";
-import discovery from "./migrations/historical/0008_discovery.sql?raw";
-import ai from "./migrations/historical/0009_ai.sql?raw";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
 const now = Date.UTC(2026, 9, 12);
@@ -67,10 +58,6 @@ async function hash(value: unknown) {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
-async function apply(sql: string) {
-  for (const statement of sql.split(";").filter((s) => s.trim()))
-    await db.prepare(statement).run();
-}
 function lease(id: string): JobLease {
   return {
     context: tenant,
@@ -87,17 +74,8 @@ function lease(id: string): JobLease {
   };
 }
 beforeAll(async () => {
-  for (const sql of [
-    auth,
-    records,
-    indexes,
-    vault,
-    profile,
-    jobs,
-    mailbox,
-    discovery,
-  ])
-    await apply(sql);
+  await useCurrentSchema(db);
+  await useCurrentSchema(db);
   await db
     .prepare(
       'INSERT INTO "user"(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,1,0,0)',
@@ -116,7 +94,7 @@ beforeAll(async () => {
     )
     .bind(tenant.userId)
     .run();
-  await apply(ai);
+  
   upgradedVault = await db
     .prepare(
       "SELECT encrypted_key,key_version,generation,credential_version FROM ai_settings WHERE user_id=?",

@@ -3,29 +3,10 @@
 import { env } from "cloudflare:workers";
 import type { ArchiveUploadPlan, TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
-import backfillMigration from "../../../packages/adapters/migrations/0006_archive_dispatch_backfill.sql?raw";
 import { createArchiveObjectStore } from "../../../packages/adapters/src/drive/objects";
 import { cleanupM1Leaves } from "../../../packages/adapters/src/lifecycle/m1-leaf-cleanup";
 import { createInvocationDatabase } from "../src/invocation-database";
-import m1 from "./migrations/historical/0001_auth.sql?raw";
-import m2 from "./migrations/historical/0002_records.sql?raw";
-import m3 from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import m4 from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import m5 from "./migrations/historical/0005_profile_version.sql?raw";
-import m6 from "./migrations/historical/0006_jobs.sql?raw";
-import m7 from "./migrations/historical/0007_mailbox.sql?raw";
-import m8 from "./migrations/historical/0008_discovery.sql?raw";
-import m9 from "./migrations/historical/0009_ai.sql?raw";
-import m10 from "./migrations/historical/0010_ledger_pipeline.sql?raw";
-import m11 from "./migrations/historical/0011_lifecycle.sql?raw";
-import m12 from "./migrations/historical/0012_review_fields.sql?raw";
-import m13 from "./migrations/historical/0013_corrections.sql?raw";
-import m14 from "./migrations/historical/0014_onboarding.sql?raw";
-import m15 from "./migrations/historical/0015_fx.sql?raw";
-import m16 from "./migrations/historical/0016_outlook_folders.sql?raw";
-import m17 from "./migrations/historical/0017_drive_storage.sql?raw";
-import m18 from "./migrations/historical/0018_archive_objects.sql?raw";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
 const owner = { userId: "archive-owner", authority: "job" } as TenantContext;
@@ -51,27 +32,7 @@ const plan: ArchiveUploadPlan = {
 const store = () =>
   createArchiveObjectStore(db, { clock: () => now, leaseMs: 60000 });
 beforeAll(async () => {
-  for (const sql of [
-    m1,
-    m2,
-    m3,
-    m4,
-    m5,
-    m6,
-    m7,
-    m8,
-    m9,
-    m10,
-    m11,
-    m12,
-    m13,
-    m14,
-    m15,
-    m16,
-    m17,
-  ])
-    for (const statement of sql.split(";").filter((s) => s.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   for (const user of [owner.userId, foreign.userId]) {
     await db
       .prepare(
@@ -115,12 +76,6 @@ beforeAll(async () => {
       .bind(user)
       .run();
   }
-  for (const statement of m18.split(";").filter((value) => value.trim()))
-    await db.prepare(statement).run();
-  for (const statement of backfillMigration
-    .split(";")
-    .filter((value) => value.trim()))
-    await db.prepare(statement).run();
 });
 beforeEach(async () => {
   now = start;

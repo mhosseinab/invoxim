@@ -4,41 +4,12 @@ import { env } from "cloudflare:workers";
 import type { TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import { createPurchaseViewReader } from "../../../packages/adapters/src/purchase-views";
-import auth from "./migrations/historical/0001_auth.sql?raw";
-import records from "./migrations/historical/0002_records.sql?raw";
-import indexes from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import credentials from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import profiles from "./migrations/historical/0005_profile_version.sql?raw";
-import jobs from "./migrations/historical/0006_jobs.sql?raw";
-import mailbox from "./migrations/historical/0007_mailbox.sql?raw";
-import discovery from "./migrations/historical/0008_discovery.sql?raw";
-import ai from "./migrations/historical/0009_ai.sql?raw";
-import pipeline from "./migrations/historical/0010_ledger_pipeline.sql?raw";
-import lifecycle from "./migrations/historical/0011_lifecycle.sql?raw";
-import reviewFields from "./migrations/historical/0012_review_fields.sql?raw";
-import corrections from "./migrations/historical/0013_corrections.sql?raw";
-import onboarding from "./migrations/historical/0014_onboarding.sql?raw";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
 const tenant = { userId: "views-a", authority: "session" } as TenantContext;
 beforeAll(async () => {
-  for (const sql of [
-    auth,
-    records,
-    indexes,
-    credentials,
-    profiles,
-    jobs,
-    mailbox,
-    discovery,
-    ai,
-    pipeline,
-    lifecycle,
-    reviewFields,
-  ])
-    for (const statement of sql.split(";").filter((s) => s.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   for (const owner of ["views-a", "views-b"]) {
     await db
       .prepare(
@@ -61,9 +32,7 @@ beforeAll(async () => {
         .run();
   }
   // Upgrade the populated two-owner records fixture before using the current reader.
-  for (const sql of [corrections, onboarding])
-    for (const statement of sql.split(";").filter((value) => value.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual(
     [],
   );

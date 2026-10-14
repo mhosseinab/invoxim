@@ -5,13 +5,7 @@ import type { JobPolicy, TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { createJobEngine } from "../../../packages/core/src/jobs/engine";
-import auth from "./migrations/historical/0001_auth.sql?raw";
-import records from "./migrations/historical/0002_records.sql?raw";
-import indexes from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import security from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import profiles from "./migrations/historical/0005_profile_version.sql?raw";
-import jobsMigration from "./migrations/historical/0006_jobs.sql?raw";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
 const policy: JobPolicy = {
@@ -24,9 +18,7 @@ const policy: JobPolicy = {
   redeliveryMs: 60000,
 };
 beforeAll(async () => {
-  for (const sql of [auth, records, indexes, security, profiles])
-    for (const statement of sql.split(";").filter((s) => s.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   await db
     .prepare(
       "INSERT INTO \"user\"(id,name,email,emailVerified,createdAt,updatedAt) VALUES('job-a','Synthetic','job-a@example.invalid',1,0,0)",
@@ -52,8 +44,7 @@ beforeAll(async () => {
       "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at) VALUES('duplicate-claim','job-a','conn-a','consent-a',1,'extract','duplicate-claim','ready',0)",
     )
     .run();
-  for (const statement of jobsMigration.split(";").filter((s) => s.trim()))
-    await db.prepare(statement).run();
+  await useCurrentSchema(db);
 });
 it("JOBS-01: concurrent duplicate delivery yields one valid leased owner", async () => {
   const store = createJobStore(db, { policy, clock: () => 1000 });

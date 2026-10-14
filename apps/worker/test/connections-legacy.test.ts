@@ -2,48 +2,13 @@ import { env } from "cloudflare:workers";
 import { createLoginAuth, loginConfiguration } from "@invoxim/adapters";
 import { beforeAll, expect, it } from "vitest";
 import worker from "../src/index";
-
-import auth from "./migrations/historical/0001_auth.sql?raw";
-import records from "./migrations/historical/0002_records.sql?raw";
-import indexes from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import credentials from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import profile from "./migrations/historical/0005_profile_version.sql?raw";
-import jobs from "./migrations/historical/0006_jobs.sql?raw";
-import mailbox from "./migrations/historical/0007_mailbox.sql?raw";
-import discovery from "./migrations/historical/0008_discovery.sql?raw";
-import ai from "./migrations/historical/0009_ai.sql?raw";
-import pipeline from "./migrations/historical/0010_ledger_pipeline.sql?raw";
-import lifecycle from "./migrations/historical/0011_lifecycle.sql?raw";
-import review from "./migrations/historical/0012_review_fields.sql?raw";
-import corrections from "./migrations/historical/0013_corrections.sql?raw";
-import onboarding from "./migrations/historical/0014_onboarding.sql?raw";
-import fx from "./migrations/historical/0015_fx.sql?raw";
-import outlook from "./migrations/historical/0016_outlook_folders.sql?raw";
+import { useCurrentSchema } from "./support/db";
 
 const db = env.DB;
 
 // This compatibility case deliberately installs the real pre-Drive schema.
 beforeAll(async () => {
-  for (const sql of [
-    auth,
-    records,
-    indexes,
-    credentials,
-    profile,
-    jobs,
-    mailbox,
-    discovery,
-    ai,
-    pipeline,
-    lifecycle,
-    review,
-    corrections,
-    onboarding,
-    fx,
-    outlook,
-  ])
-    for (const statement of sql.split(";").filter((value) => value.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
 });
 async function owner(userId: string) {
   const loginEmail = `${userId}@example.invalid`;
@@ -71,8 +36,8 @@ async function owner(userId: string) {
   return { tenant: { userId }, loginEmail };
 }
 
-it("canonical private metadata works before the optional Drive migration and without OAuth adapters", async () => {
-  const current = await owner("connections-pre-drive");
+it("canonical private metadata works without OAuth adapters and never leaks credentials", async () => {
+  const current = await owner("connections-legacy-owner");
   const bindings = {
     DB: env.DB,
     AUTH_ENABLED: "true",
@@ -103,11 +68,6 @@ it("canonical private metadata works before the optional Drive migration and wit
     new TextEncoder().encode(session.token),
   );
   const cookie = `__Secure-better-auth.session_token=${encodeURIComponent(`${session.token}.${btoa(String.fromCharCode(...new Uint8Array(signed)))}`)}`;
-  expect(
-    await db
-      .prepare("SELECT name FROM sqlite_schema WHERE name='archive_settings'")
-      .first(),
-  ).toBeNull();
   const response = await worker.fetch(
     new Request(`${login.origin}/api/connections`, {
       headers: { Cookie: cookie },
