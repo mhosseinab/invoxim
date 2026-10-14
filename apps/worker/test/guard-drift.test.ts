@@ -116,7 +116,11 @@ it("G3 mutation without an Origin header is rejected", async () => {
     {
       method: "PATCH",
       headers: { Cookie: cookie, "Content-Type": "application/json" },
-      body: JSON.stringify({ timezone: "Europe/Vienna", reportingCurrency: "EUR", version: 1 }),
+      body: JSON.stringify({
+        timezone: "Europe/Vienna",
+        reportingCurrency: "EUR",
+        version: 1,
+      }),
     },
     bindings,
   );

@@ -1,8 +1,5 @@
 import type { AuthBindings } from "@invoxim/adapters";
-import {
-  createJobStore,
-  readAuthJson,
-} from "@invoxim/adapters";
+import { createJobStore, readAuthJson } from "@invoxim/adapters";
 import {
   syncQueuedResponseSchema,
   syncRequestSchema,

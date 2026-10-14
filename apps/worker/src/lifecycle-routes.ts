@@ -204,7 +204,8 @@ export function createLifecycleRoutes() {
       const input = deleteDataRequestSchema.safeParse(
         await readAuthJson(c.req.raw),
       );
-      if (!id.success || !input.success) return apiError(400, "invalid_request");
+      if (!id.success || !input.success)
+        return apiError(400, "invalid_request");
       return c.json(
         await ready.service.deleteData(
           ready.session,
@@ -230,7 +231,8 @@ export function createLifecycleRoutes() {
       const input = disconnectRequestSchema.safeParse(
         await readAuthJson(c.req.raw),
       );
-      if (!id.success || !input.success) return apiError(400, "invalid_request");
+      if (!id.success || !input.success)
+        return apiError(400, "invalid_request");
       return c.json(
         await ready.service.disconnect(
           ready.session,

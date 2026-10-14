@@ -72,9 +72,7 @@ export function createAiRoutes() {
         await readAuthJson(c.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      return c.json(
-        await guard.settings.save(guard.ready.tenant, input.data),
-      );
+      return c.json(await guard.settings.save(guard.ready.tenant, input.data));
     } catch (cause) {
       return failed(cause);
     }
@@ -87,7 +85,9 @@ export function createAiRoutes() {
         await readAuthJson(c.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      return c.json(await guard.settings.deleteKey(guard.ready.tenant, input.data));
+      return c.json(
+        await guard.settings.deleteKey(guard.ready.tenant, input.data),
+      );
     } catch (cause) {
       return failed(cause);
     }

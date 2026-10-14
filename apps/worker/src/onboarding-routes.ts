@@ -140,9 +140,7 @@ export function createOnboardingRoutes() {
       service: createOnboardingUsecases({
         repository,
         preparation: createOnboardingImportPreparation(
-          gmail
-            ? createGmailDiscoveryProviderFactory(ready.db, gmail)
-            : null,
+          gmail ? createGmailDiscoveryProviderFactory(ready.db, gmail) : null,
           !!outlook,
         ),
       }),

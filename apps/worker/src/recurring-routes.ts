@@ -1,7 +1,4 @@
-import {
-  type AuthBindings,
-  readAuthJson,
-} from "@invoxim/adapters";
+import { type AuthBindings, readAuthJson } from "@invoxim/adapters";
 import {
   recurringAutomaticPreviewSchema,
   recurringCreateSchema,

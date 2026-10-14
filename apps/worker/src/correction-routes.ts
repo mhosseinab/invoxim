@@ -1,8 +1,5 @@
 import type { AuthBindings } from "@invoxim/adapters";
-import {
-  createCorrectionStore,
-  readAuthJson,
-} from "@invoxim/adapters";
+import { createCorrectionStore, readAuthJson } from "@invoxim/adapters";
 import type { CorrectionCommand } from "@invoxim/contracts";
 import {
   cashConfirmationRequestSchema,

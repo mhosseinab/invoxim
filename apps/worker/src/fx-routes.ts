@@ -76,8 +76,7 @@ function json(value: unknown) {
 function query(request: Request) {
   const values: Record<string, string> = {};
   for (const [key, value] of new URL(request.url).searchParams) {
-    if (Object.hasOwn(values, key))
-      throw new Error("INVALID_FX_INPUT");
+    if (Object.hasOwn(values, key)) throw new Error("INVALID_FX_INPUT");
     values[key] = value;
   }
   return values;
@@ -115,7 +114,8 @@ export function createFxRoutes(options: FxRouteOptions) {
       c.env ?? {},
       ready.remainingStatements,
     );
-    if (!service) return { response: apiError(503, "fx_not_configured") } as const;
+    if (!service)
+      return { response: apiError(503, "fx_not_configured") } as const;
     return { ...ready, service };
   }
   async function reporting(
