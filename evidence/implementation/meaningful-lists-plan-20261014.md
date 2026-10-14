@@ -1,0 +1,13 @@
+# Meaningful private lists and Clef precision investigation
+
+Tasks UX-MEANINGFUL-LISTS-01 and AI-CLEF-PRECISION-01, explicitly delegated by owner on 2026-10-14.
+
+Frontend implementer compact_import_review owns private list components/styles and relevant browser tests. Backend review_false_positive_backend assessed existing source reader and recommends reuse without API/schema/storage changes. Independent reviewer langchain_review is read-only. Clef implementer clef_false_positive_audit owns classifier source/tests after reporting proposed fix; parent owns shared decisions, evidence, verification and scoped commits. Owner changes in unrelated paths remain excluded.
+
+List acceptance: subject as identity, sender and attachment summary, concrete decision/missing fields, compact received date, inbox once when shared. Render first eight actual source groups; metadata-only hydration concurrency three, no automatic retries/polling, source-ID dedupe, actor-scoped ephemeral state, cancellation on unmount/account switch, reuse metadata in dialog. Existing source endpoint enforces trusted tenant, active consent/generation/credentials and 64KiB/64parts/depth8/10s read caps. Never fetch bodies, attachment bytes or correction capabilities to populate rows. Loading/failure/missing states are distinct. Keep financial distinctions, draft/idempotency behavior, explicit discard and accessible dialog intact. Audit Purchases/Home/Connections with existing DTOs rather than add speculative interfaces.
+
+Behavior deliberately changes the previous selected-source-only metadata load: owner now requests identifying data in the list. Existing identity checks remain; eight sources yield eight provider requests and sixteen same-origin identity checks. No migration, new configuration, persistent content cache or infrastructure.
+
+Clef investigation acceptance: trace request fields and validated response; demonstrate complete synthetic examples, not production private contents. Determine current decisions/threshold support and contrast invoice/receipt with delivery/status/marketing and multiple emails about one purchase. Do not blindly tune an uncalibrated threshold or weaken evidence checks. Report observed defects versus inferred live model quality; confirm minimal scope before changes.
+
+Verification: focused RED/GREEN behavior tests, bounded loading/identity/failure/mobile/keyboard regression tests, independent review, required repository verify on clean tracked-source archive, synthetic desktop/mobile screenshots. Deployment and live model claims must be separately evidenced; no automatic reset of sources or allowance.

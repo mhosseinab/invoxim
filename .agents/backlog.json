@@ -1497,6 +1497,42 @@
       "scope": "Requested nice-to-have. Assess an authenticated bounded transient PDF preview using existing mailbox authorization; no original storage or implicit Drive archiving. Current release supplies metadata and original-email access.",
       "completionEvidence": [],
       "blockedBy": []
+    },
+    {
+      "id": "UX-MEANINGFUL-LISTS-01",
+      "title": "Identify emails and decisions in meaningful compact private lists",
+      "milestone": "M0",
+      "status": "in_progress",
+      "dependsOn": [
+        "UX-REVIEW-DISCARD-01"
+      ],
+      "ownerRole": "frontend",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Needs attention subject, sender, attachment metadata and decision cues in bounded visible rows; shared inbox context, preserve dialog/discard/drafts. Audit and compact Purchases/Home/Connections using existing data. No body reads, new storage or batch API.",
+      "acceptanceCaseIds": [
+        "LIST-IDENTITY",
+        "LIST-BOUNDS",
+        "LIST-ACCOUNT-ISOLATION",
+        "LIST-MOBILE",
+        "LIST-DIALOG"
+      ],
+      "completionEvidence": []
+    },
+    {
+      "id": "AI-CLEF-PRECISION-01",
+      "title": "Investigate Clef false positives and prioritize invoice evidence",
+      "milestone": "M0",
+      "status": "in_progress",
+      "dependsOn": [],
+      "ownerRole": "ai",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Trace exact synthetic classification request/response and acceptance logic; distinguish invoice/receipt from shipment/status/marketing; propose minimal precision fix with focused contrasting tests. No raw production mail exports, destructive resets or speculative thresholds.",
+      "acceptanceCaseIds": [
+        "CLEF-PRECISION",
+        "CLEF-PAYLOAD",
+        "CLEF-RELATED-MAIL"
+      ],
+      "completionEvidence": []
     }
   ]
 }
