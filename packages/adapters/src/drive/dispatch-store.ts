@@ -9,7 +9,7 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
-import { mailboxScopeSql } from "../pipeline/repository-guards";
+import { activeProfile, mailboxScopeSql } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
 import { archiveObjectEligibilitySql } from "./objects";
 
@@ -261,7 +261,7 @@ export function createArchiveDispatchStore(
     }
     const parent =
       outcome.kind === "completed"
-        ? "archive_objects.state='archived' AND EXISTS(SELECT 1 FROM profiles p WHERE p.user_id=archive_objects.user_id AND p.status='active')"
+        ? `archive_objects.state='archived' AND ${activeProfile("archive_objects")}`
         : `archive_objects.state='pending' AND ${eligible}`;
     const result = await db
       .prepare(

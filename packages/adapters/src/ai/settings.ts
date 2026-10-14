@@ -6,6 +6,7 @@ import {
 } from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
 import type { z } from "zod";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { readEnvelopeVersion } from "../security/cipher";
 import { readAiAllowance } from "./budget";
 import type { AiConfiguration } from "./configuration";
@@ -146,7 +147,7 @@ export function createAiSettingsService(
     row: StoredAiSettings | null,
   ) {
     return {
-      sql: "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AND ((NOT EXISTS(SELECT 1 FROM ai_settings WHERE user_id=?) AND ?=0) OR EXISTS(SELECT 1 FROM ai_settings WHERE user_id=? AND revision=? AND revision<2147483646 AND generation=? AND credential_version=?))",
+      sql: `${activeProfileSql} AND ((NOT EXISTS(SELECT 1 FROM ai_settings WHERE user_id=?) AND ?=0) OR EXISTS(SELECT 1 FROM ai_settings WHERE user_id=? AND revision=? AND revision<2147483646 AND generation=? AND credential_version=?))`,
       values: [
         context.userId,
         context.userId,

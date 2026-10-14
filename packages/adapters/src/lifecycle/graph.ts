@@ -1,6 +1,7 @@
 import type { DeleteDataPreview, TenantContext } from "@invoxim/core";
 import { LifecycleError } from "@invoxim/core";
 import { sha256Hex } from "../hash";
+import { activeProfile } from "../pipeline/repository-guards";
 export const targetObservations =
   "SELECT o.id FROM observations o JOIN documents d ON d.user_id=o.user_id AND d.id=o.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id WHERE s.user_id=? AND s.connection_id=?";
 export const alternateObservation =
@@ -19,7 +20,7 @@ export function previewSql() {
     "s2.connection_id!=?",
     "s2.connection_id!=c.id",
   );
-  return `SELECT json_object('connectionId',c.id,'generation',c.generation,'sources',(SELECT COUNT(*) FROM source_messages WHERE user_id=c.user_id AND connection_id=c.id),'documents',(SELECT COUNT(*) FROM documents WHERE user_id=c.user_id AND id IN(${docs})),'observations',(SELECT COUNT(*) FROM observations WHERE user_id=c.user_id AND id IN(${target})),'purchasesRemoved',(SELECT COUNT(*) FROM purchases p WHERE p.user_id=c.user_id AND ${affected} AND NOT ${retained}),'purchasesRetained',(SELECT COUNT(*) FROM purchases p WHERE p.user_id=c.user_id AND ${affected} AND ${retained}),'eventsRemoved',(SELECT COUNT(*) FROM ledger_entries l WHERE l.user_id=c.user_id AND l.observation_id IN(${target}) AND (${alternate}) IS NULL),'eventsRetained',(SELECT COUNT(*) FROM ledger_entries l WHERE l.user_id=c.user_id AND ((l.observation_id IN(${target}) AND (${alternate}) IS NOT NULL) OR (l.origin='user-confirmed' AND EXISTS(SELECT 1 FROM purchases p WHERE p.user_id=l.user_id AND p.id=l.purchase_id AND ${affected} AND ${retained}))))) AS snapshot FROM connections c WHERE c.user_id=? AND c.id=? AND c.kind='mailbox' AND EXISTS(SELECT 1 FROM profiles WHERE user_id=c.user_id AND status='active')`;
+  return `SELECT json_object('connectionId',c.id,'generation',c.generation,'sources',(SELECT COUNT(*) FROM source_messages WHERE user_id=c.user_id AND connection_id=c.id),'documents',(SELECT COUNT(*) FROM documents WHERE user_id=c.user_id AND id IN(${docs})),'observations',(SELECT COUNT(*) FROM observations WHERE user_id=c.user_id AND id IN(${target})),'purchasesRemoved',(SELECT COUNT(*) FROM purchases p WHERE p.user_id=c.user_id AND ${affected} AND NOT ${retained}),'purchasesRetained',(SELECT COUNT(*) FROM purchases p WHERE p.user_id=c.user_id AND ${affected} AND ${retained}),'eventsRemoved',(SELECT COUNT(*) FROM ledger_entries l WHERE l.user_id=c.user_id AND l.observation_id IN(${target}) AND (${alternate}) IS NULL),'eventsRetained',(SELECT COUNT(*) FROM ledger_entries l WHERE l.user_id=c.user_id AND ((l.observation_id IN(${target}) AND (${alternate}) IS NOT NULL) OR (l.origin='user-confirmed' AND EXISTS(SELECT 1 FROM purchases p WHERE p.user_id=l.user_id AND p.id=l.purchase_id AND ${affected} AND ${retained}))))) AS snapshot FROM connections c WHERE c.user_id=? AND c.id=? AND c.kind='mailbox' AND ${activeProfile("c")}`;
 }
 export function previewArguments(user: string, id: string) {
   return [user, id];

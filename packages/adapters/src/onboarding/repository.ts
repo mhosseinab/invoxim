@@ -6,6 +6,7 @@ import type { OnboardingRepository, OnboardingSession } from "@invoxim/core";
 import { OnboardingError } from "@invoxim/core";
 import type { AiConfiguration } from "../ai/configuration";
 import { hashJsonValue } from "../hash";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { readActiveOnboardingRun } from "./active-run";
 import {
   LOCAL_PARSER_POLICY,
@@ -183,7 +184,7 @@ export function createOnboardingRepository(
         bodyHash = await hashJsonValue(input);
       const command = await db
         .prepare(
-          "SELECT body_hash,result_json FROM onboarding_commands WHERE user_id=? AND key_hash=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+          `SELECT body_hash,result_json FROM onboarding_commands WHERE user_id=? AND key_hash=? AND ${activeProfileSql}`,
         )
         .bind(session.tenant.userId, keyHash, session.tenant.userId)
         .first<{ body_hash: string; result_json: string }>();

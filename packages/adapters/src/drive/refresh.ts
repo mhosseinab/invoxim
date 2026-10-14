@@ -10,16 +10,11 @@ import type {
 } from "@invoxim/core";
 import { ArchiveAuthorizationError, ArchiveServiceError } from "@invoxim/core";
 import { z } from "zod";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { safe as keepDomainError } from "../security/helpers";
 import type { CredentialCipher } from "../security/types";
 import { createCredentialVault } from "../security/vault";
-import {
-  activeProfile,
-  type ConnectionRow,
-  fields,
-  MAX,
-  project,
-} from "./connections";
+import { type ConnectionRow, fields, MAX, project } from "./connections";
 import { scopesMatchConfiguration } from "./scopes";
 
 const leaseDurationMs = 60000;
@@ -77,7 +72,7 @@ export function createDriveCredentialRefresher(
   async function row(context: TenantContext, id: string) {
     return db
       .prepare(
-        `SELECT ${fields},scopes,EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND a.connection_generation=connections.generation) AS archiving_enabled FROM connections WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND ${activeProfile} AND ${noDeletion}`,
+        `SELECT ${fields},scopes,EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND a.connection_generation=connections.generation) AS archiving_enabled FROM connections WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND ${activeProfileSql} AND ${noDeletion}`,
       )
       .bind(context.userId, id, context.userId)
       .first<RefreshRow>();
@@ -117,7 +112,7 @@ export function createDriveCredentialRefresher(
     const leaseId = crypto.randomUUID();
     const lease = await db
       .prepare(
-        `INSERT INTO storage_refresh_leases(user_id,connection_id,lease_id,lease_expires_at,connection_generation,credential_version,fence) SELECT ?,?,?,?,?,?,1 WHERE EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=? AND credential_version=? AND provider_subject=? AND scopes=? AND ${activeProfile} AND ${noDeletion}) ON CONFLICT(user_id,connection_id) DO UPDATE SET lease_id=excluded.lease_id,lease_expires_at=excluded.lease_expires_at,connection_generation=excluded.connection_generation,credential_version=excluded.credential_version,fence=storage_refresh_leases.fence+1 WHERE storage_refresh_leases.lease_expires_at<=? AND storage_refresh_leases.fence<? RETURNING fence`,
+        `INSERT INTO storage_refresh_leases(user_id,connection_id,lease_id,lease_expires_at,connection_generation,credential_version,fence) SELECT ?,?,?,?,?,?,1 WHERE EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=? AND credential_version=? AND provider_subject=? AND scopes=? AND ${activeProfileSql} AND ${noDeletion}) ON CONFLICT(user_id,connection_id) DO UPDATE SET lease_id=excluded.lease_id,lease_expires_at=excluded.lease_expires_at,connection_generation=excluded.connection_generation,credential_version=excluded.credential_version,fence=storage_refresh_leases.fence+1 WHERE storage_refresh_leases.lease_expires_at<=? AND storage_refresh_leases.fence<? RETURNING fence`,
       )
       .bind(
         context.userId,
@@ -150,7 +145,7 @@ export function createDriveCredentialRefresher(
     try {
       const checkpoint = await db
         .prepare(
-          `SELECT fence FROM storage_refresh_leases WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=? AND lease_expires_at>? AND connection_generation=? AND credential_version=? AND EXISTS(SELECT 1 FROM connections WHERE user_id=storage_refresh_leases.user_id AND id=storage_refresh_leases.connection_id AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=storage_refresh_leases.connection_generation AND credential_version=storage_refresh_leases.credential_version AND provider_subject=? AND scopes=? AND ${activeProfile} AND ${noDeletion})`,
+          `SELECT fence FROM storage_refresh_leases WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=? AND lease_expires_at>? AND connection_generation=? AND credential_version=? AND EXISTS(SELECT 1 FROM connections WHERE user_id=storage_refresh_leases.user_id AND id=storage_refresh_leases.connection_id AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=storage_refresh_leases.connection_generation AND credential_version=storage_refresh_leases.credential_version AND provider_subject=? AND scopes=? AND ${activeProfileSql} AND ${noDeletion})`,
         )
         .bind(
           ...leaseBindings(Date.now() + minimumRemainingMs),
@@ -176,7 +171,7 @@ export function createDriveCredentialRefresher(
       );
       const changed = await db
         .prepare(
-          `UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=? AND credential_version=? AND provider_subject=? AND scopes=? AND credential_version<? AND credential_key_version<=? AND ${leaseClause} AND ${activeProfile} AND ${noDeletion} RETURNING ${fields}`,
+          `UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=? AND credential_version=? AND provider_subject=? AND scopes=? AND credential_version<? AND credential_key_version<=? AND ${leaseClause} AND ${activeProfileSql} AND ${noDeletion} RETURNING ${fields}`,
         )
         .bind(
           sealed,
@@ -217,7 +212,7 @@ export function createDriveCredentialRefresher(
       ) {
         await db
           .prepare(
-            `UPDATE connections SET state='needs_reconnect',scheduling_state='paused',next_sync_at=NULL WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=? AND credential_version=? AND provider_subject=? AND scopes=? AND ${leaseClause} AND ${activeProfile} AND ${noDeletion}`,
+            `UPDATE connections SET state='needs_reconnect',scheduling_state='paused',next_sync_at=NULL WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND state='connected' AND generation=? AND credential_version=? AND provider_subject=? AND scopes=? AND ${leaseClause} AND ${activeProfileSql} AND ${noDeletion}`,
           )
           .bind(
             context.userId,

@@ -1,4 +1,5 @@
 import type { TenantContext } from "@invoxim/core";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { budgetOperation, micros, validatePolicy } from "./budget-helpers";
 import type { AiBudgetPolicy } from "./budget-types";
 
@@ -27,7 +28,7 @@ async function aiAllowance(
   const rows = (
     await db
       .prepare(
-        `SELECT b.scope,b.period_kind,b.documents,b.reserved_units,b.spent_units,b.reserved_usd_micros,b.spent_usd_micros,b.blocked FROM usage_buckets b WHERE ((b.scope='tenant' AND b.owner_key=?) OR (b.scope='global' AND b.owner_key='operator')) AND ((b.period_kind='day' AND b.period_start=?) OR (b.period_kind='month' AND b.period_start=?)) AND EXISTS(SELECT 1 FROM profiles p WHERE p.user_id=? AND p.status='active')`,
+        `SELECT b.scope,b.period_kind,b.documents,b.reserved_units,b.spent_units,b.reserved_usd_micros,b.spent_usd_micros,b.blocked FROM usage_buckets b WHERE ((b.scope='tenant' AND b.owner_key=?) OR (b.scope='global' AND b.owner_key='operator')) AND ((b.period_kind='day' AND b.period_start=?) OR (b.period_kind='month' AND b.period_start=?)) AND ${activeProfileSql}`,
       )
       .bind(tenant.userId, day, month, tenant.userId)
       .all<{
@@ -43,7 +44,7 @@ async function aiAllowance(
   ).results;
   const status = await db
     .prepare(
-      `SELECT EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AS active,EXISTS(SELECT 1 FROM usage_buckets WHERE scope='global' AND blocked=1) AS global_blocked,EXISTS(SELECT 1 FROM usage_events WHERE user_id=? AND state='overrun') AS overrun,EXISTS(SELECT 1 FROM usage_events WHERE user_id=? AND destination_id=? AND model_id=? AND cooldown_until>?) OR EXISTS(SELECT 1 FROM hosted_ai_cooldowns hc JOIN ai_settings s ON s.user_id=? AND s.mode='hosted' AND s.provider_id=hc.destination_id AND s.model_id=hc.model_id WHERE hc.destination_id=? AND hc.model_id=? AND hc.cooldown_until>?) AS cooldown`,
+      `SELECT ${activeProfileSql} AS active,EXISTS(SELECT 1 FROM usage_buckets WHERE scope='global' AND blocked=1) AS global_blocked,EXISTS(SELECT 1 FROM usage_events WHERE user_id=? AND state='overrun') AS overrun,EXISTS(SELECT 1 FROM usage_events WHERE user_id=? AND destination_id=? AND model_id=? AND cooldown_until>?) OR EXISTS(SELECT 1 FROM hosted_ai_cooldowns hc JOIN ai_settings s ON s.user_id=? AND s.mode='hosted' AND s.provider_id=hc.destination_id AND s.model_id=hc.model_id WHERE hc.destination_id=? AND hc.model_id=? AND hc.cooldown_until>?) AS cooldown`,
     )
     .bind(
       tenant.userId,

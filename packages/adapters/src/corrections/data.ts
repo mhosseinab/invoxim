@@ -4,6 +4,7 @@ import type {
   CorrectionReviewReason,
 } from "@invoxim/core";
 import { CorrectionError } from "@invoxim/core";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import type { VersionCheck } from "./transaction";
 export interface PurchaseRow {
   id: string;
@@ -45,7 +46,7 @@ const reviewDeletionPendingSql = deletionPendingSql(
 export async function purchase(db: D1Database, user: string, id: string) {
   const row = await db
     .prepare(
-      "SELECT id,merchant_raw,merchant_normalized,category,document_date,total_minor,currency,invoice_ref,order_ref,payment_state,record_status,version,origin,lifecycle_delete_connection_id,lifecycle_recompute_connection_id FROM purchases WHERE user_id=? AND id=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+      `SELECT id,merchant_raw,merchant_normalized,category,document_date,total_minor,currency,invoice_ref,order_ref,payment_state,record_status,version,origin,lifecycle_delete_connection_id,lifecycle_recompute_connection_id FROM purchases WHERE user_id=? AND id=? AND ${activeProfileSql}`,
     )
     .bind(user, id, user)
     .first<PurchaseRow>();
@@ -108,7 +109,7 @@ export async function reviews(
 export async function review(db: D1Database, user: string, id: string) {
   const row = await db
     .prepare(
-      `SELECT id,purchase_id,document_id,observation_id,reason,blocking_scope,status,version,missing_fields_json,${reviewDeletionPendingSql} AS deletion_pending FROM review_items WHERE user_id=? AND id=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')`,
+      `SELECT id,purchase_id,document_id,observation_id,reason,blocking_scope,status,version,missing_fields_json,${reviewDeletionPendingSql} AS deletion_pending FROM review_items WHERE user_id=? AND id=? AND ${activeProfileSql}`,
     )
     .bind(user, id, user)
     .first<ReviewRow>();

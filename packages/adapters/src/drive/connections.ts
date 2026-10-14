@@ -11,6 +11,7 @@ import {
   requireRecentMailboxSession,
   type TenantContext,
 } from "@invoxim/core";
+import { activeProfileSql } from "../pipeline/repository-guards";
 
 export interface ConnectionRow {
   id: string;
@@ -37,8 +38,6 @@ export const fields =
  */
 export const liveSession =
   "EXISTS(SELECT 1 FROM session se JOIN profiles p ON p.user_id=se.userId WHERE se.id=? AND se.userId=? AND se.expiresAt>? AND typeof(se.createdAt)='integer' AND se.createdAt<=? AND se.createdAt>=? AND p.status='active')";
-export const activeProfile =
-  "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')";
 export function project(
   row: ConnectionRow,
   enabled = row.archiving_enabled === 1,
@@ -75,7 +74,7 @@ export async function requireLiveDriveSession(
   requireRecentMailboxSession(session, now);
   const current = await db
     .prepare(
-      `SELECT createdAt,expiresAt FROM session WHERE id=? AND userId=? AND ${activeProfile}`,
+      `SELECT createdAt,expiresAt FROM session WHERE id=? AND userId=? AND ${activeProfileSql}`,
     )
     .bind(session.sessionId, session.tenant.userId, session.tenant.userId)
     .first<{ createdAt: number; expiresAt: number }>();
@@ -95,7 +94,7 @@ export async function readDriveConnection(
 ) {
   return db
     .prepare(
-      `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND ${activeProfile}`,
+      `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND ${activeProfileSql}`,
     )
     .bind(context.userId, id, context.userId)
     .first<ConnectionRow>();
@@ -127,7 +126,7 @@ export function createDriveConnectionsRepository(db: D1Database) {
   async function list(context: TenantContext) {
     const result = await db
       .prepare(
-        `SELECT ${fields},EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND a.connection_generation=connections.generation) AS archiving_enabled FROM connections WHERE user_id=? AND kind='storage' AND provider='google-drive' AND ${activeProfile} ORDER BY CASE state WHEN 'disconnected' THEN 1 ELSE 0 END,id LIMIT 11`,
+        `SELECT ${fields},EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND a.connection_generation=connections.generation) AS archiving_enabled FROM connections WHERE user_id=? AND kind='storage' AND provider='google-drive' AND ${activeProfileSql} ORDER BY CASE state WHEN 'disconnected' THEN 1 ELSE 0 END,id LIMIT 11`,
       )
       .bind(context.userId, context.userId)
       .all<ConnectionRow>();
@@ -162,7 +161,7 @@ export function createDriveConnectionsRepository(db: D1Database) {
       throw new ArchiveServiceError("CONFLICT");
     const mutation = db
       .prepare(
-        `UPDATE connections SET state='disconnected',scheduling_state='paused',next_sync_at=NULL,credential_ciphertext=NULL,credential_key_version=NULL,generation=generation+1,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND generation=? AND credential_version=? AND state!='disconnected' AND generation<? AND credential_version<? AND ${liveSession} AND ${activeProfile} AND NOT EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND a.version>=?) RETURNING id`,
+        `UPDATE connections SET state='disconnected',scheduling_state='paused',next_sync_at=NULL,credential_ciphertext=NULL,credential_key_version=NULL,generation=generation+1,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND generation=? AND credential_version=? AND state!='disconnected' AND generation<? AND credential_version<? AND ${liveSession} AND ${activeProfileSql} AND NOT EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND a.version>=?) RETURNING id`,
       )
       .bind(
         session.tenant.userId,

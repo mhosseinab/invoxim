@@ -1,4 +1,5 @@
 import type { TenantContext } from "@invoxim/core";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { CredentialError, readEnvelopeVersion } from "./cipher";
 import { redactSecurityFailures } from "./errors";
 import type {
@@ -56,13 +57,13 @@ export function createCredentialVault(
     if (target.kind === "connection")
       return db
         .prepare(
-          "SELECT credential_ciphertext AS ciphertext,credential_key_version AS key_version,credential_version AS version,generation,kind,state FROM connections WHERE user_id=? AND id=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+          `SELECT credential_ciphertext AS ciphertext,credential_key_version AS key_version,credential_version AS version,generation,kind,state FROM connections WHERE user_id=? AND id=? AND ${activeProfileSql}`,
         )
         .bind(context.userId, target.id, context.userId)
         .first<StoredCredential>();
     return db
       .prepare(
-        "SELECT encrypted_key AS ciphertext,key_version,credential_version AS version,generation,'byok' AS kind,status AS state FROM ai_settings WHERE user_id=? AND id=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+        `SELECT encrypted_key AS ciphertext,key_version,credential_version AS version,generation,'byok' AS kind,status AS state FROM ai_settings WHERE user_id=? AND id=? AND ${activeProfileSql}`,
       )
       .bind(context.userId, target.id, context.userId)
       .first<StoredCredential>();
@@ -127,7 +128,7 @@ export function createCredentialVault(
       );
       const result = await db
         .prepare(
-          "INSERT INTO ai_settings(user_id,id,encrypted_key,key_version,credential_version,generation) SELECT ?,?,?,?,1,1 WHERE EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ON CONFLICT(user_id) DO NOTHING",
+          `INSERT INTO ai_settings(user_id,id,encrypted_key,key_version,credential_version,generation) SELECT ?,?,?,?,1,1 WHERE ${activeProfileSql} ON CONFLICT(user_id) DO NOTHING`,
         )
         .bind(
           context.userId,
@@ -176,8 +177,8 @@ export function createCredentialVault(
     );
     const sql =
       target.kind === "connection"
-        ? "UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND state='connected' AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')"
-        : "UPDATE ai_settings SET encrypted_key=?,key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND status='active' AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')";
+        ? `UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND state='connected' AND ${activeProfileSql}`
+        : `UPDATE ai_settings SET encrypted_key=?,key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND status='active' AND ${activeProfileSql}`;
     return (
       (
         await db
@@ -252,8 +253,8 @@ export function createCredentialVault(
       checkVersion(expectedVersion);
       const sql =
         target.kind === "connection"
-          ? "UPDATE connections SET credential_ciphertext=NULL,credential_key_version=NULL,credential_version=credential_version+1,generation=generation+1,state='disconnected',scheduling_state='paused' WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND state='connected' AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')"
-          : "UPDATE ai_settings SET encrypted_key=NULL,key_version=NULL,credential_version=credential_version+1,generation=generation+1,status='deleted' WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND status='active' AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')";
+          ? `UPDATE connections SET credential_ciphertext=NULL,credential_key_version=NULL,credential_version=credential_version+1,generation=generation+1,state='disconnected',scheduling_state='paused' WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND state='connected' AND ${activeProfileSql}`
+          : `UPDATE ai_settings SET encrypted_key=NULL,key_version=NULL,credential_version=credential_version+1,generation=generation+1,status='deleted' WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND status='active' AND ${activeProfileSql}`;
       return (
         (await db
           .prepare(`${sql} RETURNING 1 AS applied`)

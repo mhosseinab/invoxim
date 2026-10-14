@@ -1,4 +1,5 @@
 import type { CredentialRevoker } from "@invoxim/core";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import type { CredentialCipher } from "../security/types";
 /** Fixed Google revocation endpoint. Credentials never enter journal, logs, or response DTOs. */
 export function createGoogleCredentialRevoker(
@@ -10,7 +11,7 @@ export function createGoogleCredentialRevoker(
     async prepare(tenant, connectionId) {
       const rows = await db
         .prepare(
-          `SELECT id,kind,provider,credential_ciphertext,generation,credential_version FROM connections WHERE user_id=? AND credential_ciphertext IS NOT NULL ${connectionId ? "AND id=?" : ""} AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ORDER BY id LIMIT 11`,
+          `SELECT id,kind,provider,credential_ciphertext,generation,credential_version FROM connections WHERE user_id=? AND credential_ciphertext IS NOT NULL ${connectionId ? "AND id=?" : ""} AND ${activeProfileSql} ORDER BY id LIMIT 11`,
         )
         .bind(
           tenant.userId,

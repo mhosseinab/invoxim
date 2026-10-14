@@ -10,6 +10,7 @@ import {
   MailboxError,
   requireRecentMailboxSession,
 } from "@invoxim/core";
+import { activeProfile, activeProfileSql } from "../pipeline/repository-guards";
 import { stateHash } from "../security/helpers";
 import { createOAuthStateStore } from "../security/oauth-state";
 import { createCredentialVault } from "../security/vault";
@@ -78,7 +79,7 @@ export function createMailboxService(
   async function row(context: TenantContext, id: string) {
     return db
       .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')`,
+        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND ${activeProfileSql}`,
       )
       .bind(context.userId, id, configuration.provider, context.userId)
       .first<ConnectionRow>();
@@ -218,7 +219,7 @@ export function createMailboxService(
             : "paused";
       updated = await db
         .prepare(
-          `UPDATE connections SET display_address=?,scopes=?,credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1,state='connected',scheduling_state=?,next_sync_at=? WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND credential_version<? AND (credential_key_version IS NULL OR credential_key_version<=?) AND (state!='disconnected' OR (SELECT COUNT(*) FROM connections WHERE user_id=? AND kind='mailbox' AND state!='disconnected')<?) AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AND (?!='active' OR EXISTS(SELECT 1 FROM processing_consents WHERE user_id=? AND connection_id=? AND revoked_at IS NULL AND background_authorized=1)) AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=connections.user_id AND scope='connection' AND target_id=connections.id) RETURNING ${fields}`,
+          `UPDATE connections SET display_address=?,scopes=?,credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1,state='connected',scheduling_state=?,next_sync_at=? WHERE user_id=? AND id=? AND generation=? AND credential_version=? AND credential_version<? AND (credential_key_version IS NULL OR credential_key_version<=?) AND (state!='disconnected' OR (SELECT COUNT(*) FROM connections WHERE user_id=? AND kind='mailbox' AND state!='disconnected')<?) AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND ${activeProfileSql} AND (?!='active' OR EXISTS(SELECT 1 FROM processing_consents WHERE user_id=? AND connection_id=? AND revoked_at IS NULL AND background_authorized=1)) AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=connections.user_id AND scope='connection' AND target_id=connections.id) RETURNING ${fields}`,
         )
         .bind(
           authorization.identity.address,
@@ -247,7 +248,7 @@ export function createMailboxService(
     } else {
       updated = await db
         .prepare(
-          `INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state,generation,scopes,credential_ciphertext,credential_key_version,credential_version,scheduling_state) SELECT ?,?,'mailbox',?,?,?,'connected',1,?,?,?,1,'awaiting_import' WHERE EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND (SELECT COUNT(*) FROM connections WHERE user_id=? AND kind='mailbox' AND state!='disconnected')<? ON CONFLICT DO NOTHING RETURNING ${fields}`,
+          `INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state,generation,scopes,credential_ciphertext,credential_key_version,credential_version,scheduling_state) SELECT ?,?,'mailbox',?,?,?,'connected',1,?,?,?,1,'awaiting_import' WHERE ${activeProfileSql} AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND (SELECT COUNT(*) FROM connections WHERE user_id=? AND kind='mailbox' AND state!='disconnected')<? ON CONFLICT DO NOTHING RETURNING ${fields}`,
         )
         .bind(
           id,
@@ -347,7 +348,7 @@ export function createMailboxService(
       };
       const checkpoint = await db
         .prepare(
-          "SELECT fence FROM mailbox_refresh_leases WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=? AND lease_expires_at>? AND connection_generation=? AND credential_version=? AND EXISTS(SELECT 1 FROM connections WHERE user_id=mailbox_refresh_leases.user_id AND id=mailbox_refresh_leases.connection_id AND state='connected' AND generation=mailbox_refresh_leases.connection_generation AND credential_version=mailbox_refresh_leases.credential_version) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=mailbox_refresh_leases.user_id AND status='active')",
+          `SELECT fence FROM mailbox_refresh_leases WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=? AND lease_expires_at>? AND connection_generation=? AND credential_version=? AND EXISTS(SELECT 1 FROM connections WHERE user_id=mailbox_refresh_leases.user_id AND id=mailbox_refresh_leases.connection_id AND state='connected' AND generation=mailbox_refresh_leases.connection_generation AND credential_version=mailbox_refresh_leases.credential_version) AND ${activeProfile("mailbox_refresh_leases")}`,
         )
         .bind(
           context.userId,
@@ -371,7 +372,7 @@ export function createMailboxService(
       );
       const changed = await db
         .prepare(
-          `UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND state='connected' AND generation=? AND credential_version=? AND credential_version<? AND credential_key_version<=? AND ${leaseClause} AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING ${fields}`,
+          `UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND state='connected' AND generation=? AND credential_version=? AND credential_version<? AND credential_key_version<=? AND ${leaseClause} AND ${activeProfileSql} RETURNING ${fields}`,
         )
         .bind(
           sealed,
@@ -442,7 +443,7 @@ export function createMailboxService(
 async function liveMailboxSession(db: D1Database, session: MailboxSession) {
   const found = await db
     .prepare(
-      "SELECT id FROM session WHERE id=? AND userId=? AND expiresAt>? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+      `SELECT id FROM session WHERE id=? AND userId=? AND expiresAt>? AND ${activeProfileSql}`,
     )
     .bind(
       session.sessionId,
@@ -462,7 +463,7 @@ export function createMailboxManagement(
   async function row(context: TenantContext, id: string) {
     return db
       .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND (? IS NULL OR provider=?) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')`,
+        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND (? IS NULL OR provider=?) AND ${activeProfileSql}`,
       )
       .bind(
         context.userId,
@@ -476,7 +477,7 @@ export function createMailboxManagement(
   async function list(context: TenantContext) {
     const result = await db
       .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ORDER BY CASE state WHEN 'disconnected' THEN 1 ELSE 0 END,id LIMIT 11`,
+        `SELECT ${fields} FROM connections WHERE user_id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND ${activeProfileSql} ORDER BY CASE state WHEN 'disconnected' THEN 1 ELSE 0 END,id LIMIT 11`,
       )
       .bind(context.userId, context.userId)
       .all<ConnectionRow>();
@@ -502,7 +503,7 @@ export function createMailboxManagement(
       return;
     const changed = await db
       .prepare(
-        "UPDATE connections SET state='disconnected',scheduling_state='paused',next_sync_at=NULL,credential_ciphertext=NULL,credential_key_version=NULL,generation=generation+1,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND state!='disconnected' AND generation=? AND credential_version=? AND generation<? AND credential_version<? AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') RETURNING id",
+        `UPDATE connections SET state='disconnected',scheduling_state='paused',next_sync_at=NULL,credential_ciphertext=NULL,credential_key_version=NULL,generation=generation+1,credential_version=credential_version+1 WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND state!='disconnected' AND generation=? AND credential_version=? AND generation<? AND credential_version<? AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) AND ${activeProfileSql} RETURNING id`,
       )
       .bind(
         session.tenant.userId,

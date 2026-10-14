@@ -10,6 +10,7 @@ import type {
 import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
 import { sourceKey } from "../hash";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import type { DiscoveryServiceOptions } from "./service";
 
 interface State {
@@ -632,7 +633,7 @@ export function createDiscoveryPages(
     guards.charge();
     const parent = await db
       .prepare(
-        "SELECT id,stage,frozen_start,frozen_cutoff,query_mode,first_usable_at FROM import_runs WHERE user_id=? AND id=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+        `SELECT id,stage,frozen_start,frozen_cutoff,query_mode,first_usable_at FROM import_runs WHERE user_id=? AND id=? AND ${activeProfileSql}`,
       )
       .bind(context.userId, importRunId, context.userId)
       .first();

@@ -14,13 +14,13 @@ import {
   MailboxError,
 } from "@invoxim/core";
 import { z } from "zod";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { CredentialError } from "../security/cipher";
 import { pkceVerifier, stateHash } from "../security/helpers";
 import { createOAuthStateStore } from "../security/oauth-state";
 import { createCredentialVault } from "../security/vault";
 import {
   ARCHIVE_MAX,
-  activeProfile,
   type ConnectionRow,
   createDriveConnectionsRepository,
   fields,
@@ -119,7 +119,7 @@ export function createDriveService(
     });
     const stored = await db
       .prepare(
-        `INSERT INTO storage_oauth_intents(user_id,state_hash,connection_id,connection_generation,credential_version,archive_settings_version) SELECT ?,?,?,?,?,? WHERE ${liveSession} AND ${activeProfile}`,
+        `INSERT INTO storage_oauth_intents(user_id,state_hash,connection_id,connection_generation,credential_version,archive_settings_version) SELECT ?,?,?,?,?,? WHERE ${liveSession} AND ${activeProfileSql}`,
       )
       .bind(
         session.tenant.userId,
@@ -258,7 +258,7 @@ export function createDriveService(
     if (existing) {
       mutation = db
         .prepare(
-          `UPDATE connections SET display_address=?,scopes=?,credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1,state='connected',scheduling_state='paused',next_sync_at=NULL WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND provider_subject=? AND generation=? AND credential_version=? AND credential_version<? AND (credential_key_version IS NULL OR credential_key_version<=?) AND ${liveSession} AND ${activeProfile} AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=connections.user_id AND scope='connection' AND target_id=connections.id) AND NOT EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND (a.version!=? OR a.version>=?)) RETURNING ${fields}`,
+          `UPDATE connections SET display_address=?,scopes=?,credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1,state='connected',scheduling_state='paused',next_sync_at=NULL WHERE user_id=? AND id=? AND kind='storage' AND provider='google-drive' AND provider_subject=? AND generation=? AND credential_version=? AND credential_version<? AND (credential_key_version IS NULL OR credential_key_version<=?) AND ${liveSession} AND ${activeProfileSql} AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=connections.user_id AND scope='connection' AND target_id=connections.id) AND NOT EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=connections.user_id AND a.enabled=1 AND a.connection_id=connections.id AND (a.version!=? OR a.version>=?)) RETURNING ${fields}`,
         )
         .bind(
           identity.data.address,
@@ -280,7 +280,7 @@ export function createDriveService(
     } else {
       mutation = db
         .prepare(
-          `INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state,generation,scopes,credential_ciphertext,credential_key_version,credential_version,scheduling_state,next_sync_at) SELECT ?,?,'storage','google-drive',?,?,'connected',1,?,?,?,1,'paused',NULL WHERE ${liveSession} AND ${activeProfile} ON CONFLICT DO NOTHING RETURNING ${fields}`,
+          `INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state,generation,scopes,credential_ciphertext,credential_key_version,credential_version,scheduling_state,next_sync_at) SELECT ?,?,'storage','google-drive',?,?,'connected',1,?,?,?,1,'paused',NULL WHERE ${liveSession} AND ${activeProfileSql} ON CONFLICT DO NOTHING RETURNING ${fields}`,
         )
         .bind(
           id,

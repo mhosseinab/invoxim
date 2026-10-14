@@ -158,6 +158,13 @@ export function activeProfile(alias: string): string {
   return `EXISTS(SELECT 1 FROM profiles active WHERE active.user_id=${alias}.user_id AND active.status='active')`;
 }
 /**
+ * P10: the active-profile EXISTS predicate in bound form. Use when the outer
+ * query binds userId directly rather than correlating on an alias.
+ * Bind order: userId.
+ */
+export const activeProfileSql =
+  "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')";
+/**
  * D5: the drive.file scope fragment. INT-4 migrates the drive call sites.
  * Bind order: none (correlated on the connection alias).
  */

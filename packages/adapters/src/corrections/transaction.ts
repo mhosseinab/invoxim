@@ -2,6 +2,7 @@ import type { CorrectionCommand, CorrectionResult } from "@invoxim/contracts";
 import type { CorrectionSession } from "@invoxim/core";
 import { CorrectionError } from "@invoxim/core";
 import { sha256Hex } from "../hash";
+import { activeProfileSql } from "../pipeline/repository-guards";
 export type SqlValue = string | number | null;
 export interface VersionCheck {
   sql: string;
@@ -29,7 +30,7 @@ export async function replayCorrection(
 ) {
   const live = await db
     .prepare(
-      "SELECT id FROM session WHERE id=? AND userId=? AND expiresAt>? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+      `SELECT id FROM session WHERE id=? AND userId=? AND expiresAt>? AND ${activeProfileSql}`,
     )
     .bind(
       session.sessionId,
@@ -67,8 +68,7 @@ export function correctionTransaction(
   const user = session.tenant.userId,
     executor = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [];
-  const guard =
-    "EXISTS(SELECT 1 FROM correction_commands WHERE user_id=? AND route=? AND key=? AND executor=?) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?)";
+  const guard = `EXISTS(SELECT 1 FROM correction_commands WHERE user_id=? AND route=? AND key=? AND executor=?) AND ${activeProfileSql} AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?)`;
   const guardValues = [
     user,
     identity.route,
@@ -82,7 +82,7 @@ export function correctionTransaction(
   statements.push(
     db
       .prepare(
-        `INSERT INTO correction_commands(user_id,route,key,body_hash,executor,result_json,created_at) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) ${checks.map((check) => `AND (${check.sql})`).join(" ")} ON CONFLICT DO NOTHING`,
+        `INSERT INTO correction_commands(user_id,route,key,body_hash,executor,result_json,created_at) SELECT ?,?,?,?,?,?,? WHERE ${activeProfileSql} AND EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>?) ${checks.map((check) => `AND (${check.sql})`).join(" ")} ON CONFLICT DO NOTHING`,
       )
       .bind(
         user,

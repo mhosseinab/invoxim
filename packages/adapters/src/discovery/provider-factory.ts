@@ -6,6 +6,7 @@ import { DiscoveryError, MailboxError } from "@invoxim/core";
 import type { GmailConfiguration } from "../mailbox/configuration";
 import { createGmailAuthorization } from "../mailbox/gmail";
 import { createMailboxService } from "../mailbox/service";
+import { activeProfile } from "../pipeline/repository-guards";
 import { CredentialError } from "../security/cipher";
 import { createCredentialVault } from "../security/vault";
 import { createGmailDiscovery } from "./gmail";
@@ -32,7 +33,7 @@ export function createGmailDiscoveryProviderFactory(
       async function pin(version: number, scopes: string) {
         const current = await db
           .prepare(
-            "SELECT credential_version FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='gmail' AND state='connected' AND generation=? AND credential_version=? AND scopes=? AND EXISTS(SELECT 1 FROM profiles WHERE profiles.user_id=connections.user_id AND profiles.status='active')",
+            `SELECT credential_version FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='gmail' AND state='connected' AND generation=? AND credential_version=? AND scopes=? AND ${activeProfile("connections")}`,
           )
           .bind(
             context.userId,

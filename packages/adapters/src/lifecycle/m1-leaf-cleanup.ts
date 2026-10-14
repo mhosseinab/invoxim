@@ -1,3 +1,4 @@
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { targetObservations } from "./graph";
 
 interface BaseItem {
@@ -48,7 +49,7 @@ function current(item: M1CleanupItem): {
       ],
     };
   return {
-    text: "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') AND EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND state='disconnected') AND EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=? AND scope='connection' AND target_id=? AND request_id=? AND stage=?)",
+    text: `${activeProfileSql} AND EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND state='disconnected') AND EXISTS(SELECT 1 FROM lifecycle_deletions WHERE user_id=? AND scope='connection' AND target_id=? AND request_id=? AND stage=?)`,
     values: [
       item.user_id,
       item.user_id,

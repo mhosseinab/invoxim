@@ -1,5 +1,6 @@
 import { connectionsResponseSchema } from "@invoxim/contracts";
 import type { TenantContext } from "@invoxim/core";
+import { activeProfileSql } from "./pipeline/repository-guards";
 
 interface ConnectionRow {
   id: string;
@@ -28,7 +29,7 @@ export function createConnectionsViewRepository(db: D1Database) {
         : "0";
       const result = await db
         .prepare(
-          `SELECT c.id,c.kind,c.provider,c.display_address,c.state,c.generation,c.credential_version,c.credential_ciphertext,c.credential_key_version,c.scheduling_state,${archived} AS archiving_enabled FROM connections c WHERE c.user_id=? AND ((c.kind='mailbox' AND c.provider IN('gmail','outlook')) OR (c.kind='storage' AND c.provider='google-drive')) AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ORDER BY CASE c.state WHEN 'disconnected' THEN 1 ELSE 0 END,c.id LIMIT 11`,
+          `SELECT c.id,c.kind,c.provider,c.display_address,c.state,c.generation,c.credential_version,c.credential_ciphertext,c.credential_key_version,c.scheduling_state,${archived} AS archiving_enabled FROM connections c WHERE c.user_id=? AND ((c.kind='mailbox' AND c.provider IN('gmail','outlook')) OR (c.kind='storage' AND c.provider='google-drive')) AND ${activeProfileSql} ORDER BY CASE c.state WHEN 'disconnected' THEN 1 ELSE 0 END,c.id LIMIT 11`,
         )
         .bind(context.userId, context.userId)
         .all<ConnectionRow>();

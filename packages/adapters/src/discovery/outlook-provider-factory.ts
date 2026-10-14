@@ -7,6 +7,7 @@ import {
 } from "../mailbox/outlook";
 import type { OutlookConfiguration } from "../mailbox/outlook-configuration";
 import { createMailboxService } from "../mailbox/service";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import { createCredentialVault } from "../security/vault";
 import type { OutlookGraphDiscoveryPort } from "./outlook";
 import { createOutlookGraphDiscovery } from "./outlook";
@@ -39,7 +40,7 @@ export function createOutlookDiscoveryProviderFactory(
         active();
         const row = await db
           .prepare(
-            "SELECT id,scopes FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='outlook' AND state='connected' AND generation=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+            `SELECT id,scopes FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='outlook' AND state='connected' AND generation=? AND ${activeProfileSql}`,
           )
           .bind(
             context.userId,

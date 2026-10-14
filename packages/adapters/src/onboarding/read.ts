@@ -15,6 +15,7 @@ import type {
 import type { StoredAiSettings } from "../ai/settings";
 import { createAiSettingsService } from "../ai/settings";
 import { validateOutlookReadScopes } from "../mailbox/outlook";
+import { activeProfile, activeProfileSql } from "../pipeline/repository-guards";
 import { readEnvelopeVersion } from "../security/cipher";
 import { selectedOnboardingConfigurationDigest } from "./configuration";
 
@@ -190,7 +191,7 @@ export function createOnboardingReads(
     const rows = (
       await db
         .prepare(
-          "SELECT c.id,c.provider,c.display_address,c.generation,c.credential_version,c.state,c.scheduling_state,c.scopes,c.credential_ciphertext,c.credential_key_version FROM connections c WHERE c.user_id=? AND c.kind='mailbox' AND c.provider IN ('gmail','outlook') AND EXISTS(SELECT 1 FROM profiles p WHERE p.user_id=c.user_id AND p.status='active') ORDER BY c.id LIMIT 11",
+          `SELECT c.id,c.provider,c.display_address,c.generation,c.credential_version,c.state,c.scheduling_state,c.scopes,c.credential_ciphertext,c.credential_key_version FROM connections c WHERE c.user_id=? AND c.kind='mailbox' AND c.provider IN ('gmail','outlook') AND ${activeProfile("c")} ORDER BY c.id LIMIT 11`,
         )
         .bind(session.tenant.userId)
         .all<OnboardingConnection>()
@@ -275,7 +276,7 @@ export function createOnboardingReads(
     if (target.mode === "hosted" && target.initializeHosted) {
       const cooled = await db
         .prepare(
-          "SELECT 1 AS cooled FROM hosted_ai_cooldowns WHERE destination_id=? AND model_id=? AND cooldown_until>? AND EXISTS(SELECT 1 FROM profiles p WHERE p.user_id=? AND p.status='active')",
+          `SELECT 1 AS cooled FROM hosted_ai_cooldowns WHERE destination_id=? AND model_id=? AND cooldown_until>? AND ${activeProfileSql}`,
         )
         .bind(
           target.destination.id,

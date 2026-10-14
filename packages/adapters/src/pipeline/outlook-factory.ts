@@ -9,6 +9,7 @@ import { createMailboxService } from "../mailbox/service";
 import { createCredentialVault } from "../security/vault";
 import { ContentError } from "./gmail-content";
 import { createOutlookContentReader } from "./outlook-content";
+import { activeProfileSql } from "./repository-guards";
 import type { TransientContentFactory } from "./types";
 
 /** Credentials stay in the adapter; lease/checkpoint authority comes from the job runner. */
@@ -35,7 +36,7 @@ export function createOutlookContentFactory(
       async function requireConnection() {
         const row = await db
           .prepare(
-            "SELECT id,scopes FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='outlook' AND state='connected' AND generation=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+            `SELECT id,scopes FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='outlook' AND state='connected' AND generation=? AND ${activeProfileSql}`,
           )
           .bind(
             lease.context.userId,

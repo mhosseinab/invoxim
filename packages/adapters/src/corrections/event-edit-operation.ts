@@ -6,6 +6,7 @@ import {
   settlementEvents,
   validateEntryChange,
 } from "@invoxim/core";
+import { activeProfileSql } from "../pipeline/repository-guards";
 import {
   allocationsCheck,
   creditProofs,
@@ -38,7 +39,7 @@ export async function executeEventEdit(
 
   const owned = await db
     .prepare(
-      "SELECT purchase_id FROM ledger_entries WHERE user_id=? AND id=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')",
+      `SELECT purchase_id FROM ledger_entries WHERE user_id=? AND id=? AND ${activeProfileSql}`,
     )
     .bind(user, command.entryId, user)
     .first<{ purchase_id: string | null }>();

@@ -11,6 +11,7 @@ import {
 } from "@invoxim/contracts";
 import { deriveRecurringSuggestion, type TenantContext } from "@invoxim/core";
 import { z } from "zod";
+import { activeProfileSql } from "../pipeline/repository-guards";
 
 const rowSchema = z.object({
   id: z.string(),
@@ -249,7 +250,7 @@ export function createRecurringService(
     const [seriesResult, entriesResult] = await db.batch([
       db
         .prepare(
-          `SELECT ${seriesColumns} FROM recurring_series WHERE user_id=? AND id=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')`,
+          `SELECT ${seriesColumns} FROM recurring_series WHERE user_id=? AND id=? AND ${activeProfileSql}`,
         )
         .bind(context.userId, id, context.userId),
       db
@@ -305,7 +306,7 @@ export function createRecurringService(
         : "";
     const result = await db
       .prepare(
-        `UPDATE recurring_series SET state=?,version=version+1,mutation_id=?,updated_at=? WHERE user_id=? AND id=? AND version=? AND EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active') ${evidenceGuard}`,
+        `UPDATE recurring_series SET state=?,version=version+1,mutation_id=?,updated_at=? WHERE user_id=? AND id=? AND version=? AND ${activeProfileSql} ${evidenceGuard}`,
       )
       .bind(
         input.state,
