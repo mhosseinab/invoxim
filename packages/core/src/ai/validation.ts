@@ -1,5 +1,5 @@
 import { extractionSchema, hasControlCharacters } from "@invoxim/contracts";
-import { parseMoney } from "../index";
+import { parseMoney } from "../money";
 import type {
   AiMissingField,
   AiReason,
