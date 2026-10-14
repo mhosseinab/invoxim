@@ -18,6 +18,19 @@ import {
 } from "./graph";
 
 const MAX = 2_147_483_646;
+/** Cancel open jobs and bump their fence so in-flight leases die (C11). */
+function cancelFencedJobsSql(
+  outcomeCode:
+    | "account_deleted"
+    | "mailbox_disconnected"
+    | "source_data_deleted",
+  connectionScoped: boolean,
+  guard: string,
+): string {
+  return `UPDATE jobs SET status='canceled',lease_id=NULL,lease_expires_at=NULL,fence=fence+1,outcome_code='${outcomeCode}' WHERE user_id=?${
+    connectionScoped ? " AND connection_id=?" : ""
+  } AND status NOT IN ('completed','terminal','canceled') AND ${guard}`;
+}
 async function hash(value: string) {
   return Array.from(
     new Uint8Array(
@@ -125,9 +138,7 @@ export function createLifecycleRepository(
         )
         .bind(marker.deletedAt, marker.userId, marker.userId, marker.requestId),
       db
-        .prepare(
-          `UPDATE jobs SET status='canceled',lease_id=NULL,lease_expires_at=NULL,fence=fence+1,outcome_code='account_deleted' WHERE user_id=? AND status NOT IN ('completed','terminal','canceled') AND ${requestGuard}`,
-        )
+        .prepare(cancelFencedJobsSql("account_deleted", false, requestGuard))
         .bind(marker.userId, marker.userId, marker.requestId),
       db
         .prepare(
@@ -213,9 +224,7 @@ export function createLifecycleRepository(
         )
         .bind(now(), user, id, ...args),
       db
-        .prepare(
-          `UPDATE jobs SET status='canceled',lease_id=NULL,lease_expires_at=NULL,fence=fence+1,outcome_code='mailbox_disconnected' WHERE user_id=? AND connection_id=? AND status NOT IN ('completed','terminal','canceled') AND ${guard}`,
-        )
+        .prepare(cancelFencedJobsSql("mailbox_disconnected", true, guard))
         .bind(user, id, ...args),
       db
         .prepare(
@@ -308,9 +317,7 @@ export function createLifecycleRepository(
         )
         .bind(now(), user, id, ...args),
       db
-        .prepare(
-          `UPDATE jobs SET status='canceled',lease_id=NULL,lease_expires_at=NULL,fence=fence+1,outcome_code='source_data_deleted' WHERE user_id=? AND connection_id=? AND status NOT IN ('completed','terminal','canceled') AND ${guard}`,
-        )
+        .prepare(cancelFencedJobsSql("source_data_deleted", true, guard))
         .bind(user, id, ...args),
       db
         .prepare(

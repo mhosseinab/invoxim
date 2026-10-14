@@ -66,63 +66,94 @@ export async function cleanupConnection(db: D1Database, item: Item) {
     const entries =
       "SELECT id FROM ledger_entries WHERE user_id=? AND (observation_id IN(SELECT id FROM target) OR purchase_id IN(SELECT id FROM doomed))";
     const erasedFacts = `((entity_kind='entry' AND entity_id IN(${entries})) OR (entity_kind='purchase' AND entity_id IN(SELECT id FROM doomed)))`;
-    const definitions: [string, string, (string | number)[]][] = [
-      ["field_overrides", erasedFacts, [user]],
+    // Fixed stage integers (restore/replay depends on them). 9 recomputes retained
+    // purchases and 10 detaches surviving reviews; the remaining stages drain tables
+    // in dependency order (C7).
+    const erasureByStage = new Map<
+      number,
+      [string, string, (string | number)[]]
+    >([
+      [6, ["field_overrides", erasedFacts, [user]]],
       [
-        "correction_audit",
-        `(${erasedFacts} OR (entity_kind='review' AND entity_id IN(SELECT id FROM review_items WHERE user_id=? AND (document_id IN(SELECT id FROM docs) OR (document_id IS NULL AND purchase_id IN(SELECT id FROM doomed))))))`,
-        [user, user],
+        7,
+        [
+          "correction_audit",
+          `(${erasedFacts} OR (entity_kind='review' AND entity_id IN(SELECT id FROM review_items WHERE user_id=? AND (document_id IN(SELECT id FROM docs) OR (document_id IS NULL AND purchase_id IN(SELECT id FROM doomed))))))`,
+          [user, user],
+        ],
       ],
       [
-        "ledger_entries",
-        "(observation_id IN(SELECT id FROM target) OR purchase_id IN(SELECT id FROM doomed))",
-        [],
+        8,
+        [
+          "ledger_entries",
+          "(observation_id IN(SELECT id FROM target) OR purchase_id IN(SELECT id FROM doomed))",
+          [],
+        ],
       ],
       [
-        "review_items",
-        "(document_id IN(SELECT id FROM docs) OR purchase_id IN(SELECT id FROM doomed))",
-        [],
-      ],
-      ["ledger_match_decisions", "purchase_id IN(SELECT id FROM doomed)", []],
-      [
-        "purchase_merges",
-        "(target_id IN(SELECT id FROM doomed) OR source_id IN(SELECT id FROM doomed))",
-        [],
+        11,
+        [
+          "review_items",
+          "(document_id IN(SELECT id FROM docs) OR purchase_id IN(SELECT id FROM doomed))",
+          [],
+        ],
       ],
       [
-        "manual_purchase_evidence",
-        "(document_id IN(SELECT id FROM docs) OR purchase_id IN(SELECT id FROM doomed))",
-        [],
+        12,
+        ["ledger_match_decisions", "purchase_id IN(SELECT id FROM doomed)", []],
       ],
       [
-        "purchase_evidence",
-        "(observation_id IN(SELECT id FROM target) OR purchase_id IN(SELECT id FROM doomed))",
-        [],
-      ],
-      ["purchases", "id IN(SELECT id FROM doomed)", []],
-      ["observations", "id IN(SELECT id FROM target)", []],
-      ["ai_extractions", "document_id IN(SELECT id FROM docs)", []],
-      ["documents", "id IN(SELECT id FROM docs)", []],
-      [
-        "discovery_source_jobs",
-        "source_message_id IN(SELECT id FROM source_messages WHERE user_id=? AND connection_id=?)",
-        [user, id],
+        13,
+        [
+          "purchase_merges",
+          "(target_id IN(SELECT id FROM doomed) OR source_id IN(SELECT id FROM doomed))",
+          [],
+        ],
       ],
       [
-        "discovery_run_sources",
-        "source_message_id IN(SELECT id FROM source_messages WHERE user_id=? AND connection_id=?)",
-        [user, id],
+        14,
+        [
+          "manual_purchase_evidence",
+          "(document_id IN(SELECT id FROM docs) OR purchase_id IN(SELECT id FROM doomed))",
+          [],
+        ],
       ],
-      ["source_messages", "connection_id=?", [id]],
-    ];
+      [
+        15,
+        [
+          "purchase_evidence",
+          "(observation_id IN(SELECT id FROM target) OR purchase_id IN(SELECT id FROM doomed))",
+          [],
+        ],
+      ],
+      [16, ["purchases", "id IN(SELECT id FROM doomed)", []]],
+      [17, ["observations", "id IN(SELECT id FROM target)", []]],
+      [18, ["ai_extractions", "document_id IN(SELECT id FROM docs)", []]],
+      [19, ["documents", "id IN(SELECT id FROM docs)", []]],
+      [
+        20,
+        [
+          "discovery_source_jobs",
+          "source_message_id IN(SELECT id FROM source_messages WHERE user_id=? AND connection_id=?)",
+          [user, id],
+        ],
+      ],
+      [
+        21,
+        [
+          "discovery_run_sources",
+          "source_message_id IN(SELECT id FROM source_messages WHERE user_id=? AND connection_id=?)",
+          [user, id],
+        ],
+      ],
+      [22, ["source_messages", "connection_id=?", [id]]],
+    ]);
     // Detach surviving review documents in their own bounded stage before the parent can disappear.
     if (item.stage === 10) {
       query = `UPDATE review_items SET purchase_id=CASE WHEN purchase_id IN(SELECT id FROM doomed) THEN NULL ELSE purchase_id END,observation_id=CASE WHEN observation_id IN(SELECT id FROM target) THEN NULL ELSE observation_id END WHERE rowid IN(SELECT rowid FROM review_items WHERE user_id=? AND (purchase_id IN(SELECT id FROM doomed) OR observation_id IN(SELECT id FROM target)) AND document_id NOT IN(SELECT id FROM docs) LIMIT 100) AND ${guard}`;
       extra = [user];
     } else {
-      const index =
-          item.stage - 6 - (item.stage > 9 ? 1 : 0) - (item.stage > 10 ? 1 : 0),
-        definition = definitions[index];
+      const definition = erasureByStage.get(item.stage);
       if (!definition) {
         await db
           .prepare(
