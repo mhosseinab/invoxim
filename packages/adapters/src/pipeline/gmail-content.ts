@@ -7,6 +7,7 @@ import { normalizeGmailDocumentInput } from "../documents/gmail";
 import {
   attachmentBatchRequest,
   GMAIL_BATCH_URL,
+  GmailBatchError,
   parseAttachmentBatch,
   retryAfterMs,
 } from "./gmail-batch";
@@ -89,12 +90,21 @@ export function createGmailContentReader(
             throw new ContentError("CONTENT_AUTH_REQUIRED");
           if (response.status === 404)
             throw new ContentError("CONTENT_SOURCE_UNAVAILABLE");
-          if (!response.ok)
+          if (!response.ok) {
+            console.warn("gmail_content_http_failure", {
+              operation: batch
+                ? "batch"
+                : path.includes("/attachments/")
+                  ? "attachment"
+                  : "message",
+              status: response.status,
+            });
             throw new ContentError(
               "CONTENT_UNAVAILABLE",
               retryAfterMs(response.headers.get("Retry-After")) ??
                 (response.status === 429 ? 30000 : undefined),
             );
+          }
           const reader = response.body?.getReader();
           if (!reader) throw new ContentError("CONTENT_UNAVAILABLE");
           const cancel = () => {
@@ -264,7 +274,10 @@ export function createGmailContentReader(
             response.contentType,
             uniqueRefs.length,
           );
-        } catch {
+        } catch (cause) {
+          console.warn("gmail_attachment_batch_invalid", {
+            reason: cause instanceof GmailBatchError ? cause.reason : "json",
+          });
           throw new ContentError("CONTENT_UNAVAILABLE");
         }
         const failures = results.filter((result) => result.status !== 200);

@@ -1,3 +1,19 @@
+export class GmailBatchError extends Error {
+  constructor(
+    readonly reason:
+      | "headers"
+      | "encoding"
+      | "content-type"
+      | "opening-boundary"
+      | "closing-boundary"
+      | "count"
+      | "framing"
+      | "identity"
+      | "status",
+  ) {
+    super("INVALID_GMAIL_BATCH");
+  }
+}
 /** Gmail's discovery document specifies rootUrl + batchPath, not a user URL. */
 export const GMAIL_BATCH_URL = "https://gmail.googleapis.com/batch";
 export interface AttachmentReference {
@@ -26,14 +42,14 @@ export function attachmentBatchRequest(
   };
 }
 function headers(text: string): Map<string, string> {
-  if (text.length > 8192) throw new Error("INVALID_GMAIL_BATCH");
+  if (text.length > 8192) throw new GmailBatchError("headers");
   const result = new Map<string, string>();
   for (const line of text.split("\r\n")) {
     const match = /^([A-Za-z0-9-]+):[ \t]*([^\r\n]*)$/.exec(line);
     if (!match?.[1] || match[2] === undefined)
-      throw new Error("INVALID_GMAIL_BATCH");
+      throw new GmailBatchError("headers");
     const name = match[1].toLowerCase();
-    if (result.has(name)) throw new Error("INVALID_GMAIL_BATCH");
+    if (result.has(name)) throw new GmailBatchError("headers");
     result.set(name, match[2].trim());
   }
   return result;
@@ -50,7 +66,7 @@ function requireUnencoded(headers: ReadonlyMap<string, string>, mime = false) {
       encoding !== "identity" &&
       !(mime && name === "content-transfer-encoding" && encoding === "binary")
     )
-      throw new Error("INVALID_GMAIL_BATCH");
+      throw new GmailBatchError("encoding");
   }
 }
 export function retryAfterMs(
@@ -84,33 +100,34 @@ export function parseAttachmentBatch(
     );
   const boundary = match?.[1] ?? match?.[2];
   if (!boundary || expectedCount < 2 || expectedCount > 8)
-    throw new Error("INVALID_GMAIL_BATCH");
+    throw new GmailBatchError("content-type");
   const marker = `--${boundary}`;
-  if (!text.startsWith(`${marker}\r\n`)) throw new Error("INVALID_GMAIL_BATCH");
+  if (!text.startsWith(`${marker}\r\n`))
+    throw new GmailBatchError("opening-boundary");
   // At most the expected parts, closing delimiter and one overflow sentinel.
   const sections = text.split(`\r\n${marker}`, expectedCount + 2);
   const closing = sections.pop();
   if (closing !== "--\r\n" && closing !== "--")
-    throw new Error("INVALID_GMAIL_BATCH");
-  if (sections.length !== expectedCount) throw new Error("INVALID_GMAIL_BATCH");
+    throw new GmailBatchError("closing-boundary");
+  if (sections.length !== expectedCount) throw new GmailBatchError("count");
   const results = new Map<number, AttachmentBatchResult>();
   for (const [position, section] of sections.entries()) {
     if (position > 0 && !section.startsWith("\r\n"))
-      throw new Error("INVALID_GMAIL_BATCH");
+      throw new GmailBatchError("framing");
     const part =
       position === 0 ? section.slice(marker.length + 2) : section.slice(2);
     const separator = part.indexOf("\r\n\r\n");
-    if (separator < 0) throw new Error("INVALID_GMAIL_BATCH");
+    if (separator < 0) throw new GmailBatchError("headers");
     const metadata = headers(part.slice(0, separator));
     requireUnencoded(metadata, true);
     if (metadata.get("content-type")?.toLowerCase() !== "application/http")
-      throw new Error("INVALID_GMAIL_BATCH");
+      throw new GmailBatchError("content-type");
     const identity = /^<response-attachment-(\d)>$/.exec(
       metadata.get("content-id") ?? "",
     );
     const index = Number(identity?.[1]);
     if (!identity || index >= expectedCount || results.has(index))
-      throw new Error("INVALID_GMAIL_BATCH");
+      throw new GmailBatchError("identity");
     const response = part.slice(separator + 4);
     const statusEnd = response.indexOf("\r\n");
     const status = /^HTTP\/1\.[01] ([1-5]\d\d)(?: [^\r\n]*)?$/.exec(
@@ -118,7 +135,7 @@ export function parseAttachmentBatch(
     );
     const headerEnd = response.indexOf("\r\n\r\n", statusEnd);
     if (!status || statusEnd < 0 || headerEnd < 0)
-      throw new Error("INVALID_GMAIL_BATCH");
+      throw new GmailBatchError("status");
     const innerHeaders = headers(response.slice(statusEnd + 2, headerEnd));
     requireUnencoded(innerHeaders);
     const code = Number(status[1]);
@@ -132,7 +149,7 @@ export function parseAttachmentBatch(
         innerHeaders.get("content-type") ?? "",
       )
     )
-      throw new Error("INVALID_GMAIL_BATCH");
+      throw new GmailBatchError("content-type");
     results.set(index, {
       status: code,
       ...(retry === undefined ? {} : { retryAfterMs: retry }),
@@ -141,7 +158,7 @@ export function parseAttachmentBatch(
   }
   return Array.from({ length: expectedCount }, (_, index) => {
     const result = results.get(index);
-    if (!result) throw new Error("INVALID_GMAIL_BATCH");
+    if (!result) throw new GmailBatchError("identity");
     return result;
   });
 }

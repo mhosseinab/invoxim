@@ -20,6 +20,7 @@ import {
 import { AiSettingsError } from "../ai/settings";
 import { ContentError } from "./gmail-content";
 import type { PipelineDocumentMetadata } from "./repository";
+import { PipelinePersistenceError } from "./repository-guards";
 import type {
   PipelineControl,
   PipelineService,
@@ -545,6 +546,15 @@ export function createPipelineService(
             ? completed
             : stale;
         }
+        console.warn("pipeline_retry", {
+          reason:
+            cause instanceof ContentError ||
+            cause instanceof PipelinePersistenceError
+              ? cause.code
+              : control.signal.aborted
+                ? "TIMEOUT"
+                : "UNEXPECTED",
+        });
         return {
           kind: "retry",
           code: control.signal.aborted ? "timeout" : "transient",
