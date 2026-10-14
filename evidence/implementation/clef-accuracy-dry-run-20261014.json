@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "mode": "dry-run",
+  "model": "@cf/cloudflare/clef",
+  "policyVersion": "document-invoice-classification-v3",
+  "protocolSha256": "ea96b666c15a5253712940fc071e442fd079e04c37c282859e403c93103ff3e3",
+  "datasetVersion": "clef-invoice-focus-20261014-v1",
+  "partition": "all",
+  "partitionHashes": {
+    "development": {
+      "cases": 80,
+      "sha256": "eba6c4b38655283d10dea731e9bb1bd6d6d1bdb0560ed129b399ebe9ad925b5e"
+    },
+    "holdout": {
+      "cases": 40,
+      "sha256": "6e8aff941a9dbd798080b45a1443b8103c1712bf77ae85157b5121aac90ae9a0"
+    }
+  },
+  "totalCases": 120,
+  "plannedCalls": 114,
+  "maxCalls": 120,
+  "maxCostUsd": "0.30",
+  "worstCaseUsdMicros": "93532",
+  "maxRequestBytes": 8192,
+  "timeoutMs": 30000,
+  "thresholds": {
+    "negativeThreshold": 0.1,
+    "positiveThreshold": 0.9
+  },
+  "tariff": {
+    "version": "cloudflare-clef-20261013",
+    "checkedAt": "2026-10-13T19:50:00Z",
+    "inputUsdMicrosPerMillion": "240000"
+  },
+  "networkCalls": 0,
+  "spentUsdMicros": "0",
+  "metrics": null,
+  "complete": false
+}

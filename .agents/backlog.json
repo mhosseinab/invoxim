@@ -1545,7 +1545,7 @@
       "id": "PDF-PROCESSING-01",
       "title": "Process bounded text PDF attachments through the direct model path",
       "milestone": "M0",
-      "status": "in_progress",
+      "status": "done",
       "dependsOn": [
         "AI-CLEF-PRECISION-01"
       ],
@@ -1558,7 +1558,11 @@
         "PDF-MODEL-PIPELINE",
         "PDF-CACHE-FENCES"
       ],
-      "completionEvidence": []
+      "completionEvidence": [
+        "evidence/implementation/pdf-classification-completion-20261014.md",
+        "evidence/implementation/pdf-classification-review-20261014.md"
+      ],
+      "blockedBy": []
     },
     {
       "id": "CLEF-ACCURACY-02",
@@ -1576,7 +1580,14 @@
         "CLEF-HOLDOUT",
         "CLEF-DOCUMENT-ROUTING"
       ],
-      "completionEvidence": []
+      "completionEvidence": [
+        "evidence/implementation/clef-accuracy-offline-completion-20261014.md",
+        "evidence/implementation/clef-accuracy-dry-run-20261014.json",
+        "evidence/implementation/pdf-classification-completion-20261014.md"
+      ],
+      "blockedBy": [
+        "Paid synthetic Clef evaluation awaits explicit owner authorization for the requested $0.30 total / 240-call cap. Offline implementation and verification passed; live precision/recall and threshold calibration remain unmeasured."
+      ]
     }
   ]
 }
