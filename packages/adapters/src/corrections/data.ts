@@ -34,8 +34,14 @@ export interface ReviewRow {
   missing_fields_json: string | null;
   deletion_pending: number;
 }
-const reviewDeletionPendingSql =
-  "EXISTS(SELECT 1 FROM lifecycle_deletions ld JOIN source_messages s ON s.user_id=ld.user_id AND s.connection_id=ld.target_id JOIN documents d ON d.user_id=s.user_id AND d.source_message_id=s.id WHERE ld.user_id=review_items.user_id AND ld.scope='connection' AND d.id=review_items.document_id)";
+/** Deletion-pending EXISTS for a row's owning connection (C8). */
+function deletionPendingSql(userRef: string, documentRef: string): string {
+  return `EXISTS(SELECT 1 FROM lifecycle_deletions ld JOIN source_messages s ON s.user_id=ld.user_id AND s.connection_id=ld.target_id JOIN documents d ON d.user_id=s.user_id AND d.source_message_id=s.id WHERE ld.user_id=${userRef} AND ld.scope='connection' AND d.id=${documentRef})`;
+}
+const reviewDeletionPendingSql = deletionPendingSql(
+  "review_items.user_id",
+  "review_items.document_id",
+);
 export async function purchase(db: D1Database, user: string, id: string) {
   const row = await db
     .prepare(
@@ -59,7 +65,7 @@ export async function events(
 > {
   const rows = await db
     .prepare(
-      "SELECT l.id,l.kind,CAST(l.amount_minor AS TEXT) AS amountMinor,l.currency,l.event_date AS eventDate,l.date_basis AS dateBasis,l.origin,l.eligible,l.version,l.observation_id AS observationId,o.document_id AS documentId,o.review_state AS reviewState,o.evidence_code AS evidenceCode,EXISTS(SELECT 1 FROM lifecycle_deletions ld JOIN source_messages s ON s.user_id=ld.user_id AND s.connection_id=ld.target_id JOIN documents d ON d.user_id=s.user_id AND d.source_message_id=s.id WHERE ld.user_id=l.user_id AND ld.scope='connection' AND d.id=o.document_id) AS deletionPending FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id=? ORDER BY l.id LIMIT 201",
+      `SELECT l.id,l.kind,CAST(l.amount_minor AS TEXT) AS amountMinor,l.currency,l.event_date AS eventDate,l.date_basis AS dateBasis,l.origin,l.eligible,l.version,l.observation_id AS observationId,o.document_id AS documentId,o.review_state AS reviewState,o.evidence_code AS evidenceCode,${deletionPendingSql("l.user_id", "o.document_id")} AS deletionPending FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id=? ORDER BY l.id LIMIT 201`,
     )
     .bind(user, purchaseId)
     .all<{
@@ -154,7 +160,7 @@ export function reviewVersion(
   )
     throw new CorrectionError("CONFLICT");
   return {
-    sql: "EXISTS(SELECT 1 FROM review_items WHERE user_id=? AND id=? AND version=? AND version<2147483646 AND status='open') AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions ld JOIN source_messages s ON s.user_id=ld.user_id AND s.connection_id=ld.target_id JOIN documents d ON d.user_id=s.user_id AND d.source_message_id=s.id WHERE ld.user_id=? AND ld.scope='connection' AND d.id=?)",
+    sql: `EXISTS(SELECT 1 FROM review_items WHERE user_id=? AND id=? AND version=? AND version<2147483646 AND status='open') AND NOT ${deletionPendingSql("?", "?")}`,
     values: [user, row.id, expected, user, row.document_id],
   };
 }
