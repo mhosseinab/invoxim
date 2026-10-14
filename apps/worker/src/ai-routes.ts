@@ -17,15 +17,12 @@ import { Hono } from "hono";
 import {
   apiError,
   issueMutationToken,
+  json,
   mapFailure,
   requireTenantContext,
 } from "./http/guard";
 export function createAiRoutes() {
   const app = new Hono<{ Bindings: AiBindings }>();
-  app.use("/api/ai/*", async (context, next) => {
-    await next();
-    context.res.headers.set("Cache-Control", "no-store");
-  });
   function failed(cause: unknown) {
     if (cause instanceof AiSettingsError) {
       const status = {
@@ -56,7 +53,7 @@ export function createAiRoutes() {
     try {
       const guard = await enabled(c);
       if ("response" in guard) return guard.response;
-      return c.json({
+      return json({
         ...(await guard.settings.get(guard.ready.tenant)),
         mutationToken: await issueMutationToken(guard.ready, "ai-settings"),
       });
@@ -72,7 +69,7 @@ export function createAiRoutes() {
         await readAuthJson(c.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      return c.json(await guard.settings.save(guard.ready.tenant, input.data));
+      return json(await guard.settings.save(guard.ready.tenant, input.data));
     } catch (cause) {
       return failed(cause);
     }
@@ -85,7 +82,7 @@ export function createAiRoutes() {
         await readAuthJson(c.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      return c.json(
+      return json(
         await guard.settings.deleteKey(guard.ready.tenant, input.data),
       );
     } catch (cause) {
@@ -100,7 +97,7 @@ export function createAiRoutes() {
         await readAuthJson(c.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      return c.json(
+      return json(
         aiTestResponseSchema.parse(
           await guard.probe.test(
             {

@@ -1,4 +1,5 @@
 import type { JobPolicy } from "@invoxim/core";
+import type { QueueMessage } from "@invoxim/contracts";
 import { z } from "zod";
 
 /** Physical D1 statement budget shared by job and route invocations. */
@@ -6,9 +7,7 @@ export const QUERY_LIMIT = 40 as const;
 
 export interface JobBindings {
   DB?: D1Database;
-  JOBS?: Queue<
-    { schemaVersion: 1; jobId: string } | { schemaVersion: 1; dispatch: true }
-  >;
+  JOBS?: Queue<QueueMessage>;
   JOBS_ENABLED?: string;
   JOBS_QUERY_LIMIT?: string;
   JOBS_DISPATCH_LIMIT?: string;

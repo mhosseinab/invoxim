@@ -186,6 +186,23 @@ export async function loadGmailReviewHeaders(
       : null,
   };
 }
+/**
+ * O3: provider lookup from the review→document→source→connection join shared
+ * with `source()`. Purchase-routes uses this instead of duplicating the join.
+ */
+export async function lookupReviewProvider(
+  db: D1Database,
+  userId: string,
+  reviewId: string,
+): Promise<string | null> {
+  const row = await db
+    .prepare(
+      "SELECT c.provider FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id WHERE r.user_id=? AND r.id=? AND r.status='open' AND c.kind='mailbox'",
+    )
+    .bind(userId, reviewId)
+    .first<string>("provider");
+  return row ?? null;
+}
 export function createReviewSourceReader(
   db: D1Database,
   configuration: GmailConfiguration | OutlookConfiguration,

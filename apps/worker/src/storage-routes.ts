@@ -22,6 +22,7 @@ import { Hono } from "hono";
 import {
   apiError,
   issueMutationToken,
+  json,
   mapFailure,
   requireTenantContext,
 } from "./http/guard";
@@ -47,10 +48,6 @@ function failed(cause: unknown) {
 }
 export function createStorageRoutes() {
   const app = new Hono<{ Bindings: DriveBindings }>();
-  app.use("/api/*", async (context, next) => {
-    await next();
-    context.res.headers.set("Cache-Control", "no-store");
-  });
   async function ready(c: Context<{ Bindings: DriveBindings }>) {
     const guard = await requireTenantContext(c, {
       purpose: "storage-settings",
@@ -67,7 +64,7 @@ export function createStorageRoutes() {
     try {
       const context = await ready(c);
       if ("response" in context) return context.response;
-      return c.json(
+      return json(
         await createConnectionsViewRepository(context.db).list(
           context.session.tenant,
         ),
@@ -84,7 +81,7 @@ export function createStorageRoutes() {
         context.session.tenant,
       );
       const settings = await context.consent.read(context.session.tenant);
-      return c.json(
+      return json(
         storageSettingsResponseSchema.parse({
           authorizationAvailable: context.configuration !== null,
           archivingAvailable: false,
@@ -111,7 +108,7 @@ export function createStorageRoutes() {
         context.configuration,
         createDriveAuthorization(context.configuration),
       );
-      return c.json(
+      return json(
         storageStartResponseSchema.parse(
           await service.start(context.session, input.data.connectionId),
         ),
@@ -149,7 +146,7 @@ export function createStorageRoutes() {
         await readAuthJson(c.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      return c.json(
+      return json(
         archiveSettingsViewSchema.parse(
           await context.consent.disable(context.session, input.data),
         ),

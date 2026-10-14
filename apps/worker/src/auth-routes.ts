@@ -13,6 +13,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   apiError,
+  json,
   mapFailure,
   requireOrigin,
   requireTenantContext,
@@ -20,10 +21,6 @@ import {
 import { createInvocationDatabase } from "./invocation-database";
 export function createAuthRoutes() {
   const app = new Hono<{ Bindings: AuthBindings }>();
-  app.use("/api/*", async (context, next) => {
-    context.header("Cache-Control", "no-store");
-    await next();
-  });
   async function service(bindings: AuthBindings) {
     const configuration = loginConfiguration(bindings);
     if (!configuration || !bindings.DB) return null;
@@ -52,7 +49,7 @@ export function createAuthRoutes() {
       ) {
         const current = await enabled.profiles.current(context.req.raw.headers);
         if (!current) return apiError(401, "unauthorized");
-        return context.json({ user: current.user, session: current.session });
+        return json({ user: current.user, session: current.session });
       }
       const response = await handleLoginRequest(enabled.auth, context.req.raw);
       return response.status >= 500
@@ -70,7 +67,7 @@ export function createAuthRoutes() {
     if ("response" in ready) return ready.response;
     try {
       if (context.req.method !== "PATCH")
-        return context.json(projectProfile(ready.current));
+        return json(projectProfile(ready.current));
       const input = preferencesSchema.safeParse(
         await readAuthJson(context.req.raw),
       );
@@ -79,7 +76,7 @@ export function createAuthRoutes() {
       if (!enabled) return apiError(401, "unauthorized");
       const profile = await enabled.profiles.update(ready.tenant, input.data);
       if (!profile) return apiError(409, "version_conflict");
-      return context.json(projectProfile({ ...ready.current, profile }));
+      return json(projectProfile({ ...ready.current, profile }));
     } catch (cause) {
       if (cause instanceof z.ZodError) return apiError(400, "invalid_request");
       return mapFailure(cause, "auth_unavailable");

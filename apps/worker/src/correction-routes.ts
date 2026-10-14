@@ -21,6 +21,7 @@ import { Hono } from "hono";
 import {
   apiError,
   issueMutationToken,
+  json,
   mapFailure,
   requireTenantContext,
 } from "./http/guard";
@@ -42,16 +43,6 @@ function failure(cause: unknown) {
 }
 export function createCorrectionRoutes() {
   const app = new Hono<{ Bindings: CorrectionBindings }>();
-  for (const path of [
-    "/api/purchases/*",
-    "/api/ledger-entries/*",
-    "/api/review/*",
-  ])
-    app.use(path, async (c, next) => {
-      await next();
-      c.res.headers.set("Cache-Control", "no-store");
-      c.res.headers.set("X-Content-Type-Options", "nosniff");
-    });
   async function authorized(c: Context<{ Bindings: CorrectionBindings }>) {
     const request = c.req.raw;
     const bindings = c.env ?? {};
@@ -81,7 +72,7 @@ export function createCorrectionRoutes() {
         id.data,
       );
       if (!state) return apiError(404, "not_found");
-      return c.json(
+      return json(
         correctionStateSchema.parse({
           ...state,
           mutationToken: await issueMutationToken(guard.ready),
@@ -99,7 +90,7 @@ export function createCorrectionRoutes() {
       if (!id.success) return apiError(400, "invalid_request");
       const state = await guard.service.readReview(guard.ready.tenant, id.data);
       if (!state) return apiError(404, "not_found");
-      return c.json(
+      return json(
         correctionReviewSchema.parse({
           ...state,
           mutationToken: await issueMutationToken(guard.ready),
@@ -118,7 +109,7 @@ export function createCorrectionRoutes() {
       if ("response" in guard) return guard.response;
       const command = build(await readAuthJson(c.req.raw));
       if (!command) return apiError(400, "invalid_request");
-      return Response.json(
+      return json(
         correctionResultSchema.parse(
           await guard.service.execute(
             guard.ready.session,
@@ -126,12 +117,6 @@ export function createCorrectionRoutes() {
             c.req.raw.headers.get("Idempotency-Key") ?? "",
           ),
         ),
-        {
-          headers: {
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-          },
-        },
       );
     } catch (cause) {
       return failure(cause);

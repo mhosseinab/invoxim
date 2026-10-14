@@ -58,6 +58,28 @@ export class JobStorageError extends Error {
     this.name = "JobStorageError";
   }
 }
+/**
+ * W14: one ownership/eligibility classification for manual sync. Returns
+ * `not-found` when the tenant does not own the mailbox connection,
+ * `review-required` when it exists but is not live/eligible, and `eligible`
+ * otherwise. Single statement so the route can map 404/409 before the
+ * jobs-not-configured gate without adding to the G-40 budget.
+ */
+export async function classifyManualSync(
+  db: D1Database,
+  userId: string,
+  connectionId: string,
+  at: number = Date.now(),
+): Promise<"not-found" | "review-required" | "eligible"> {
+  const row = await db
+    .prepare(
+      `SELECT EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=?) AS eligible, EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND kind='mailbox') AS owned`,
+    )
+    .bind(userId, connectionId, at, userId, connectionId)
+    .first<{ eligible: number; owned: number }>();
+  if (!row || row.eligible) return "eligible";
+  return row.owned ? "review-required" : "not-found";
+}
 export function createJobStore(
   db: D1Database,
   options: {
@@ -286,13 +308,23 @@ export function createJobStore(
     knownConnection?: EligibleConnection,
   ): Promise<
     | { kind: "queued"; jobId: string }
+    | { kind: "not-found" }
     | { kind: "review-required" }
     | { kind: "cooldown" }
   > {
     checkText(connectionId);
     const row =
       knownConnection ?? (await eligibleConnection(ctx, connectionId));
-    if (!row) return { kind: "review-required" };
+    if (!row) {
+      // W14: ownership check (was job-routes.ts:65). Distinguish missing
+      // connection from one that exists but is not live/eligible.
+      const owned = await prepare(
+        "SELECT 1 FROM connections WHERE user_id=? AND id=? AND kind='mailbox'",
+      )
+        .bind(ctx.userId, connectionId)
+        .first();
+      return owned ? { kind: "review-required" } : { kind: "not-found" };
+    }
     const at = now();
     if (
       manual &&

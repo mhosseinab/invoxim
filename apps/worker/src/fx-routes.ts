@@ -29,9 +29,12 @@ import {
 } from "../../../packages/contracts/src/fx-reporting";
 import {
   apiError,
+  InvalidQueryError,
   issueMutationToken,
+  json,
   mapFailure,
   requireTenantContext,
+  uniqueQuery,
 } from "./http/guard";
 
 export interface FxRouteBindings extends AuthBindings, FxReferenceBindings {}
@@ -57,29 +60,11 @@ export interface FxRouteOptions {
   ): FxRouteService | null;
 }
 function failure(cause: unknown) {
+  if (cause instanceof InvalidQueryError)
+    return apiError(400, "invalid_request");
   if (cause instanceof Error && cause.message === "INVALID_FX_INPUT")
     return apiError(400, "invalid_request");
   return mapFailure(cause, "fx_unavailable");
-}
-function json(value: unknown) {
-  const body = JSON.stringify(value);
-  if (new TextEncoder().encode(body).byteLength > 128 * 1024)
-    return apiError(413, "response_too_large");
-  return new Response(body, {
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
-}
-function query(request: Request) {
-  const values: Record<string, string> = {};
-  for (const [key, value] of new URL(request.url).searchParams) {
-    if (Object.hasOwn(values, key)) throw new Error("INVALID_FX_INPUT");
-    values[key] = value;
-  }
-  return values;
 }
 function normalize(
   value: ReturnType<typeof fxReportingRequestSchema.parse>,
@@ -94,11 +79,6 @@ function normalize(
 /** Read-only pages never trigger valuation or public reference requests. */
 export function createFxRoutes(options: FxRouteOptions) {
   const app = new Hono<{ Bindings: FxRouteBindings }>();
-  app.use("/api/fx/*", async (c, next) => {
-    await next();
-    c.res.headers.set("Cache-Control", "no-store");
-    c.res.headers.set("X-Content-Type-Options", "nosniff");
-  });
   async function authorized(
     c: Context<{ Bindings: FxRouteBindings }>,
     mutation: boolean,
@@ -132,7 +112,7 @@ export function createFxRoutes(options: FxRouteOptions) {
         ? fxReportingRequestSchema.safeParse(
             await readAuthJson(c.req.raw, 40960),
           )
-        : fxReportingQuerySchema.safeParse(query(c.req.raw));
+        : fxReportingQuerySchema.safeParse(uniqueQuery(c.req.raw));
       if (!parsed.success) return apiError(400, "invalid_request");
       const input = normalize(parsed.data);
       const page = await ready.service.readPage(ready.tenant, input);

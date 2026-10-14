@@ -15,6 +15,7 @@ import type { JobHandler } from "@invoxim/core";
 import { createOutlookJobRunner } from "../../../packages/adapters/src/discovery/outlook-job";
 import { createOutlookDiscoveryProviderFactory } from "../../../packages/adapters/src/discovery/outlook-provider-factory";
 import { createOutlookContentFactory } from "../../../packages/adapters/src/pipeline/outlook-factory";
+import { connectionConsentLiveSql } from "../../../packages/adapters/src/pipeline/repository-guards";
 import { createDiscoveryRuntime } from "./discovery-runtime";
 import type { JobBindings } from "./job-configuration";
 import { jobConfiguration, QUERY_LIMIT } from "./job-configuration";
@@ -103,11 +104,17 @@ export function createMailboxRuntime(options: {
   return {
     async run(lease, control) {
       if (control.signal.aborted) return { kind: "paused", code: "auth" };
+      // O2: provider lookup uses PIPE-3's live fragment instead of a hand-copied predicate.
       const provider = await db
         .prepare(
-          "SELECT provider FROM connections WHERE user_id=? AND id=? AND generation=? AND kind='mailbox' AND state='connected' AND scheduling_state='active'",
+          `SELECT c.provider FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.generation=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=?`,
         )
-        .bind(lease.context.userId, lease.connectionId, lease.generation)
+        .bind(
+          lease.context.userId,
+          lease.connectionId,
+          lease.generation,
+          Date.now(),
+        )
         .first<string>("provider");
       if (control.signal.aborted) return { kind: "paused", code: "auth" };
       const extraction = ["source-extract", "reprocess"].includes(lease.type);

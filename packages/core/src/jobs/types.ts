@@ -1,3 +1,4 @@
+import type { QueueMessage } from "@invoxim/contracts";
 import type { TenantContext } from "../tenant-context";
 export interface JobPolicy {
   dispatchLimit: number;
@@ -52,6 +53,7 @@ export interface JobStore {
     connectionId: string,
   ): Promise<
     | { kind: "queued"; jobId: string }
+    | { kind: "not-found" }
     | { kind: "review-required" }
     | { kind: "cooldown" }
   >;
@@ -64,8 +66,10 @@ export interface JobStore {
   isSettled(jobId: string): Promise<boolean>;
   recover(): Promise<number>;
 }
+/** W12: one queue-message shape (`queueMessageSchema` in contracts). */
+export type JobQueueMessage = QueueMessage;
 export interface JobQueue {
-  send(body: { schemaVersion: 1; jobId: string }): Promise<void>;
+  send(body: Extract<JobQueueMessage, { jobId: string }>): Promise<void>;
   /** Internal dispatch hint only; durable jobs remain the authoritative outbox. */
   wakeDispatch?(): Promise<void>;
 }

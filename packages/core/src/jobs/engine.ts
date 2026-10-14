@@ -1,4 +1,4 @@
-import { hasControlCharacters } from "@invoxim/contracts";
+import { hasControlCharacters, queueMessageSchema } from "@invoxim/contracts";
 import type { JobAdmission, JobHandler, JobQueue, JobStore } from "./types";
 export function createJobEngine(options: {
   store: JobStore;
@@ -39,22 +39,13 @@ export function createJobEngine(options: {
       return { scheduled, ...(await dispatchReady()) };
     },
     async consume(body: unknown): Promise<"ack" | "retry"> {
-      if (
-        typeof body !== "object" ||
-        body === null ||
-        Array.isArray(body) ||
-        Object.keys(body).length !== 2 ||
-        !("schemaVersion" in body) ||
-        body.schemaVersion !== 1 ||
-        !("jobId" in body) ||
-        typeof body.jobId !== "string" ||
-        body.jobId.length === 0 ||
-        body.jobId.length > 256 ||
-        hasControlCharacters(body.jobId)
-      )
-        return "ack";
-      const lease = await store.claim(body.jobId);
-      if (!lease) return (await store.isSettled(body.jobId)) ? "ack" : "retry";
+      // W12: one schema for the queue message; anything else is a drop.
+      const parsed = queueMessageSchema.safeParse(body);
+      if (!parsed.success || !("jobId" in parsed.data)) return "ack";
+      if (hasControlCharacters(parsed.data.jobId)) return "ack";
+      const lease = await store.claim(parsed.data.jobId);
+      if (!lease)
+        return (await store.isSettled(parsed.data.jobId)) ? "ack" : "retry";
       const controller = new AbortController();
       const checkpoint = async () => {
         const allowed = await store.checkpoint(lease);

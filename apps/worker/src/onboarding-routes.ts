@@ -9,7 +9,13 @@ import {
 import { createOnboardingUsecases, OnboardingError } from "@invoxim/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { apiError, requireTenantContext } from "./http/guard";
+import {
+  apiError,
+  InvalidQueryError,
+  json,
+  requireTenantContext,
+  uniqueQuery,
+} from "./http/guard";
 import {
   type MailboxRuntimeBindings,
   mailboxProcessingConfiguration,
@@ -28,27 +34,9 @@ function error(
     ...(message === undefined ? {} : { message }),
   });
 }
-function json(value: unknown) {
-  const body = JSON.stringify(value);
-  return new TextEncoder().encode(body).byteLength > 128 * 1024
-    ? error(413, "response_too_large")
-    : new Response(body, {
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        },
-      });
-}
-function query(request: Request) {
-  const result: Record<string, string> = {};
-  for (const [key, value] of new URL(request.url).searchParams) {
-    if (Object.hasOwn(result, key))
-      throw new OnboardingError("INVALID_REQUEST");
-    result[key] = value;
-  }
-  return result;
-}
 function failure(cause: unknown, requestId?: string) {
+  if (cause instanceof InvalidQueryError)
+    return error(400, "invalid_request", false, requestId);
   if (cause instanceof AuthRequestError)
     return error(cause.status, cause.code, false, requestId);
   if (!(cause instanceof OnboardingError))
@@ -151,7 +139,9 @@ export function createOnboardingRoutes() {
       const current = await authorized(c);
       return "response" in current
         ? current.response
-        : json(await current.service.view(current.session, query(c.req.raw)));
+        : json(
+            await current.service.view(current.session, uniqueQuery(c.req.raw)),
+          );
     } catch (cause) {
       return failure(cause);
     }
@@ -162,7 +152,10 @@ export function createOnboardingRoutes() {
       return "response" in current
         ? current.response
         : json(
-            await current.service.disclosure(current.session, query(c.req.raw)),
+            await current.service.disclosure(
+              current.session,
+              uniqueQuery(c.req.raw),
+            ),
           );
     } catch (cause) {
       if (cause instanceof ProcessingNotConfiguredError)

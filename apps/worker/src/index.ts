@@ -28,6 +28,7 @@ import { createAiRoutes } from "./ai-routes";
 import { createAuthRoutes } from "./auth-routes";
 import { createCorrectionRoutes } from "./correction-routes";
 import { createFxRoutes } from "./fx-routes";
+import { json } from "./http/guard";
 import { createInvocationDatabase } from "./invocation-database";
 import type { JobBindings } from "./job-configuration";
 import { jobConfiguration, QUERY_LIMIT } from "./job-configuration";
@@ -60,7 +61,7 @@ app.use("/api/*", async (context, next) => {
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   );
 });
-app.get("/api/health", (context) => context.json({ status: "scaffold" }));
+app.get("/api/health", () => json({ status: "scaffold" }));
 /** One readiness rule per optional feature; public config and routes share it. */
 function recurringEnabled(bindings: object) {
   return (
@@ -92,7 +93,7 @@ const publicConfig = publicConfigSchema.parse({
 app.get("/api/public-config", (context) => {
   const bindings = context.env ?? {};
   const { providers } = mailboxProcessingConfiguration(bindings);
-  return context.json(
+  return json(
     publicConfigSchema.parse({
       ...publicConfig,
       loginEnabled: !!loginConfiguration(bindings),
