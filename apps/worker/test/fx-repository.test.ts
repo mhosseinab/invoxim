@@ -5,45 +5,13 @@ import { sumFxConversions, type TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
 import { createFxValuationRepository } from "../../../packages/adapters/src/fx/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
-import m1 from "./migrations/historical/0001_auth.sql?raw";
-import m2 from "./migrations/historical/0002_records.sql?raw";
-import m3 from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import m4 from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import m5 from "./migrations/historical/0005_profile_version.sql?raw";
-import m6 from "./migrations/historical/0006_jobs.sql?raw";
-import m7 from "./migrations/historical/0007_mailbox.sql?raw";
-import m8 from "./migrations/historical/0008_discovery.sql?raw";
-import m9 from "./migrations/historical/0009_ai.sql?raw";
-import m10 from "./migrations/historical/0010_ledger_pipeline.sql?raw";
-import m11 from "./migrations/historical/0011_lifecycle.sql?raw";
-import m12 from "./migrations/historical/0012_review_fields.sql?raw";
-import m13 from "./migrations/historical/0013_corrections.sql?raw";
-import m14 from "./migrations/historical/0014_onboarding.sql?raw";
-import m15 from "./migrations/historical/0015_fx.sql?raw";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
 const tenant = { userId: "fx-a", authority: "session" } as TenantContext;
 const policy = { source: "synthetic-public-reference", maxPriorAgeDays: 2 };
 beforeAll(async () => {
-  for (const sql of [
-    m1,
-    m2,
-    m3,
-    m4,
-    m5,
-    m6,
-    m7,
-    m8,
-    m9,
-    m10,
-    m11,
-    m12,
-    m13,
-    m14,
-  ])
-    for (const statement of sql.split(";").filter((s) => s.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   for (const id of ["fx-a", "fx-b"]) {
     await db
       .prepare(
@@ -88,8 +56,7 @@ beforeAll(async () => {
       .bind(id)
       .run();
   }
-  for (const statement of m15.split(";").filter((s) => s.trim()))
-    await db.prepare(statement).run();
+  await useCurrentSchema(db);
 });
 beforeEach(async () => {
   await db.prepare("DELETE FROM entry_valuations").run();

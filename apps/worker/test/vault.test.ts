@@ -6,11 +6,8 @@ import { beforeAll, expect, it } from "vitest";
 import { createCredentialCipher } from "../../../packages/adapters/src/security/cipher";
 import { createOAuthStateStore } from "../../../packages/adapters/src/security/oauth-state";
 import { createCredentialVault } from "../../../packages/adapters/src/security/vault";
-import auth from "./migrations/historical/0001_auth.sql?raw";
-import records from "./migrations/historical/0002_records.sql?raw";
-import indexes from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import security from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
 import { faultingDatabase } from "./support/faults";
+import { useCurrentSchema } from "./support/db";
 
 const db = env.DB;
 
@@ -43,9 +40,7 @@ const callbacks = {
   storage: { google: "https://app.example.invalid/api/oauth/storage/google" },
 } as const;
 beforeAll(async () => {
-  for (const sql of [auth, records, indexes])
-    for (const statement of sql.split(";").filter((s) => s.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   for (const user of ["vault-a", "vault-b"]) {
     await db
       .prepare(
@@ -87,8 +82,7 @@ beforeAll(async () => {
     )
     .bind(legacyEnvelope)
     .run();
-  for (const statement of security.split(";").filter((s) => s.trim()))
-    await db.prepare(statement).run();
+  await useCurrentSchema(db);
 });
 it("SECRETS-01: populated credential migration preserves connection and write-only metadata contains no secrets", async () => {
   const cipher = createCredentialCipher({ activeVersion: 1, keys: { 1: key } });

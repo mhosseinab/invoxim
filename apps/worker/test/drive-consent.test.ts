@@ -5,25 +5,8 @@ import type { MailboxSession, TenantContext } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it } from "vitest";
 import { createArchiveConsentRepository } from "../../../packages/adapters/src/drive/archive-consent";
 import { createInvocationDatabase } from "../src/invocation-database";
-import m1 from "./migrations/historical/0001_auth.sql?raw";
-import m2 from "./migrations/historical/0002_records.sql?raw";
-import m3 from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import m4 from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import m5 from "./migrations/historical/0005_profile_version.sql?raw";
-import m6 from "./migrations/historical/0006_jobs.sql?raw";
-import m7 from "./migrations/historical/0007_mailbox.sql?raw";
-import m8 from "./migrations/historical/0008_discovery.sql?raw";
-import m9 from "./migrations/historical/0009_ai.sql?raw";
-import m10 from "./migrations/historical/0010_ledger_pipeline.sql?raw";
-import m11 from "./migrations/historical/0011_lifecycle.sql?raw";
-import m12 from "./migrations/historical/0012_review_fields.sql?raw";
-import m13 from "./migrations/historical/0013_corrections.sql?raw";
-import m14 from "./migrations/historical/0014_onboarding.sql?raw";
-import m15 from "./migrations/historical/0015_fx.sql?raw";
-import m16 from "./migrations/historical/0016_outlook_folders.sql?raw";
-import m17 from "./migrations/historical/0017_drive_storage.sql?raw";
 import { faultingDatabase } from "./support/faults";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
 const now = Date.UTC(2026, 9, 13, 12);
@@ -37,26 +20,7 @@ const session: MailboxSession = {
   createdAtMs: now,
 };
 beforeAll(async () => {
-  for (const sql of [
-    m1,
-    m2,
-    m3,
-    m4,
-    m5,
-    m6,
-    m7,
-    m8,
-    m9,
-    m10,
-    m11,
-    m12,
-    m13,
-    m14,
-    m15,
-    m16,
-  ])
-    for (const statement of sql.split(";").filter((s) => s.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   await db
     .prepare(
       'INSERT INTO "user"(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,1,?,?)',
@@ -133,10 +97,6 @@ beforeAll(async () => {
     )
     .bind(JSON.stringify(["https://www.googleapis.com/auth/drive.file"]))
     .run();
-  for (const statement of m17
-    .split(";")
-    .filter((statement) => statement.trim()))
-    await db.prepare(statement).run();
 });
 beforeEach(async () => {
   await db.prepare("DELETE FROM archive_settings").run();

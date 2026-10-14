@@ -7,21 +7,7 @@ import { purchaseListResponseSchema } from "@invoxim/contracts";
 import { beforeAll, expect, it } from "vitest";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createPurchaseRoutes } from "../src/purchase-routes";
-import authMigration from "./migrations/historical/0001_auth.sql?raw";
-import records from "./migrations/historical/0002_records.sql?raw";
-import schedule from "./migrations/historical/0003_indexes_and_schedule.sql?raw";
-import credentials from "./migrations/historical/0004_credentials_and_oauth.sql?raw";
-import profiles from "./migrations/historical/0005_profile_version.sql?raw";
-import jobs from "./migrations/historical/0006_jobs.sql?raw";
-import mailbox from "./migrations/historical/0007_mailbox.sql?raw";
-import discovery from "./migrations/historical/0008_discovery.sql?raw";
-import ai from "./migrations/historical/0009_ai.sql?raw";
-import pipeline from "./migrations/historical/0010_ledger_pipeline.sql?raw";
-import lifecycle from "./migrations/historical/0011_lifecycle.sql?raw";
-import reviewFields from "./migrations/historical/0012_review_fields.sql?raw";
-import corrections from "./migrations/historical/0013_corrections.sql?raw";
-import onboarding from "./migrations/historical/0014_onboarding.sql?raw";
-
+import { useCurrentSchema } from "./support/db";
 const db = env.DB;
 
 const config: LoginConfiguration = {
@@ -43,22 +29,7 @@ const bindings: AuthBindings = {
 const cookies = new Map<string, string>();
 const app = createPurchaseRoutes();
 beforeAll(async () => {
-  for (const sql of [
-    authMigration,
-    records,
-    schedule,
-    credentials,
-    profiles,
-    jobs,
-    mailbox,
-    discovery,
-    ai,
-    pipeline,
-    lifecycle,
-    reviewFields,
-  ])
-    for (const statement of sql.split(";").filter((s) => s.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   const context = await createLoginAuth(db, config).$context;
   for (const id of ["route-a", "route-b"]) {
     await db
@@ -99,9 +70,7 @@ beforeAll(async () => {
     );
   }
   // Preserve signed sessions and owned legacy records across the current schema upgrade.
-  for (const sql of [corrections, onboarding])
-    for (const statement of sql.split(";").filter((value) => value.trim()))
-      await db.prepare(statement).run();
+  await useCurrentSchema(db);
   expect((await db.prepare("PRAGMA foreign_key_check").all()).results).toEqual(
     [],
   );

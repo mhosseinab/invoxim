@@ -10,6 +10,7 @@ import { createReviewSourceReader } from "../../../packages/adapters/src/purchas
 import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { owner } from "./onboarding-qa-fixture";
+import { signedSession } from "./support/tenant";
 
 const db = env.DB;
 const keyring = {
@@ -328,19 +329,7 @@ it("OUTLOOK-01 actual signed-session Worker source route selects Outlook metadat
     false,
   );
   if (!session) throw new Error("Synthetic signed session missing");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(login.secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(session.token),
-  );
-  const cookie = `__Secure-better-auth.session_token=${encodeURIComponent(`${session.token}.${btoa(String.fromCharCode(...new Uint8Array(signature)))}`)}`;
+  const cookie = await signedSession(login.secret, session.token);
   const network = transport();
   const meter = createInvocationDatabase(db, 40);
   const response = await worker.fetch(
