@@ -1,6 +1,7 @@
 import type { RecurringPayment } from "@invoxim/contracts";
 import { expect, it } from "vitest";
 import fixtures from "../../../test-design/financial-cases.json";
+import { requireFixture } from "../../testkit/src/fixture-value";
 import { convertFxEntry } from "../src/fx/conversion";
 import {
   convertMinor,
@@ -12,7 +13,6 @@ import {
 import { planLedgerIngestion } from "../src/ledger/plan";
 import type { LedgerSnapshot } from "../src/ledger/types";
 import { deriveRecurringSuggestion } from "../src/recurring/derive";
-import { requireFixture } from "./fixture-value";
 
 /**
  * CORE-4: fixture operations that used the deleted test-only helpers now

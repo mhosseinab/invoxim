@@ -21,8 +21,8 @@ import {
 import type { ContentLoadInput } from "../../../packages/adapters/src/pipeline/gmail-content";
 import { createPipelineRepository } from "../../../packages/adapters/src/pipeline/repository";
 import { createPipelineService } from "../../../packages/adapters/src/pipeline/service";
+import { generateCompressedTextPdf } from "../../../packages/testkit/src/pdf/synthetic";
 import { createInvocationDatabase } from "../src/invocation-database";
-import { generateCompressedTextPdf } from "./fixtures/synthetic-pdf";
 
 const db = env.DB;
 const policy = {

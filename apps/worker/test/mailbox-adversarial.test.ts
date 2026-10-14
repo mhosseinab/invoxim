@@ -17,6 +17,13 @@ import {
   createCredentialCipher,
   encodeBase64url,
 } from "../../../packages/adapters/src/security/cipher";
+import {
+  GOOGLE_TOKEN_ENDPOINT,
+  generateSigningKeys,
+  googleIdTokenClaims,
+  googleTokenResponse,
+  signIdToken,
+} from "../../../packages/testkit/src/google-token";
 import { createMailboxRoutes } from "../src/mailbox-routes";
 import { faultingDatabase } from "./support/faults";
 
@@ -62,7 +69,7 @@ function provider(
       jwks
     )
       return Response.json(jwks);
-    if (url === "https://oauth2.googleapis.com/token" && method === "POST") {
+    if (url === GOOGLE_TOKEN_ENDPOINT && method === "POST") {
       await beforeToken?.();
       return Response.json(token, { status });
     }
@@ -76,13 +83,11 @@ function provider(
   return requests;
 }
 function token(extra: Record<string, unknown> = {}) {
-  return {
+  return googleTokenResponse({
     access_token: "synthetic-new-access",
-    expires_in: 3600,
-    token_type: "Bearer",
     scope: requiredScopes,
     ...extra,
-  };
+  });
 }
 
 it.each([
@@ -106,9 +111,7 @@ it.each([
         callback: "https://synthetic.example/api/oauth/mailbox/gmail/callback",
       }),
     ).rejects.toMatchObject({ code: "MISSING_PERMISSION" });
-    expect(requests).toEqual([
-      { url: "https://oauth2.googleapis.com/token", method: "POST" },
-    ]);
+    expect(requests).toEqual([{ url: GOOGLE_TOKEN_ENDPOINT, method: "POST" }]);
   },
 );
 it("refresh rejects another provider subject without accepting replacement credentials", async () => {
@@ -147,7 +150,7 @@ it("a successful refresh retains omitted refresh tokens and only visits control-
   });
   expect(result.expiresAt).toBeGreaterThan(Date.now());
   expect(requests).toEqual([
-    { url: "https://oauth2.googleapis.com/token", method: "POST" },
+    { url: GOOGLE_TOKEN_ENDPOINT, method: "POST" },
     { url: "https://openidconnect.googleapis.com/v1/userinfo", method: "GET" },
   ]);
 });
@@ -328,54 +331,28 @@ it("disconnected mailbox reactivation cannot bypass the configured connection ca
   ).toBe(1);
 });
 
-function encoded(value: unknown) {
-  return encodeBase64url(new TextEncoder().encode(JSON.stringify(value)));
-}
 let signingKeys: CryptoKeyPair | undefined;
 async function signedIdentity(
   nonce: string,
   extra: Record<string, unknown> = {},
 ) {
   if (!signingKeys) {
-    const generated = await crypto.subtle.generateKey(
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: "SHA-256",
-      },
-      true,
-      ["sign", "verify"],
-    );
-    if (!("privateKey" in generated))
-      throw new Error("Synthetic signing key unavailable");
-    signingKeys = generated;
+    const generated = await generateSigningKeys();
+    signingKeys = generated.keys;
   }
-  const claims = {
-    iss: "https://accounts.google.com",
+  const claims = googleIdTokenClaims({
     aud: configuration.clientId,
     sub: "signed-mailbox-b",
     email: "signed-mailbox-b@example.invalid",
-    email_verified: true,
     nonce,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600,
     ...extra,
-  };
-  const message = `${encoded({ alg: "RS256", kid: "synthetic-mail-qa", typ: "JWT" })}.${encoded(claims)}`;
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    signingKeys.privateKey,
-    new TextEncoder().encode(message),
-  );
-  const jwk = await crypto.subtle.exportKey("jwk", signingKeys.publicKey);
-  return {
-    jwt: `${message}.${encodeBase64url(new Uint8Array(signature))}`,
-    jwks: {
-      keys: [{ ...jwk, kid: "synthetic-mail-qa", alg: "RS256", use: "sig" }],
-    },
+  });
+  return signIdToken({
     claims,
-  };
+    privateKey: signingKeys.privateKey,
+    publicKey: signingKeys.publicKey,
+    kid: "synthetic-mail-qa",
+  });
 }
 const routeBindings: GmailBindings = {
   DB: env.DB,
@@ -493,7 +470,7 @@ it("actual signed Google mailbox callback binds B to login A and state replay ca
   expect(
     requests.every((request) =>
       [
-        "https://oauth2.googleapis.com/token",
+        GOOGLE_TOKEN_ENDPOINT,
         "https://www.googleapis.com/oauth2/v3/certs",
         "https://openidconnect.googleapis.com/v1/userinfo",
       ].includes(request.url),

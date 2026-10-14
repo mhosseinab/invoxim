@@ -1,6 +1,7 @@
 import type { RecurringPayment } from "@invoxim/contracts";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { requireFixture } from "../../testkit/src/fixture-value";
 import { convertFxEntry } from "../src/fx/conversion";
 import {
   calendarDate,
@@ -11,7 +12,6 @@ import {
   parseMoney,
 } from "../src/index";
 import { deriveRecurringSuggestion } from "../src/recurring/derive";
-import { requireFixture } from "./fixture-value";
 
 function recurringPayment(
   entryId: string,

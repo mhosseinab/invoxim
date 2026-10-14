@@ -25,6 +25,10 @@ import {
   encodeBase64url,
 } from "../../../packages/adapters/src/security/cipher";
 import { planDiscoveryRange } from "../../../packages/core/src/discovery/calendar";
+import {
+  GOOGLE_TOKEN_ENDPOINT,
+  googleTokenResponse,
+} from "../../../packages/testkit/src/google-token";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createJobRuntime } from "../src/job-runtime";
 import { faultingDatabase } from "./support/faults";
@@ -612,12 +616,10 @@ function refreshTransport(tenant: TenantContext) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = input instanceof Request ? input.url : String(input);
     requests.push(url);
-    if (url === "https://oauth2.googleapis.com/token")
-      return Response.json({
-        access_token: "synthetic-refreshed-access",
-        expires_in: 3600,
-        token_type: "Bearer",
-      });
+    if (url === GOOGLE_TOKEN_ENDPOINT)
+      return Response.json(
+        googleTokenResponse({ access_token: "synthetic-refreshed-access" }),
+      );
     if (url === "https://openidconnect.googleapis.com/v1/userinfo")
       return Response.json({
         sub: `subject-${tenant.userId}`,
@@ -1043,12 +1045,10 @@ it("native consumption, expired-credential refresh and discovery make durable pr
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     requests.push(url.origin + url.pathname);
-    if (url.href === "https://oauth2.googleapis.com/token")
-      return Response.json({
-        access_token: "synthetic-new-budget-access",
-        expires_in: 3600,
-        token_type: "Bearer",
-      });
+    if (url.href === GOOGLE_TOKEN_ENDPOINT)
+      return Response.json(
+        googleTokenResponse({ access_token: "synthetic-new-budget-access" }),
+      );
     if (url.href === "https://openidconnect.googleapis.com/v1/userinfo")
       return Response.json({
         sub: `subject-${tenant.userId}`,
@@ -1129,7 +1129,7 @@ it("native consumption, expired-credential refresh and discovery make durable pr
   expect(invocation.executedStatements()).toBeLessThanOrEqual(40);
   expect(nativeResult.explicitAcks).toEqual(["budget-native-message"]);
   expect(nativeResult.retryMessages).toEqual([]);
-  expect(requests).toContain("https://oauth2.googleapis.com/token");
+  expect(requests).toContain(GOOGLE_TOKEN_ENDPOINT);
   expect(requests).toContain(
     "https://openidconnect.googleapis.com/v1/userinfo",
   );

@@ -1,4 +1,4 @@
-import { generateTextPdf } from "./synthetic-pdf";
+import { generateTextPdf } from "./synthetic";
 /** Synthetic conventional xref PDF with common nested catalog preferences. */
 export function nestedCatalogPdf(
   preferences = "/DisplayDocTitle true",

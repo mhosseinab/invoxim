@@ -9,6 +9,10 @@ import {
 } from "../../../packages/adapters/src/mailbox/configuration";
 import { createOnboardingImportPreparation } from "../../../packages/adapters/src/onboarding/import-preparation";
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
+import {
+  GOOGLE_TOKEN_ENDPOINT,
+  googleTokenResponse,
+} from "../../../packages/testkit/src/google-token";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createOnboardingRoutes } from "../src/onboarding-routes";
 import { syntheticClassificationBindings } from "./classification-fixture";
@@ -76,13 +80,13 @@ it.each(["none", "credential", "profile", "route"] as const)(
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (input) => {
         const url = input instanceof Request ? input.url : String(input);
-        if (url === "https://oauth2.googleapis.com/token")
-          return Response.json({
-            access_token: "synthetic-fresh-access",
-            expires_in: 3600,
-            token_type: "Bearer",
-            scope: GMAIL_AUTHORIZATION_SCOPES.join(" "),
-          });
+        if (url === GOOGLE_TOKEN_ENDPOINT)
+          return Response.json(
+            googleTokenResponse({
+              access_token: "synthetic-fresh-access",
+              scope: GMAIL_AUTHORIZATION_SCOPES.join(" "),
+            }),
+          );
         if (url === "https://openidconnect.googleapis.com/v1/userinfo")
           return Response.json({
             sub: selection.connectionId,

@@ -1,8 +1,8 @@
 import { env } from "cloudflare:workers";
 import { createLoginAuth, loginConfiguration } from "@invoxim/adapters";
 import { expect, it } from "vitest";
+import { requireFixture } from "../../../packages/testkit/src/fixture-value";
 import worker from "../src/index";
-import { requireFixture } from "./fixture-value";
 import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
 import { signedSession } from "./support/tenant";
 

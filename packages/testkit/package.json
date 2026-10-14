@@ -3,6 +3,19 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./extraction-corpus/evaluate": "./src/extraction-corpus/evaluate.ts",
+    "./extraction-corpus/metrics": "./src/extraction-corpus/metrics.ts",
+    "./extraction-corpus/types": "./src/extraction-corpus/types.ts",
+    "./pdf": "./src/pdf/index.ts",
+    "./fixture-value": "./src/fixture-value.ts",
+    "./fetch-spy": "./src/fetch-spy.ts",
+    "./google-token": "./src/google-token.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
     "@invoxim/core": "workspace:*"
   }

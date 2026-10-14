@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import fixture from "../../../test-design/fixtures/presentation-demo.json";
+import { requireFixture } from "../../testkit/src/fixture-value";
 import type { AcceptedLedgerEntry } from "../src/index";
 import { ledgerTotals } from "../src/index";
-import { requireFixture } from "./fixture-value";
 
 it("PRESENT-03 synthetic fixture independent text oracle preserves invoices and distinct receipts", () => {
   const oracleEntries = fixture.evidence

@@ -3,9 +3,15 @@ import type { AuthBindings, LoginConfiguration } from "@invoxim/adapters";
 import { createLoginAuth } from "@invoxim/adapters";
 import { beforeAll, expect, it, vi } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
-
+import { requireFixture } from "../../../packages/testkit/src/fixture-value";
+import {
+  GOOGLE_TOKEN_ENDPOINT,
+  generateSigningKeys,
+  googleIdTokenClaims,
+  googleTokenResponse,
+  signIdToken,
+} from "../../../packages/testkit/src/google-token";
 import { createAuthRoutes } from "../src/auth-routes";
-import { requireFixture } from "./fixture-value";
 
 const db = env.DB;
 
@@ -277,7 +283,7 @@ it("AUTH-03/04/05 ONBOARD-01 signed Google code callback verifies nonce and crea
       )
         return Response.json(certResponse);
       if (
-        request.url === "https://oauth2.googleapis.com/token" &&
+        request.url === GOOGLE_TOKEN_ENDPOINT &&
         request.method === "POST" &&
         tokenResponse
       )
@@ -285,18 +291,7 @@ it("AUTH-03/04/05 ONBOARD-01 signed Google code callback verifies nonce and crea
       throw new Error("Unexpected synthetic OAuth destination");
     });
   try {
-    const keyPair = await crypto.subtle.generateKey(
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: "SHA-256",
-      },
-      true,
-      ["sign", "verify"],
-    );
-    if (!("privateKey" in keyPair))
-      throw new Error("Synthetic RSA pair missing");
+    const { keys: keyPair } = await generateSigningKeys();
     const { privateKey, publicKey } = keyPair;
     const jwk = await crypto.subtle.exportKey("jwk", publicKey);
     certResponse = {
@@ -354,47 +349,25 @@ it("AUTH-03/04/05 ONBOARD-01 signed Google code callback verifies nonce and crea
     expect(requireFixture(pending).value).not.toMatch(
       /codeVerifier|idTokenNonce|oauthState/,
     );
-    const nonce = authorization.searchParams.get("nonce");
-    expect(nonce).toBeTruthy();
-    const encode = (value: unknown) =>
-      btoa(
-        String.fromCharCode(...new TextEncoder().encode(JSON.stringify(value))),
-      )
-        .replace(/=/g, "")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-      sub: "google-subject-c",
-      email: "google-c@example.invalid",
-      email_verified: true,
-      name: "Synthetic C",
-      nonce,
-      aud: configuration.googleClientId,
-      iss: "https://accounts.google.com",
-      iat: now,
-      exp: now + 300,
-    };
-    const signingInput = `${encode({ alg: "RS256", kid: "synthetic-login", typ: "JWT" })}.${encode(payload)}`;
-    const signature = await crypto.subtle.sign(
-      "RSASSA-PKCS1-v1_5",
+    const nonce = requireFixture(authorization.searchParams.get("nonce"));
+    const signed = await signIdToken({
+      claims: googleIdTokenClaims({
+        sub: "google-subject-c",
+        email: "google-c@example.invalid",
+        name: "Synthetic C",
+        nonce,
+        aud: configuration.googleClientId,
+        exp: Math.floor(Date.now() / 1000) + 300,
+      }),
       privateKey,
-      new TextEncoder().encode(signingInput),
-    );
-    const idToken =
-      signingInput +
-      "." +
-      btoa(String.fromCharCode(...new Uint8Array(signature)))
-        .replace(/=/g, "")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_");
-    tokenResponse = {
+      kid: "synthetic-login",
+    });
+    tokenResponse = googleTokenResponse({
       access_token: "synthetic-transient-access",
       refresh_token: "synthetic-transient-refresh",
-      token_type: "Bearer",
       expires_in: 300,
-      id_token: idToken,
-    };
+      id_token: signed.jwt,
+    });
     const stateCookie = start.headers
       .getSetCookie()
       .map((value) => value.split(";")[0])
@@ -442,7 +415,7 @@ it("AUTH-03/04/05 ONBOARD-01 signed Google code callback verifies nonce and crea
           .prepare(`SELECT COUNT(*) AS count FROM ${table}`)
           .first("count"),
       ).toBe(0);
-    expect(fetched).toContain("https://oauth2.googleapis.com/token");
+    expect(fetched).toContain(GOOGLE_TOKEN_ENDPOINT);
     expect(fetched).toContain("https://www.googleapis.com/oauth2/v3/certs");
   } finally {
     network.mockRestore();

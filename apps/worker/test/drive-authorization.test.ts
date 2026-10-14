@@ -7,6 +7,14 @@ import {
 } from "../../../packages/adapters/src/drive/configuration";
 import { encodeBase64url } from "../../../packages/adapters/src/security/cipher";
 
+import {
+  GOOGLE_TOKEN_ENDPOINT,
+  generateSigningKeys,
+  googleIdTokenClaims,
+  googleTokenResponse,
+  signIdToken,
+} from "../../../packages/testkit/src/google-token";
+
 const callback =
   "https://synthetic.example/api/oauth/storage/google-drive/callback";
 const clientId = "synthetic-drive.apps.googleusercontent.com";
@@ -26,55 +34,33 @@ const scope = DRIVE_AUTHORIZATION_SCOPES.join(" ");
 let keys: CryptoKeyPair;
 let wrongKeys: CryptoKeyPair;
 beforeAll(async () => {
-  const options = {
-    name: "RSASSA-PKCS1-v1_5",
-    modulusLength: 2048,
-    publicExponent: new Uint8Array([1, 0, 1]),
-    hash: "SHA-256",
-  };
-  const first = await crypto.subtle.generateKey(options, true, [
-    "sign",
-    "verify",
-  ]);
-  const second = await crypto.subtle.generateKey(options, true, [
-    "sign",
-    "verify",
-  ]);
-  if (!("privateKey" in first) || !("privateKey" in second))
-    throw new Error("Synthetic RSA key setup failed");
-  keys = first;
-  wrongKeys = second;
+  const generated = await generateSigningKeys();
+  keys = generated.keys;
+  wrongKeys = generated.wrongKeys;
 });
 afterEach(() => vi.restoreAllMocks());
-const encode = (value: unknown) =>
-  encodeBase64url(new TextEncoder().encode(JSON.stringify(value)));
 async function signed(
   change: Record<string, unknown> = {},
   wrong = false,
   header: Record<string, unknown> = {},
 ) {
-  const now = Math.floor(Date.now() / 1000);
-  const claims = {
-    iss: "https://accounts.google.com",
+  const claims = googleIdTokenClaims({
     sub,
     aud: clientId,
     nonce: input.nonce,
-    iat: now,
-    exp: now + 3600,
     email: "Drive-C@example.test",
-    email_verified: true,
     ...change,
-  };
-  const message = `${encode({ alg: "RS256", kid: "synthetic-drive-key", typ: "JWT", ...header })}.${encode(claims)}`;
-  const signature = await crypto.subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    (wrong ? wrongKeys : keys).privateKey,
-    new TextEncoder().encode(message),
-  );
+  });
+  const result = await signIdToken({
+    claims,
+    privateKey: (wrong ? wrongKeys : keys).privateKey,
+    header,
+    kid: "synthetic-drive-key",
+  });
   const key = await crypto.subtle.exportKey("jwk", keys.publicKey);
   if (!("kty" in key)) throw new Error("Synthetic RSA JWK export failed");
   return {
-    jwt: `${message}.${encodeBase64url(new Uint8Array(signature))}`,
+    jwt: result.jwt,
     key: {
       kty: key.kty,
       kid: "synthetic-drive-key",
@@ -86,15 +72,13 @@ async function signed(
   };
 }
 function tokens(jwt: string, change: Record<string, unknown> = {}) {
-  return {
+  return googleTokenResponse({
     access_token: "synthetic-drive-access",
     refresh_token: "synthetic-drive-refresh",
-    expires_in: 3600,
-    token_type: "Bearer",
     scope,
     id_token: jwt,
     ...change,
-  };
+  });
 }
 async function setup(change: Record<string, unknown> = {}) {
   const fixture = await signed();
@@ -102,7 +86,7 @@ async function setup(change: Record<string, unknown> = {}) {
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (value) => {
       const request = value instanceof Request ? value : new Request(value);
-      if (request.url === "https://oauth2.googleapis.com/token")
+      if (request.url === GOOGLE_TOKEN_ENDPOINT)
         return Response.json(tokens(fixture.jwt, change));
       if (request.url === "https://www.googleapis.com/oauth2/v3/certs")
         return Response.json({ keys: [fixture.key] });
@@ -248,7 +232,7 @@ async function mockedExchange(
       const request = value instanceof Request ? value : new Request(value);
       expect(request.redirect).toBe("manual");
       expect(request.signal.aborted).toBe(false);
-      if (request.url === "https://oauth2.googleapis.com/token")
+      if (request.url === GOOGLE_TOKEN_ENDPOINT)
         return Response.json(tokens(fixture.jwt, options.tokenChange));
       if (request.url === "https://www.googleapis.com/oauth2/v3/certs")
         return Response.json({
@@ -333,7 +317,7 @@ describe("T18 Drive identity and scope adversaries", () => {
         value instanceof Request ? value.url : String(value),
       ),
     ).toEqual([
-      "https://oauth2.googleapis.com/token",
+      GOOGLE_TOKEN_ENDPOINT,
       "https://www.googleapis.com/oauth2/v3/certs",
       "https://openidconnect.googleapis.com/v1/userinfo",
     ]);
@@ -673,7 +657,7 @@ describe("T18 bounded signing-key and UserInfo requests", () => {
             },
           },
         );
-      if (request.url === "https://oauth2.googleapis.com/token")
+      if (request.url === GOOGLE_TOKEN_ENDPOINT)
         return Response.json(tokens(fixture.jwt));
       if (request.url === "https://www.googleapis.com/oauth2/v3/certs")
         return Response.json({ keys: [fixture.key] });
@@ -700,7 +684,7 @@ describe("T18 bounded signing-key and UserInfo requests", () => {
       });
       const http = vi.fn(async (request: Request) => {
         if (request.url === target) return pending;
-        if (request.url === "https://oauth2.googleapis.com/token")
+        if (request.url === GOOGLE_TOKEN_ENDPOINT)
           return Response.json(tokens(fixture.jwt));
         if (request.url === "https://www.googleapis.com/oauth2/v3/certs")
           return Response.json({ keys: [fixture.key] });
@@ -768,8 +752,7 @@ describe("T18 Drive authorization JSON response chunk budgets", () => {
       { headers: { "content-type": "application/json" } },
     );
     const http = vi.fn(async (request: Request) => {
-      if (request.url === "https://oauth2.googleapis.com/token")
-        return response;
+      if (request.url === GOOGLE_TOKEN_ENDPOINT) return response;
       if (request.url === "https://www.googleapis.com/oauth2/v3/certs")
         return Response.json({ keys: [fixture.key] });
       if (request.url === "https://openidconnect.googleapis.com/v1/userinfo")
@@ -819,8 +802,7 @@ describe("T18 Drive authorization JSON response chunk budgets", () => {
       { headers: { "content-type": "application/json" } },
     );
     const http = async (request: Request) => {
-      if (request.url === "https://oauth2.googleapis.com/token")
-        return response;
+      if (request.url === GOOGLE_TOKEN_ENDPOINT) return response;
       if (request.url === "https://www.googleapis.com/oauth2/v3/certs")
         return Response.json({ keys: [fixture.key] });
       if (request.url === "https://openidconnect.googleapis.com/v1/userinfo")
