@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   MINOR_BOUND,
+  currencyCode,
   dateSchema as date,
   fxRateDecimal,
   hasControlCharacters,
@@ -9,7 +10,8 @@ import {
 
 export const fxCalculationVersion = "fx-v1" as const;
 export const fxMaxConvertedMinor = "9223372036854775807";
-export const fxCurrencySchema = supportedCurrency;
+/** Entry/target currency may be outside the registry (reported as currency_unsupported). */
+export const fxCurrencySchema = currencyCode;
 const identifier = z
   .string()
   .min(1)

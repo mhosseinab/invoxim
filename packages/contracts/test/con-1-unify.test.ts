@@ -43,12 +43,13 @@ it("CON-1 FX rate accepts 13 integer digits (match core) and rejects 14", () => 
 
 // ---------------------------------------------------------------------------
 // ext#4 — four supportedCurrency variants disagree.
-// fx.ts:10 and purchases.ts:12 accept any /^[A-Z]{3}$/ including "XYZ".
-// onboarding.ts:21, auth.ts:5-8, corrections.ts:16-25 restrict to the registry.
-// Decision: one supportedCurrency rule that enforces the registry everywhere.
+// Registry codes are required for API/reporting fields (purchase filters,
+// totals, reportingCurrency, purchase changes). Domain entry/payment currency
+// accepts any /^[A-Z]{3}$/ (`currencyCode`) so FX/recurring can return
+// `currency_unsupported` / `unsupported_currency` instead of failing parse.
 // ---------------------------------------------------------------------------
 
-it("CON-1 every currency field rejects codes outside the registry", () => {
+it("CON-1 API/reporting currency fields reject codes outside the registry", () => {
   for (const parse of [
     () => purchaseFiltersSchema.safeParse({ currency: "XYZ" }),
     () =>
@@ -70,16 +71,20 @@ it("CON-1 every currency field rejects codes outside the registry", () => {
         reportingCurrency: "XYZ",
       }),
     () => purchaseChangesSchema.safeParse({ currency: "XYZ" }),
-    () =>
-      fxEntrySchema.safeParse({
-        id: "e1",
-        kind: "payment",
-        amountMinor: "1",
-        currency: "XYZ",
-        eventDate: "2026-01-15",
-      }),
   ])
     expect(parse().success).toBe(false);
+});
+
+it("CON-1 fx entry accepts ISO-like currencyCode so domain can report currency_unsupported", () => {
+  expect(
+    fxEntrySchema.safeParse({
+      id: "e1",
+      kind: "payment",
+      amountMinor: "1",
+      currency: "XYZ",
+      eventDate: "2026-01-15",
+    }).success,
+  ).toBe(true);
 });
 
 it("CON-1 registry currencies remain accepted", () => {

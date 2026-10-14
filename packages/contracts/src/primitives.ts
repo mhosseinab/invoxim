@@ -24,6 +24,12 @@ export const supportedCurrency = z.enum(
   Object.keys(currencyMinorDigits) as [string, ...string[]],
 );
 /**
+ * ISO-style 3-letter code that MAY be outside the reviewed registry.
+ * Domain inputs use this so they can report `currency_unsupported`
+ * instead of failing parse (fx/recurring tests use XYZ).
+ */
+export const currencyCode = z.string().regex(/^[A-Z]{3}$/);
+/**
  * FX rate decimal string: up to 13 integer digits and up to 18 fraction
  * digits, matching `core/money-conversion.ts`. Previously contracts allowed
  * only 12 integer digits (ext#5).
