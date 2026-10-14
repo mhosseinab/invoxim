@@ -12,20 +12,13 @@ Do not overwrite an existing repository or user configuration while merging this
 
 `CLAUDE.md` points to the canonical root instructions. `.claude/agents/ledger-*.md` defines tool-scoped roles and inherits the session model. Read-only reviewers have only Read/Glob/Grep, not a shell disguised as read-only access. Implementation agents can run tests and edit assigned files. The orchestrator definition requests Agent support, but actual nested delegation depends on the installed runtime; use the primary session for delegation when required. [S35]
 
-Each adapter explicitly instructs the agent to read its canonical role and skills. This does not depend on those skills being automatically installed into Claude’s skill registry. To make the same skills available through native `.claude/skills/` discovery, run the optional helper from the repository root:
-
-```sh
-python3 tools/install_claude_skills.py --dry-run
-python3 tools/install_claude_skills.py
-```
-
-The helper copies only the canonical SKILL.md files and records their hashes. It refuses to overwrite conflicting unmanaged or locally modified files. Canonical edits belong in `.agents/skills`; rerun the helper to synchronize unchanged managed copies. Do not maintain two independent versions or install unreviewed third-party skills.
+Each adapter explicitly instructs the agent to read its canonical role and skills. This does not depend on those skills being automatically installed into Claude’s skill registry. Native `.claude/skills/` discovery can be pointed at the canonical `.agents/skills` tree by the coding agent; do not maintain two independent versions or install unreviewed third-party skills.
 
 ## OpenCode
 
 `.opencode/agents/ledger-*.md` defines a primary orchestrator plus specialist subagents. Read-only review adapters deny edits and shell execution; implementation roles inherit the owner’s permissions instead of enabling a permissive global policy. OpenCode documents discovery of `.agents/skills`. [S36, S37]
 
-The Claude helper can create duplicate skill names if both folders are discovered. Prefer canonical `.agents/skills` for OpenCode; before mixing adapters in one environment, check the actual loaded skill paths and resolve duplicated managed copies rather than guessing which version wins. No provider/model is hardcoded in these agent files.
+Prefer canonical `.agents/skills` for OpenCode; before mixing adapters in one environment, check the actual loaded skill paths and resolve duplicated managed copies rather than guessing which version wins. No provider/model is hardcoded in these agent files.
 
 ## What these files do not guarantee
 
