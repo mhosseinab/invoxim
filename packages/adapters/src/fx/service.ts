@@ -7,17 +7,22 @@ import {
   fxCalculationVersion,
   fxConversionPolicySchema,
   fxCurrencySchema,
-  fxEntrySchema,
   fxRateQuoteSchema,
   hasControlCharacters,
   validCalendarDate,
 } from "@invoxim/contracts";
 import {
+  fxRateAgeDays,
   type PublicReferenceRateReader,
   sumFxConversions,
   type TenantContext,
 } from "@invoxim/core";
 import { z } from "zod";
+import {
+  mapFxEntry,
+  type OwnedEntry,
+  ownedEntryColumns,
+} from "./period-valuation";
 import { createFxValuationRepository } from "./repository";
 
 const identifier = z
@@ -70,23 +75,6 @@ export type FxReportingPage =
 export type FxRevaluationPage =
   | { status: "stale" }
   | { status: "current"; processed: number; nextCursor: string | null };
-interface EntryRow {
-  id: string;
-  kind: "payment" | "refund";
-  amount_minor: string;
-  currency: string;
-  event_date: string;
-  version: number;
-}
-function entry(row: EntryRow): FxEntry {
-  return fxEntrySchema.parse({
-    id: row.id,
-    kind: row.kind,
-    amountMinor: row.amount_minor,
-    currency: row.currency,
-    eventDate: row.event_date,
-  });
-}
 async function fingerprint(value: unknown): Promise<string> {
   return Array.from(
     new Uint8Array(
@@ -143,8 +131,7 @@ export function createFxReportingService(
   if (!parsedPolicy.success) throw new Error("INVALID_FX_INPUT");
   const policy = parsedPolicy.data;
   const repository = createFxValuationRepository(db, { policy });
-  const owned =
-    "SELECT e.id,e.kind,CAST(e.amount_minor AS TEXT) AS amount_minor,e.currency,e.event_date,e.version FROM ledger_entries e JOIN profiles p ON p.user_id=e.user_id WHERE e.user_id=? AND e.eligible=1 AND p.status='active' AND p.version=? AND p.reporting_currency=?";
+  const owned = `SELECT ${ownedEntryColumns()} FROM ledger_entries e JOIN profiles p ON p.user_id=e.user_id WHERE e.user_id=? AND e.eligible=1 AND p.status='active' AND p.version=? AND p.reporting_currency=?`;
   async function profileCurrent(
     context: TenantContext,
     input: FxReportingPageInput,
@@ -204,7 +191,7 @@ export function createFxReportingService(
           ...(input.purchaseId ? [input.purchaseId] : []),
           input.limit + 1,
         )
-        .all<EntryRow>()
+        .all<OwnedEntry>()
     ).results;
     const selected = rows.slice(0, input.limit);
     const last = selected.at(-1);
@@ -218,7 +205,7 @@ export function createFxReportingService(
   async function stillCurrent(
     context: TenantContext,
     input: FxReportingPageInput,
-    rows: EntryRow[],
+    rows: OwnedEntry[],
   ): Promise<boolean> {
     const changed = rows.map(() => "(id=? AND version=?)").join(" OR ");
     const result = await db
@@ -244,7 +231,7 @@ export function createFxReportingService(
     const entries: FxReportingRow[] = [];
     const results: FxConversionResult[] = [];
     for (const row of selected.rows) {
-      const original = entry(row);
+      const original = mapFxEntry(row);
       const valuation = await repository.get(context, {
         entryId: row.id,
         expectedProfileVersion: selected.input.expectedProfileVersion,
@@ -314,11 +301,11 @@ export function createFxReportingService(
       retrievedAt: row.retrieved_at,
       version: row.source_version,
     });
-    const age =
-      (Date.parse(`${original.eventDate}T00:00:00.000Z`) -
-        Date.parse(`${quote.effectiveDate}T00:00:00.000Z`)) /
-      86400000;
-    return age <= policy.maxPriorAgeDays ? quote : null;
+    // C5: the staleness rule is the core conversion rule, not a second copy.
+    return fxRateAgeDays(original.eventDate, quote.effectiveDate) <=
+      policy.maxPriorAgeDays
+      ? quote
+      : null;
   }
   async function revaluePage(
     context: TenantContext,
@@ -344,9 +331,9 @@ export function createFxReportingService(
           row.id,
           row.version,
         )
-        .first<EntryRow>();
+        .first<OwnedEntry>();
       if (!current) return { status: "stale" };
-      const original = entry(current);
+      const original = mapFxEntry(current);
       let quote: FxRateQuote | null = null;
       if (original.currency !== key.reportingCurrency) {
         quote = await cachedQuote(original, key.reportingCurrency);

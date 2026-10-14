@@ -1,7 +1,6 @@
 import {
   type FxConversionPolicy,
   type FxConversionResult,
-  type FxEntry,
   type FxRateQuote,
   fxCalculationVersion,
   fxConversionPolicySchema,
@@ -12,10 +11,18 @@ import {
 import { convertFxEntry, type TenantContext } from "@invoxim/core";
 import {
   decodeFxValuation,
+  fxPolicyHash,
   fxQuoteIdentity,
   fxSnapshotHash,
+  mapFxEntry,
+  minorBinding,
   type OwnedEntry,
+  ownedEntryColumns,
+  profileColumns,
   type ValuationRow,
+  valuationColumns,
+  valuationJoin,
+  valuationPolicyBinds,
 } from "./period-valuation";
 export interface FxValuationKey {
   readonly entryId: string;
@@ -62,21 +69,6 @@ function validateKey(input: FxValuationKey): void {
   )
     throw new Error("INVALID_FX_INPUT");
 }
-function minorBinding(value: string): number {
-  const minor = Number(value);
-  if (!Number.isSafeInteger(minor) || minor < 0 || minor > 9000000000000)
-    throw new Error("INVALID_FX_INPUT");
-  return minor;
-}
-function entry(row: OwnedEntry): FxEntry {
-  return {
-    id: row.id,
-    kind: row.kind,
-    amountMinor: row.amount_minor,
-    currency: row.currency,
-    eventDate: row.event_date,
-  };
-}
 async function safe<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
@@ -93,13 +85,9 @@ export function createFxValuationRepository(
   const parsed = fxConversionPolicySchema.safeParse(options.policy);
   if (!parsed.success) throw new Error("INVALID_FX_INPUT");
   const policy = parsed.data,
-    policyHash = fxSnapshotHash([
-      policy.source,
-      policy.maxPriorAgeDays,
-      fxCalculationVersion,
-    ]),
+    policyHash = fxPolicyHash(policy),
     clock = options.clock ?? Date.now;
-  const owned = `SELECT e.id,e.kind,CAST(e.amount_minor AS TEXT) AS amount_minor,e.currency,e.event_date,e.version FROM ledger_entries e JOIN profiles p ON p.user_id=e.user_id WHERE e.user_id=? AND e.id=? AND e.eligible=1 AND p.status='active' AND p.version=? AND p.reporting_currency=?`;
+  const owned = `SELECT ${ownedEntryColumns()} FROM ledger_entries e JOIN profiles p ON p.user_id=e.user_id WHERE e.user_id=? AND e.id=? AND e.eligible=1 AND p.status='active' AND p.version=? AND p.reporting_currency=?`;
   async function get(
     context: TenantContext,
     input: FxValuationKey,
@@ -107,13 +95,10 @@ export function createFxValuationRepository(
     validateKey(input);
     const row = await db
       .prepare(
-        `SELECT e.id,e.kind,CAST(e.amount_minor AS TEXT) AS amount_minor,e.currency,e.event_date,e.version,p.version AS profile_version,p.reporting_currency AS profile_currency,v.version AS valuation_version,v.status,v.signed_minor,v.basis,v.reason,v.rate_id,r.source,r.from_currency,r.to_currency,r.requested_date,r.effective_date,r.rate,r.retrieved_at,r.source_version FROM ledger_entries e JOIN profiles p ON p.user_id=e.user_id LEFT JOIN entry_valuations v ON v.user_id=e.user_id AND v.entry_id=e.id AND v.profile_version=p.version AND v.entry_version=e.version AND v.reporting_currency=p.reporting_currency AND v.calculation_version=? AND v.policy_hash=? AND v.policy_source=? AND v.max_prior_age_days=? AND v.original_kind=e.kind AND v.original_minor=e.amount_minor AND v.original_currency=e.currency AND v.original_event_date=e.event_date LEFT JOIN fx_rates r ON r.id=v.rate_id WHERE e.user_id=? AND e.id=? AND e.eligible=1 AND p.status='active'`,
+        `SELECT ${ownedEntryColumns()},${profileColumns("p")},${valuationColumns} FROM ledger_entries e JOIN profiles p ON p.user_id=e.user_id ${valuationJoin("p")} WHERE e.user_id=? AND e.id=? AND e.eligible=1 AND p.status='active'`,
       )
       .bind(
-        fxCalculationVersion,
-        await policyHash,
-        policy.source,
-        policy.maxPriorAgeDays,
+        ...valuationPolicyBinds(policy, await policyHash),
         context.userId,
         input.entryId,
       )
@@ -150,7 +135,7 @@ export function createFxValuationRepository(
       .first<OwnedEntry>();
     if (!row) return { status: "stale" };
     const result = convertFxEntry(
-      entry(row),
+      mapFxEntry(row),
       input.reportingCurrency,
       input.quote,
       policy,

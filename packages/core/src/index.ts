@@ -86,7 +86,11 @@ export * from "./discovery/types";
 export * from "./documents/extractor";
 export * from "./documents/original";
 export * from "./documents/types";
-export { convertFxEntry, sumFxConversions } from "./fx/conversion";
+export {
+  convertFxEntry,
+  fxRateAgeDays,
+  sumFxConversions,
+} from "./fx/conversion";
 export * from "./fx/types";
 export { createJobEngine } from "./jobs/engine";
 export type {
