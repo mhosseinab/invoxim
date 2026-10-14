@@ -6,8 +6,8 @@ import {
   type RecurringCadence,
 } from "@invoxim/contracts";
 import { useEffect, useRef, useState } from "react";
+import { amount } from "../../format";
 import { identityFailure, readPrivateForIdentity } from "../api";
-import { amount } from "../components";
 
 type Selection = { entryId: string; expectedVersion: number; label: string };
 export function PaymentPicker({

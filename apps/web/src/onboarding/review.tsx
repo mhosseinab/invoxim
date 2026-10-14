@@ -10,6 +10,7 @@ import {
   validTimezone,
 } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatDate, formatDateTime } from "../format";
 import { PrivateLoadError, readPrivateForIdentity } from "../private/api";
 import {
   confirmActor,
@@ -20,20 +21,6 @@ import {
 import { onboardingCopy as text } from "./copy";
 import { AdvancedAi } from "./settings";
 import "./review.css";
-
-function readableDate(value: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T12:00:00Z`));
-}
-function readableReset(value: string, timezone: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: timezone,
-  }).format(new Date(value));
-}
 
 type Draft = {
   startDate: string;
@@ -302,8 +289,8 @@ export function ReviewImport({
             <div className="review-range">
               <span className="review-caption">{text.reviewSelectedDates}</span>
               <strong>
-                {readableDate(disclosure.startDate)} –{" "}
-                {readableDate(disclosure.endDate)}
+                {formatDate(disclosure.startDate)} –{" "}
+                {formatDate(disclosure.endDate)}
               </strong>
               <span className="review-caption">
                 {disclosure.timezone} · {disclosure.reportingCurrency}
@@ -379,7 +366,7 @@ export function ReviewImport({
               </p>
               <span className="review-caption">
                 {text.reviewDailyReset}
-                {readableReset(
+                {formatDateTime(
                   disclosure.allowance.dailyResetAt,
                   disclosure.timezone,
                 )}{" "}
@@ -447,14 +434,14 @@ export function ReviewImport({
                   </p>
                   <p>
                     {text.reviewDailyReset}
-                    {readableReset(
+                    {formatDateTime(
                       disclosure.allowance.dailyResetAt,
                       disclosure.timezone,
                     )}{" "}
                     · {disclosure.timezone}
                     <br />
                     {text.reviewMonthlyResetLabel}{" "}
-                    {readableReset(
+                    {formatDateTime(
                       disclosure.allowance.monthlyResetAt,
                       disclosure.timezone,
                     )}

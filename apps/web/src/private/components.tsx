@@ -3,7 +3,7 @@ import type {
   PurchaseCoverage,
   PurchaseView,
 } from "@invoxim/contracts";
-import { formatMinor } from "@invoxim/core";
+import { amount, formatDateTime } from "../format";
 import { Icon } from "../icons";
 import {
   categoryLabel,
@@ -11,13 +11,7 @@ import {
   reviewQuestions,
   privateCopy as text,
 } from "./copy";
-export function amount(minor: string, currency: string) {
-  try {
-    return `${currency} ${formatMinor(minor, currency)}`;
-  } catch {
-    return `${currency} ${minor} minor units`;
-  }
-}
+
 export function Totals({
   values,
   label,
@@ -151,17 +145,6 @@ export function PurchaseCard({ purchase }: { purchase: PurchaseView }) {
     </article>
   );
 }
-function importDateLabel(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "Date unavailable"
-    : new Intl.DateTimeFormat("en-GB", {
-        dateStyle: "medium",
-        timeStyle: "short",
-        timeZone: "UTC",
-      }).format(date);
-}
-
 export function isPaused(
   connection: PurchaseCoverage["connections"][number],
 ): boolean {
@@ -288,8 +271,8 @@ export function Coverage({
                   <strong>{text.scanFinished}</strong>
                 )}
                 <p className="workspace-caption">
-                  {text.requestedHistory} {importDateLabel(run.from)} –{" "}
-                  {importDateLabel(run.to)} {text.endExclusive}
+                  {text.requestedHistory} {formatDateTime(run.from)} –{" "}
+                  {formatDateTime(run.to)} {text.endExclusive}
                 </p>
                 {run.pauseReason && (
                   <p className="workspace-pause-reason">

@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { formatLocalDate } from "../format";
 import { identityFailure, readPrivateForIdentity } from "./api";
 import { missingQuestions, reviewQuestions, privateCopy as text } from "./copy";
 import { StandaloneReview } from "./review-controls";
@@ -131,11 +132,7 @@ function ReviewEmail({
             className="review-list-date"
             dateTime={new Date(context.receivedAt).toISOString()}
           >
-            {new Date(context.receivedAt).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
+            {formatLocalDate(context.receivedAt)}
           </time>
         )}
         <span className="review-list-chevron" aria-hidden="true">

@@ -7,7 +7,7 @@ import {
   type recurringRecordSchema,
   recurringWriteResponseSchema,
 } from "@invoxim/contracts";
-import { amount } from "../components";
+import { amount } from "../../format";
 import { useRetryableMutation } from "../mutations";
 import { PaymentPicker } from "./picker";
 import "./styles.css";
