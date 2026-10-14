@@ -451,6 +451,19 @@ it("ARCH-02: all current leaf tables coexist and one cleanup step deletes at mos
     )
     .bind(owner.userId, owner.userId, start)
     .run();
+  // Children-first leaves (upload sessions from claim, etc.) drain before
+  // archive_objects; clear them so this step isolates the archive_objects cap.
+  for (const table of [
+    "archive_upload_sessions",
+    "archive_backfill_items",
+    "archive_dispatch",
+    "archive_document_order",
+    "archive_backfill_runs",
+  ])
+    await db
+      .prepare(`DELETE FROM ${table} WHERE user_id=?`)
+      .bind(owner.userId)
+      .run();
   expect(
     await cleanupM1Leaves(db, {
       user_id: owner.userId,
