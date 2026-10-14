@@ -91,13 +91,39 @@ it("T22/DOCUMENT-02 actual corpus two-page PDF preserves final-page cash, gross,
   expect(moneyAfter(last, "Total")).toBe(12000n);
   expect(moneyAfter(last, "Paid by card")).toBe(12000n);
 });
+it("T22/DOCUMENT-02 actual compressed corpus PDF preserves exact readable text, source identity and monetary digits", async () => {
+  const result = await extract(
+    compressedPdf,
+    "compressed-text.pdf",
+    "application/pdf",
+    "f3acd279ba8909669ddce61690dc44f11d30cf9b0effb19b1869260e6bcb9b08",
+  );
+  expect(result.status).toBe("ready");
+  const document = result.documents[0];
+  if (document?.status !== "ready")
+    throw new Error("Actual compressed corpus PDF did not yield readable text");
+  expect(document).toEqual({
+    identity: {
+      connectionId: "synthetic-corpus-mailbox",
+      providerMessageId: "compressed-text.pdf",
+      partId: "attachment",
+    },
+    role: "attachment",
+    mimeType: "application/pdf",
+    contentHash:
+      "f3acd279ba8909669ddce61690dc44f11d30cf9b0effb19b1869260e6bcb9b08",
+    parserVersion: "unpdf-1.8.1/bounded-flate-v2",
+    status: "ready",
+    pageCount: 1,
+    textParts: [
+      { page: 1, text: "Corpus Shop Total EUR 100.00 Paid EUR 100.00" },
+    ],
+  });
+  const text = document.textParts[0]?.text ?? "";
+  expect(moneyAfter(text, "Total")).toBe(10000n);
+  expect(moneyAfter(text, "Paid")).toBe(10000n);
+});
 it.each([
-  {
-    name: "compressed-text.pdf",
-    asset: compressedPdf,
-    hash: "f3acd279ba8909669ddce61690dc44f11d30cf9b0effb19b1869260e6bcb9b08",
-    code: "compressed_pdf",
-  },
   {
     name: "scanned-image-only.pdf",
     asset: scannedPdf,
