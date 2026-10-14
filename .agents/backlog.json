@@ -1386,7 +1386,8 @@
       "ownerRole": "observability",
       "scope": "Validated LANGSMITH_HOST with explicit SDK and transport destination; retain privacy and fail-open telemetry.",
       "completionEvidence": [
-        "evidence/implementation/langsmith-host-20261014.md"
+        "evidence/implementation/langsmith-host-20261014.md",
+        "evidence/implementation/langsmith-eu-release-20261014.md"
       ],
       "blockedBy": []
     }
