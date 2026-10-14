@@ -207,27 +207,3 @@ export function restorationEligibility(
   }
   return true;
 }
-export function correctedPaymentState(
-  purchase: {
-    currency: string | null;
-    totalMinor: string | null;
-    paymentState?: string;
-  },
-  entries: readonly CorrectionEventFact[],
-): "unknown" | "unpaid" | "partially_paid" | "paid" {
-  if (!purchase.currency || purchase.totalMinor === null) return "unknown";
-  let paid = 0n;
-  for (const entry of entries)
-    if (
-      entry.kind === "payment" &&
-      entry.currency === purchase.currency &&
-      hasCashProof(entry)
-    )
-      paid += BigInt(entry.amountMinor);
-  if (paid === 0n)
-    return purchase.paymentState === "unpaid" &&
-      !entries.some((entry) => entry.kind === "refund" && hasCashProof(entry))
-      ? "unpaid"
-      : "unknown";
-  return paid >= BigInt(purchase.totalMinor) ? "paid" : "partially_paid";
-}

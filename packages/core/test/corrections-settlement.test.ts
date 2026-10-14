@@ -3,7 +3,7 @@ import {
   allocationReviewStatus,
   type CorrectionSettlementEvent,
   evaluateCorrectionSettlement,
-} from "./settlement";
+} from "../src/corrections/settlement";
 
 const purchase = { currency: "EUR", totalMinor: "10000", paymentState: "paid" };
 const payment: CorrectionSettlementEvent = {
