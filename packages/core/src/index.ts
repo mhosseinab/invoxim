@@ -65,10 +65,7 @@ export {
 export type { AcceptedLedgerEntry } from "./ledger/totals";
 export { ledgerTotals } from "./ledger/totals";
 export * from "./ledger/types";
-export {
-  encodeLifecycleExport,
-  LifecycleError,
-} from "./lifecycle/export";
+export { encodeLifecycleExport, LifecycleError } from "./lifecycle/export";
 export { createLifecycleService } from "./lifecycle/service";
 export * from "./lifecycle/types";
 export * from "./mailbox/authorization";

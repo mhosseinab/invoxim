@@ -117,7 +117,9 @@ test("SW-2 CLI rejects deep relative imports that cross into another package", a
   const root = await mkdtemp(path.join(tmpdir(), "invoxim-boundaries-"));
   try {
     for (const layer of ["core", "adapters"]) {
-      await mkdir(path.join(root, "packages", layer, "src"), { recursive: true });
+      await mkdir(path.join(root, "packages", layer, "src"), {
+        recursive: true,
+      });
       await writeFile(
         path.join(root, "packages", layer, "package.json"),
         JSON.stringify({
@@ -164,7 +166,9 @@ test("SW-2 CLI rejects workspace subpath imports that bypass the package root", 
   const root = await mkdtemp(path.join(tmpdir(), "invoxim-boundaries-"));
   try {
     for (const layer of ["core", "adapters"]) {
-      await mkdir(path.join(root, "packages", layer, "src"), { recursive: true });
+      await mkdir(path.join(root, "packages", layer, "src"), {
+        recursive: true,
+      });
       await writeFile(
         path.join(root, "packages", layer, "package.json"),
         JSON.stringify({
