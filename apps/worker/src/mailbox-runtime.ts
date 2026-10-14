@@ -17,7 +17,7 @@ import { createOutlookDiscoveryProviderFactory } from "../../../packages/adapter
 import { createOutlookContentFactory } from "../../../packages/adapters/src/pipeline/outlook-factory";
 import { createDiscoveryRuntime } from "./discovery-runtime";
 import type { JobBindings } from "./job-configuration";
-import { jobConfiguration } from "./job-configuration";
+import { jobConfiguration, QUERY_LIMIT } from "./job-configuration";
 import { createPipelineRuntime } from "./pipeline-runtime";
 
 export interface MailboxRuntimeBindings
@@ -36,7 +36,7 @@ export function mailboxProcessingConfiguration(
     !!ai?.classification?.enabled &&
     !!bindings.AI &&
     !!jobs &&
-    jobs.queryLimit === 40 &&
+    jobs.queryLimit === QUERY_LIMIT &&
     bindings.EXTRACTION_ENABLED === "true";
   const gmail =
     ready && bindings.GMAIL_DISCOVERY_ENABLED === "true"
