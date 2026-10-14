@@ -17,9 +17,9 @@ import {
 } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
 import {
-  liveSession as sessionSql,
-  sessionBindings,
   RECENT_SESSION_MS,
+  sessionBindings,
+  liveSession as sessionSql,
 } from "./connections";
 import { archiveMailboxPermissionSql } from "./dispatch-store";
 import { archiveObjectAdmissionSql } from "./objects";

@@ -1,6 +1,6 @@
 # Contract implementation notes
 
-These schemas are design artifacts, not an implemented validator or API. Generate or hand-write matching strict Zod validators during T03/T11 and test parity. Do not maintain divergent permissive variants.
+These JSON Schemas are the design-time contract source. Matching strict Zod validators live in `packages/contracts/src/` and are the runtime authority; keep the schemas and Zod in parity and do not maintain divergent permissive variants. Schema `shapeVersion` 1 is the shipped contract shape.
 
 `extraction.schema.json` describes transient AI output. Validate byte limits before parsing; JSON Schema success is only the first check. Verify ISO currency support/minor digits against a pinned reference, actual calendar dates, evidence quotes against identified input parts, magnitude bounds, total/tax consistency, payment direction and explicit payment/refund evidence. Null means unknown, not zero. Positive decimal amount strings describe magnitudes; the domain determines sign from validated ledger-event type. Never store evidence quotes, original input, or full model responses in D1/logs. A category is an inference, not evidence of payment.
 
@@ -21,8 +21,8 @@ For a receipt clearly stating the full total was paid, paymentAmount can equal t
 
 ## Presentation/onboarding additions, v1.1
 
-`ux-copy.en.json` is the central copy-key catalog and guarded runtime templates. It is not a substitute for actual approved processor details. `onboarding-view.schema.json` specifies a bounded authenticated display projection; the full start/consent guards live in the API/domain contract. `test-design/fixtures/onboarding-views.json` supplies labeled projections for schema and copy-key tests; these are not implemented reducer results.
+`ux-copy.en.json` is the central copy-key catalog and guarded runtime templates. It is not a substitute for actual approved processor details. `onboarding-view.schema.json` specifies a bounded authenticated display projection; the full start/consent guards live in the API/domain contract. `test-design/fixtures/onboarding-views.json` supplies labeled projections for schema and copy-key tests; bind those projections through the tested onboarding reducer rather than treating fixture JSON as runtime state.
 
 `test-design/fixtures/presentation-demo.json` contains only synthetic, read-only records and exact money expectations. Production example mode uses a small reviewed fixture adapter with a parity test, not a D1 demo tenant or a production import of testkit. Copy templates and capability conditions must be tested in browser states during implementation.
 
-The config schema adds safe M0 presentation flags, recent-first day count, and off-by-default opt-in pilot measurement. Schemas use the same shape-version 1 because no application has shipped; package version is 1.1. Do not overwrite a live deployment's config with these disabled example values.
+The config schema adds safe M0 presentation flags, recent-first day count, and off-by-default opt-in pilot measurement. Do not overwrite a live deployment's config with these disabled example values.

@@ -1,5 +1,7 @@
 # Changes and safe upgrade guide
 
+Current implementation status lives in `.agents/backlog.json`, `README.md`, `MANUAL_TASKS.md` and `DEPLOYMENT_CHECKLIST.md`, not in this changelog. This file records specification revisions and safe upgrade procedure.
+
 ## v1.1 • October 11, 2026
 
 This revision adapts the original agent blueprint to the market evaluation, especially presentation, onboarding, and the first useful result. It updates the existing requirements and task graph, not just a standalone marketing note. No application has been implemented or deployed by this revision.
@@ -47,4 +49,4 @@ No bank sync, chat assistant, accounting suite, refund recovery service, cancell
 4. Keep task IDs and evidence. Apply dependencies in topological order; only rerun completed implementation work when its contract has changed. Acceptance IDs remain stable, with new cases appended.
 5. Run package validation, then the actual application's affected unit/integration/E2E tests. A passing helper script does not validate the implementation. Public release still requires its separate gates.
 
-For a new repository, start with `START_HERE.md` and T00 normally. `docs/13-presentation-and-onboarding.md` governs v1.1 presentation details; security, consent, isolation, and financial invariants continue to govern all UX decisions. Flag genuine conflicts instead of silently choosing the weaker requirement.
+For a new repository, start with `START_HERE.md` and T00 normally. For this repository, treat the v1.1 text as the specification baseline and reconcile against the existing implementation rather than restarting. `docs/13-presentation-and-onboarding.md` governs v1.1 presentation details; security, consent, isolation, and financial invariants continue to govern all UX decisions. Flag genuine conflicts instead of silently choosing the weaker requirement.

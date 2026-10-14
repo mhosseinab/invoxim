@@ -1,6 +1,6 @@
 # Deployment checklist
 
-Updated 13 October 2026. **Not ready to deploy or launch.** This is an evolving operator checklist, not executed deployment evidence. T11 inference and T12 pipeline are locally verified; remaining private-MVP implementation and live/release gates are still pending. No remote resource, production migration, secret or rollout is created by this document.
+Updated 14 October 2026. **Not ready to deploy or launch.** This is an evolving operator checklist and deployment-status record, not executed deployment evidence. Operator inputs and owner decisions live only in `MANUAL_TASKS.md`; do not copy section text between the two files. T11 inference and T12 pipeline are locally verified; remaining private-MVP implementation and live/release gates are still pending. No remote resource, production migration, secret or rollout is created by this document.
 
 ## Prepare and review
 

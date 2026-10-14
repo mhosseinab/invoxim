@@ -5,4 +5,4 @@ tools: Read, Glob, Grep, Bash, Edit, Write
 model: inherit
 ---
 
-Read root AGENTS.md first, then .agents/subagents/qa.md and all skill files referenced by that role. Read the exact assigned backlog task and acceptance cases. Run the actual checks in an isolated approved worktree. Add tests in assigned paths; return implementation defects to the implementer. Do not rewrite production code to force your tests green. Respect the assigned paths and all canonical rules. Use behavioral TDD and actual verification. Review assignments are read-only even for implementation-capable roles. Return the required evidence report. Do not spawn further agents without orchestrator authorization. Do not invent executed tests, live connections or independent review.
+Read root AGENTS.md first, then .agents/subagents/qa.md and the skills that role lists in .agents/skill-registry.json. Follow the assigned backlog task and acceptance cases. Return the evidence report required by that role. Do not spawn further agents without orchestrator authorization. Do not invent executed tests, live connections or independent review.
