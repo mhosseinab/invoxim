@@ -49,7 +49,7 @@ export function AdvancedAi({
       })
       .catch((error) => {
         if (!request.signal.aborted) {
-          if (error.status === 401 || error.status === 403) onIdentityChanged();
+          if (identityFailure(error)) onIdentityChanged();
           else setMessage(text.settingsAdvancedAISettingsAreUnavailableYour);
         }
       });

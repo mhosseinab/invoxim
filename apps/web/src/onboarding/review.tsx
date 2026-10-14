@@ -132,13 +132,7 @@ export function ReviewImport({
         }
       } catch (error) {
         if (!request.signal.aborted) {
-          if (
-            (error instanceof OnboardingRequestError ||
-              (error instanceof Error && "status" in error)) &&
-            "status" in error &&
-            (error.status === 401 || error.status === 403)
-          )
-            onIdentityChanged();
+          if (identityFailure(error)) onIdentityChanged();
           else {
             setDisclosure(null);
             const notConfigured =

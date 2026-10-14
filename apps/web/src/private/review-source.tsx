@@ -1,6 +1,6 @@
 import { type PurchaseReview, reviewSourceSchema } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PrivateLoadError, readPrivateForIdentity } from "./api";
+import { identityFailure, readPrivateForIdentity } from "./api";
 
 type Source = ReturnType<typeof reviewSourceSchema.parse>;
 export function ReviewSource({
@@ -47,11 +47,7 @@ export function ReviewSource({
         setSource(result);
       }
     } catch (failure) {
-      if (
-        !loadSource &&
-        failure instanceof PrivateLoadError &&
-        (failure.status === 401 || failure.status === 403)
-      ) {
+      if (!loadSource && identityFailure(failure)) {
         onReload();
         return;
       }

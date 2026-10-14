@@ -64,6 +64,15 @@ export async function assertPrivateIdentity(
   const profile = await readPrivate("/api/me", profileViewSchema, signal);
   if (profile.user.id !== expectedUserId) throw new PrivateLoadError(401);
 }
+export function identityFailure(value: unknown): boolean {
+  const status =
+    typeof value === "number"
+      ? value
+      : value instanceof Error && "status" in value
+        ? (value as Error & { status: unknown }).status
+        : undefined;
+  return status === 401 || status === 403;
+}
 export async function readPrivateForIdentity<T>(
   path: string,
   schema: {

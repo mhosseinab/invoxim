@@ -83,10 +83,7 @@ export function OnboardingPage({
         }
       } catch (failure) {
         if (!request.signal.aborted) {
-          if (
-            failure instanceof PrivateLoadError &&
-            (failure.status === 401 || failure.status === 403)
-          ) {
+          if (identityFailure(failure)) {
             setWorkspace(null);
             setAcceptedRunId(null);
             setError(text.signedOut);

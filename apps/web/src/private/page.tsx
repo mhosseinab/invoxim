@@ -18,7 +18,7 @@ import {
 } from "@invoxim/contracts";
 import { useEffect, useState } from "react";
 import { BrandMark, Icon } from "../icons";
-import { PrivateLoadError, readPrivate } from "./api";
+import { identityFailure, PrivateLoadError, readPrivate } from "./api";
 import { amount, Coverage, PurchaseCard, Totals } from "./components";
 import { privateCopy as text } from "./copy";
 import { Corrections } from "./corrections";
@@ -440,11 +440,7 @@ export function PrivatePage({ displayName }: { displayName: string }) {
       } catch (error) {
         const status = error instanceof PrivateLoadError ? error.status : 502;
         let loginReady = false;
-        if (
-          active &&
-          !controller.signal.aborted &&
-          (status === 401 || status === 403)
-        ) {
+        if (active && !controller.signal.aborted && identityFailure(status)) {
           try {
             const config = await readPrivate(
               "/api/public-config",
@@ -576,13 +572,13 @@ export function PrivatePage({ displayName }: { displayName: string }) {
               <p>
                 {state.status === 400
                   ? text.invalidFilters
-                  : state.status === 401 || state.status === 403
+                  : identityFailure(state.status)
                     ? text.signedOut
                     : state.status === 503
                       ? text.unavailable
                       : text.failed}
               </p>
-              {(state.status === 401 || state.status === 403) &&
+              {identityFailure(state.status) &&
                 (state.loginReady ? (
                   <a className="primary" href="/onboarding">
                     {text.signIn}

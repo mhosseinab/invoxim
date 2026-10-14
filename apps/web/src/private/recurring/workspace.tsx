@@ -8,7 +8,7 @@ import {
   recurringWriteResponseSchema,
 } from "@invoxim/contracts";
 import { useEffect, useRef, useState } from "react";
-import { assertPrivateIdentity, PrivateLoadError } from "../api";
+import { assertPrivateIdentity, identityFailure, PrivateLoadError } from "../api";
 import { amount } from "../components";
 import { PaymentPicker } from "./picker";
 import "./styles.css";
@@ -51,7 +51,7 @@ export function RecurringWorkspace({ userId, list, detail, refresh }: Props) {
         body: JSON.stringify(body),
       });
       await assertPrivateIdentity(userId, controller.signal);
-      if (response.status === 401 || response.status === 403) {
+      if (identityFailure(response.status)) {
         refresh();
         return;
       }
@@ -71,10 +71,7 @@ export function RecurringWorkspace({ userId, list, detail, refresh }: Props) {
       refresh();
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (
-        error instanceof PrivateLoadError &&
-        (error.status === 401 || error.status === 403)
-      ) {
+      if (identityFailure(error)) {
         refresh();
         return;
       }
