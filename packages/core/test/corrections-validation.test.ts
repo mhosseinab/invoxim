@@ -3,7 +3,7 @@ import {
   type CorrectionEventFact,
   validateEntryChange,
   validateRefundAllocation,
-} from "./validation";
+} from "../src/corrections/validation";
 
 const payment: CorrectionEventFact = {
   id: "payment",
@@ -54,7 +54,7 @@ describe("correction cash allocation", () => {
 import {
   type CorrectionReviewFact,
   restorationEligibility,
-} from "./validation";
+} from "../src/corrections/validation";
 
 const refundWarning: CorrectionReviewFact = {
   id: "warning",
