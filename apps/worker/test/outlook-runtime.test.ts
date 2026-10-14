@@ -18,6 +18,8 @@ import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { syntheticClassificationBindings } from "./classification-fixture";
 import { owner, startBody } from "./onboarding-qa-fixture";
+import { routeRequest } from "./support/route";
+import { signedSession as signedSessionCookie } from "./support/tenant";
 import { useCurrentSchema } from "./support/db";
 
 const db = env.DB;
@@ -88,38 +90,25 @@ async function fixture(id: string, expired = false) {
     false,
   );
   if (!signedSession) throw new Error("Missing signed session");
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(login.secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(signedSession.token),
-  );
-  const cookie = `__Secure-better-auth.session_token=${encodeURIComponent(`${signedSession.token}.${btoa(String.fromCharCode(...new Uint8Array(signature)))}`)}`;
+  const cookie = await signedSessionCookie(login.secret, signedSession.token);
   const origin = login.origin;
   const counts: number[] = [];
   async function request(path: string, init: RequestInit = {}, overrides = {}) {
-    const meter = createInvocationDatabase(db, 40);
-    const response = await worker.fetch(
-      new Request(origin + path, {
-        ...init,
-        headers: {
-          Cookie: cookie,
-          Origin: origin,
-          "Content-Type": "application/json",
-          ...init.headers,
-        },
-      }),
-      { ...bindings, ...overrides, DB: meter.db },
-    );
-    counts.push(meter.executedStatements());
-    expect(meter.executedStatements()).toBeLessThanOrEqual(40);
-    return response;
+    const { method, body, headers } = init;
+    const result = await routeRequest({
+      fetch: (request, env) =>
+        worker.fetch(request, env as Parameters<typeof worker.fetch>[1]),
+      bindings: { ...bindings, ...overrides },
+      origin,
+      cookie,
+      path,
+      method: method ?? "GET",
+      body: body ?? undefined,
+      headers: (headers as Record<string, string>) ?? {},
+      limit: 40,
+    });
+    counts.push(result.statements);
+    return result.response;
   }
   async function start() {
     const response = await request(

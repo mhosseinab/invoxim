@@ -6,7 +6,6 @@ import type {
 import type {
   DiscoveryProviderFactory,
   OnboardingSession,
-  TenantContext,
 } from "@invoxim/core";
 import { createOnboardingUsecases } from "@invoxim/core";
 import { afterEach, beforeAll } from "vitest";
@@ -16,6 +15,7 @@ import { createOnboardingImportPreparation } from "../../../packages/adapters/sr
 import { createOnboardingRepository } from "../../../packages/adapters/src/onboarding/repository";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { syntheticClassificationBindings } from "./classification-fixture";
+import { onboardingSession, seedTenant } from "./support/tenant";
 
 const fixtureDatabase = env.DB;
 const db = fixtureDatabase;
@@ -34,37 +34,14 @@ export async function owner(
   connectionId = "mailbox-b",
   scopes = ["https://www.googleapis.com/auth/gmail.readonly"],
 ): Promise<OnboardingSession> {
-  const loginEmail = `${userId}@example.invalid`,
-    sessionId = `s-${userId}`;
-  await db
-    .prepare(
-      "INSERT INTO user(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,1,0,0)",
-    )
-    .bind(userId, "QA onboarding", loginEmail)
-    .run();
-  await db
-    .prepare(
-      "INSERT INTO profiles(user_id,timezone,reporting_currency,created_at,updated_at) VALUES(?,'Europe/Vienna','EUR',0,0)",
-    )
-    .bind(userId)
-    .run();
-  await db
-    .prepare(
-      "INSERT INTO session(id,expiresAt,token,createdAt,updatedAt,userId) VALUES(?,9999999999999,?,0,0,?)",
-    )
-    .bind(sessionId, `synthetic-${userId}`, userId)
-    .run();
-  await db
-    .prepare(
-      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scopes,credential_ciphertext,credential_key_version,credential_version,scheduling_state) VALUES(?,?,'mailbox','gmail',?,'selected-b@example.invalid',?,'synthetic-encrypted-token',1,1,'awaiting_import')",
-    )
-    .bind(connectionId, userId, connectionId, JSON.stringify(scopes))
-    .run();
-  return {
-    tenant: { userId, authority: "session" } as TenantContext,
-    sessionId,
-    loginEmail,
-  };
+  return onboardingSession(
+    await seedTenant(db, {
+      userId,
+      name: "QA onboarding",
+      connectionId,
+      scopes,
+    }),
+  );
 }
 export function configuredAi(
   endpoint = "https://qa-onboard-model.example.invalid/v1/chat/completions",

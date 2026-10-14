@@ -4,6 +4,7 @@ import { expect, it } from "vitest";
 import worker from "../src/index";
 import { requireFixture } from "./fixture-value";
 import { owner } from "./onboarding-qa-fixture";
+import { signedSession } from "./support/tenant";
 
 async function fixture(name: string) {
   const session = await owner(name, "outlook");
@@ -26,22 +27,10 @@ async function fixture(name: string) {
   const created = requireFixture(
     await context.internalAdapter.createSession(name, false),
   );
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(login.secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(created.token),
-  );
   const headers = {
     Origin: login.origin,
     "Content-Type": "application/json",
-    Cookie: `__Secure-better-auth.session_token=${encodeURIComponent(`${created.token}.${btoa(String.fromCharCode(...new Uint8Array(signature)))}`)}`,
+    Cookie: await signedSession(login.secret, created.token),
   };
   return {
     bindings,
