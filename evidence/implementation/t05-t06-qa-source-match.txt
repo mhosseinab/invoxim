@@ -1,6 +1,0 @@
-{
-  "snapshot": "/tmp/invoxim-t05-t06-qa-final-xikiub6j/source",
-  "count": 108,
-  "manifest_sha256": "645859cea506224d0bea9bfa29f36776f6fa84a58138f5222fa2a6c5f38a96de",
-  "source_differences": []
-}

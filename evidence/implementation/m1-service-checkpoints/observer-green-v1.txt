@@ -1,9 +1,0 @@
-
- RUN  v5.0.3 /home/geek/workspace/invoxim/apps/worker
-
-
- Test Files  1 passed (1)
-      Tests  11 passed (11)
-   Start at  11:27:15
-   Duration  1.36s (transform 77%, import 17%, tests 3%, worker 2%)
-
