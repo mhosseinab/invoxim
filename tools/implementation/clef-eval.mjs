@@ -125,7 +125,10 @@ function routeSavedDecision(row, options) {
       },
     },
   });
-  return parsed ? routeClefDocument(parsed, options) : "uncertain";
+  return parsed ? clefOutcome(routeClefDocument(parsed, options)) : "uncertain";
+}
+function clefOutcome(result) {
+  return typeof result === "string" ? result : result.outcome;
 }
 export function analyzeDevelopmentThresholds(rows) {
   const development = rows.filter((row) => row.partition === "development");
@@ -436,7 +439,7 @@ export async function runClefEvaluation(options = {}) {
       }
       results.push({
         ...row,
-        outcome: routeClefDocument(answer, classificationConfiguration),
+        outcome: clefOutcome(routeClefDocument(answer, classificationConfiguration)),
         receiptProbability: answer.answers.receipt.noul,
         documentType: answer.answers.documentType,
         category: answer.answers.category.choice,
