@@ -10,6 +10,8 @@
   "dependencies": {
     "@invoxim/contracts": "workspace:*",
     "@invoxim/core": "workspace:*",
+    "@langchain/core": "1.2.17",
+    "@langchain/openai": "1.6.2",
     "better-auth": "1.7.7",
     "drizzle-orm": "0.45.4",
     "langsmith": "0.10.11",

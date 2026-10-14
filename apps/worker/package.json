@@ -9,15 +9,16 @@
     "build": "node -e \"require('node:fs').mkdirSync('.production', { recursive: true })\" && wrangler deploy --dry-run --outdir dist --metafile .production/worker.json --no-upload-source-maps"
   },
   "dependencies": {
-    "hono": "4.13.13",
+    "@invoxim/adapters": "workspace:*",
     "@invoxim/contracts": "workspace:*",
     "@invoxim/core": "workspace:*",
-    "@invoxim/adapters": "workspace:*",
+    "hono": "4.13.13",
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20261006.1",
     "@cloudflare/vitest-plugin": "1.4.0",
+    "@cloudflare/workers-types": "5.20261006.1",
+    "@langchain/openai": "1.6.2",
     "vitest": "5.0.3",
     "wrangler": "4.149.0"
   }

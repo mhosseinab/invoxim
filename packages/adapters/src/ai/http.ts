@@ -12,6 +12,7 @@ import type {
 import { z } from "zod";
 import type { AiDestination, AiModel } from "./configuration";
 import { aiDestinationSchema, aiModelSchema } from "./configuration";
+import { invokeChatModel } from "./langchain";
 
 const responseSchema = z.object({
   choices: z
@@ -115,6 +116,84 @@ async function boundedBody(
     signal.removeEventListener("abort", cancelled);
     reader.releaseLock();
   }
+}
+
+async function readChatResponse(
+  response: Response,
+  maximum: number,
+  expectedUsage: boolean,
+  signal: AbortSignal,
+  deadline: number,
+): Promise<AiResponse> {
+  if (response.status === 401 || response.status === 403)
+    return failure("invalid-key");
+  if (response.status === 429) {
+    const header = response.headers.get("retry-after");
+    const numeric = header !== null && /^[0-9]+$/.test(header);
+    const floor = numeric
+      ? Number(header) * 1000
+      : header
+        ? Date.parse(header) - Date.now()
+        : 30000;
+    const delay =
+      numeric || Number.isFinite(floor)
+        ? Number.isSafeInteger(floor) && floor <= 86400000
+          ? Math.max(1000, floor)
+          : 86400001
+        : 30000;
+    return {
+      status: "failed",
+      reason: "rate-limit",
+      usage: null,
+      retryAfterMs: delay,
+    };
+  }
+  if (
+    response.status === 400 ||
+    response.status === 404 ||
+    response.status === 422
+  )
+    return failure("unsupported");
+  if (!response.ok) return failure("outage");
+  const raw = await boundedBody(response, maximum, signal, deadline);
+  const usage = reportedUsage(raw, expectedUsage);
+  const parsed = responseSchema.safeParse(raw);
+  if (!parsed.success)
+    return {
+      status: "failed",
+      reason: "outage",
+      usage,
+    };
+  const choice = parsed.data.choices[0];
+  if (!choice)
+    return {
+      status: "failed",
+      reason: "outage",
+      usage,
+    };
+  if (choice.message.refusal || choice.finish_reason === "content_filter")
+    return {
+      status: "failed",
+      reason: "refusal",
+      usage,
+    };
+  if (
+    choice.message.tool_calls !== undefined ||
+    choice.message.function_call !== undefined ||
+    !["stop", "length"].includes(choice.finish_reason) ||
+    typeof choice.message.content !== "string"
+  )
+    return {
+      status: "failed",
+      reason: "unsupported",
+      usage,
+    };
+  return {
+    status: "ok",
+    output: choice.message.content,
+    finish: choice.finish_reason === "stop" ? "complete" : "truncated",
+    usage,
+  };
 }
 
 function requestBody(
@@ -245,78 +324,67 @@ export function createChatCompletionsExtractor(
       signal?.addEventListener("abort", abort, { once: true });
       const deadline = Date.now() + destination.timeoutMs;
       const timer = setTimeout(abort, destination.timeoutMs);
+      let outcome: AiResponse | undefined;
       try {
         if (signal?.aborted) return failure("timeout");
-        const response = await fetch(destination.endpoint, {
-          method: "POST",
-          headers,
+        const message = await invokeChatModel({
           body,
-          redirect: "manual",
+          endpoint: destination.endpoint,
+          key,
           signal: controller.signal,
+          timeoutMs: destination.timeoutMs,
+          transport: async () => {
+            const response = await fetch(destination.endpoint, {
+              method: "POST",
+              headers,
+              body,
+              redirect: "manual",
+              signal: controller.signal,
+            });
+            outcome = await readChatResponse(
+              response,
+              config.maxOutputBytes,
+              model.capabilities.usage,
+              controller.signal,
+              deadline,
+            );
+            if (outcome.status !== "ok")
+              throw new Error("AI response unavailable");
+            const usage = outcome.usage;
+            return Response.json({
+              choices: [
+                {
+                  index: 0,
+                  finish_reason:
+                    outcome.finish === "complete" ? "stop" : "length",
+                  message: { role: "assistant", content: outcome.output },
+                },
+              ],
+              ...(usage
+                ? {
+                    usage: {
+                      prompt_tokens: usage.input,
+                      completion_tokens: usage.output,
+                      total_tokens: usage.input + usage.output,
+                    },
+                  }
+                : {}),
+            });
+          },
         });
-        if (response.status === 401 || response.status === 403)
-          return failure("invalid-key");
-        if (response.status === 429) {
-          const header = response.headers.get("retry-after");
-          const numeric = header !== null && /^[0-9]+$/.test(header);
-          const floor = numeric
-            ? Number(header) * 1000
-            : header
-              ? Date.parse(header) - Date.now()
-              : 30000;
-          const delay =
-            numeric || Number.isFinite(floor)
-              ? Number.isSafeInteger(floor) && floor <= 86400000
-                ? Math.max(1000, floor)
-                : 86400001
-              : 30000;
-          return {
-            status: "failed",
-            reason: "rate-limit",
-            usage: null,
-            retryAfterMs: delay,
-          };
-        }
-        if (
-          response.status === 400 ||
-          response.status === 404 ||
-          response.status === 422
-        )
-          return failure("unsupported");
-        if (!response.ok) return failure("outage");
-        const raw = await boundedBody(
-          response,
-          config.maxOutputBytes,
-          controller.signal,
-          deadline,
-        );
-        const usage = reportedUsage(raw, model.capabilities.usage);
-        const parsed = responseSchema.safeParse(raw);
-        if (!parsed.success)
-          return { status: "failed", reason: "outage", usage };
-        const choice = parsed.data.choices[0];
-        if (!choice) return { status: "failed", reason: "outage", usage };
-        if (choice.message.refusal || choice.finish_reason === "content_filter")
-          return { status: "failed", reason: "refusal", usage };
-        if (
-          choice.message.tool_calls !== undefined ||
-          choice.message.function_call !== undefined ||
-          !["stop", "length"].includes(choice.finish_reason) ||
-          typeof choice.message.content !== "string"
-        )
-          return { status: "failed", reason: "unsupported", usage };
-        return {
-          status: "ok",
-          output: choice.message.content,
-          finish: choice.finish_reason === "stop" ? "complete" : "truncated",
-          usage,
-        };
+        if (controller.signal.aborted || Date.now() >= deadline)
+          return failure("timeout");
+        if (outcome?.status !== "ok" || message.content !== outcome.output)
+          return failure("outage");
+        return outcome;
       } catch {
-        return failure(
-          controller.signal.aborted || Date.now() >= deadline
-            ? "timeout"
-            : "outage",
-        );
+        return outcome?.status === "failed"
+          ? outcome
+          : failure(
+              controller.signal.aborted || Date.now() >= deadline
+                ? "timeout"
+                : "outage",
+            );
       } finally {
         clearTimeout(timer);
         signal?.removeEventListener("abort", abort);

@@ -104,7 +104,7 @@ The bounded collection supports user-selected series, current/stale evidence pro
 
 ## Optional LangSmith adapter tracing
 
-Tracing is disabled by default. It uses the pinned LangSmith SDK directly; no LangChain or LangGraph workflow engine is added. It covers OpenAI-compatible extraction calls and synthetic credential probes, for both hosted inference and BYOK. Clef classification and financial validation are outside this adapter trace.
+Tracing is disabled by default. It uses the pinned LangSmith SDK directly. The OpenAI-compatible adapter uses LangChain Chat Completions with automatic callbacks blocked; no LangGraph workflow engine is added. It covers OpenAI-compatible extraction calls and synthetic credential probes, for both hosted inference and BYOK. Clef classification and financial validation are outside this adapter trace.
 
 Set these **Worker-only** Wrangler variables to enable metadata tracing:
 
@@ -131,3 +131,15 @@ Import traces contain only provider/model identifiers, prompt/schema versions, h
 A completed trace is sent immediately and awaited with a one-second deadline; there is no background batch requiring a later flush, no telemetry retry and no extra model request. Export failures emit only `ai_tracing_export_failed` and preserve the original inference result or exception. This can add up to one second to an enabled adapter call, including during a telemetry outage. No LangSmith key, production tracing enablement, deployment or live content upload is performed by adding this integration.
 
 Verified API references: [custom instrumentation](https://docs.langchain.com/langsmith/annotate-code), [input/output privacy controls](https://docs.langchain.com/langsmith/mask-inputs-outputs), [serverless delivery](https://docs.langchain.com/langsmith/serverless-environments). Context7 was unavailable; SDK options were additionally checked against pinned `langsmith@0.10.11` types/source.
+
+## LangChain OpenAI-compatible transport
+
+The server adapter uses pinned `@langchain/openai@1.6.2` and `@langchain/core@1.2.17` behind the existing `InvoiceExtractor` interface. No LangChain SDK types enter core/domain contracts. Hosted inference and BYOK retain the same provider configuration, key vault, approved destinations, budgets, consent, paid-result caches and financial validation. Mandatory Clef classification stays on its existing Workers AI adapter.
+
+The public `ChatOpenAICompletions` class forces the Chat Completions protocol for every approved model ID. The general `ChatOpenAI` class can select Responses API based on model-name heuristics even when its `useResponsesApi` option is false. This adapter explicitly selects output version `v0`, disables caching/streaming and sets retries to zero in both LangChain and the OpenAI SDK.
+
+The bounded custom transport retains the exact approved endpoint and code-owned request JSON. This is intentional: provider-declared `max_tokens`/`max_completion_tokens`, JSON schema/object support, idempotency headers and pre-call reservations cannot depend on SDK defaults or model-name guesses. Original HTTP envelopes are byte/chunk/deadline bounded and validated before LangChain converts them to messages. Missing or malformed usage stays unavailable and emits the existing fixed warning; SDK-normalized usage is not a financial metering source.
+
+Automatic callbacks are blocked with a private instance of LangChain's public callback manager. Its `copy` preserves the block and its `addHandler` rejects ambient/inherited trace and console handlers. This protects inputs and outputs even when `LANGSMITH_TRACING`, `LANGCHAIN_TRACING*`, `LANGCHAIN_VERBOSE` or `LC_OUTPUT_VERSION` are present in the process. The explicit opt-in LangSmith wrapper above remains the export path. SDK logging is off; no global environment variables are mutated. Re-run hostile-environment tests when upgrading these pinned SDKs.
+
+Official compatibility documentation: [LangChain OpenAI integration](https://docs.langchain.com/oss/javascript/integrations/chat/openai). Context7 was unavailable; exact class exports, callback behavior and constructor options were checked against installed pinned SDK types/source. No production provider switch or deployment is implied by this refactor.
