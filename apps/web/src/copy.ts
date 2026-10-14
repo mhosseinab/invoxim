@@ -1,4 +1,4 @@
-import catalog from "../../../contracts/ux-copy.en.json";
+import catalog from "../../../contracts/ux-copy.en.json" with { type: "json" };
 
 /** Existing preview labels, centralized for translation; canonical text stays authoritative. */
 export const copy = {

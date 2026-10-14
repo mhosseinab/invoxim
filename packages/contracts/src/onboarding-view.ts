@@ -1,5 +1,5 @@
 import { z } from "zod";
-import copy from "../../../contracts/ux-copy.en.json";
+import copy from "../../../contracts/ux-copy.en.json" with { type: "json" };
 
 export const copyKeySchema = z.enum(
   Object.keys(copy.messages) as [string, ...string[]],
