@@ -101,3 +101,33 @@ Observation errors cannot change scheduling, acknowledgement, retry or cleanup d
 `RECURRING_ENABLED` defaults disabled and must equal `true` to construct the local recurring service. Its authenticated collection routes are mounted before the auth fallback. No external provider, credential or inference destination is selected by this flag. Apply reviewed recurring schema and lifecycle integration before activation; existing databases require non-destructive migration planning.
 
 The bounded collection supports user-selected series, current/stale evidence projections and versioned confirm/dismiss/pause/cancel actions. Writes require exact origin, recent authentication and a separate actor/session-bound `recurring` workspace mutation token. Lists are keyset pages with no atomic snapshot claim; automatic suggestions remain unavailable and service identity/pricing are not fabricated. Forecasts do not create ledger charges. Public recurring capability remains false until the full T20 UI, evidence-backed discovery and acceptance gates are complete. Local route checks do not establish deployed behavior.
+
+## Optional LangSmith adapter tracing
+
+Tracing is disabled by default. It uses the pinned LangSmith SDK directly; no LangChain or LangGraph workflow engine is added. It covers OpenAI-compatible extraction calls and synthetic credential probes, for both hosted inference and BYOK. Clef classification and financial validation are outside this adapter trace.
+
+Set these **Worker-only** Wrangler variables to enable metadata tracing:
+
+```json
+{
+  "AI_TRACING_ENABLED": "true",
+  "AI_TRACING_INCLUDE_CONTENT": "false",
+  "LANGSMITH_PROJECT": "invoxim-ai"
+}
+```
+
+Store the credential interactively, never in JSON or frontend configuration:
+
+```sh
+pnpm --filter @invoxim/worker exec wrangler secret put LANGSMITH_API_KEY
+```
+
+The fixed export destination is `https://api.smith.langchain.com/runs` (US endpoint); custom endpoints/redirects are not accepted. Use a key authorized for the selected project; organization-scoped keys requiring an additional workspace selector are not supported by this initial configuration. `LANGSMITH_PROJECT` allows 1–80 ASCII letters, digits, dots, underscores and hyphens, beginning with a letter/digit. Exact `true` enables tracing; invalid optional tracing configuration disables only telemetry, leaving inference available. Set `AI_TRACING_ENABLED=false` to stop new exports.
+
+Import traces contain only provider/model identifiers, prompt/schema versions, hosted/BYOK mode, elapsed time, generic status/reason, completion state and available usage counters. Missing usage is recorded as unavailable. No user/session/consent/source/attempt identifiers, email headers, receipt values, prompts, model output, provider credentials or exception text are exported. Each completed call gets an unrelated random trace ID. Metadata is allowlisted and runtime/environment enrichment is disabled.
+
+`AI_TRACING_INCLUDE_CONTENT=true` permits bounded, credential-scrubbed input/output **only for the built-in synthetic credential probe**. Private imports remain metadata-only even when this flag is true. Sending private email/model content to LangSmith requires a separate processor-disclosure/consent implementation; this flag cannot override that boundary. Synthetic trace content is limited to 16,000 characters per input part and output.
+
+A completed trace is sent immediately and awaited with a one-second deadline; there is no background batch requiring a later flush, no telemetry retry and no extra model request. Export failures emit only `ai_tracing_export_failed` and preserve the original inference result or exception. This can add up to one second to an enabled adapter call, including during a telemetry outage. No LangSmith key, production tracing enablement, deployment or live content upload is performed by adding this integration.
+
+Verified API references: [custom instrumentation](https://docs.langchain.com/langsmith/annotate-code), [input/output privacy controls](https://docs.langchain.com/langsmith/mask-inputs-outputs), [serverless delivery](https://docs.langchain.com/langsmith/serverless-environments). Context7 was unavailable; SDK options were additionally checked against pinned `langsmith@0.10.11` types/source.

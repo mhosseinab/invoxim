@@ -17,6 +17,7 @@ import {
 } from "./configuration";
 import { chatReservationUnits, createChatCompletionsExtractor } from "./http";
 import { AiSettingsError, createAiSettingsService } from "./settings";
+import { traceChatExtractor } from "./tracing";
 
 export function createAiProviderFactory(
   db: D1Database,
@@ -163,7 +164,11 @@ export function createAiProviderFactory(
         destination.maxOutputTokens,
       ),
     });
-    const transport = createChatCompletionsExtractor(destination, model, key);
+    const transport = traceChatExtractor(
+      createChatCompletionsExtractor(destination, model, key),
+      configuration.tracing,
+      { syntheticProbe: probe, providerKey: key },
+    );
     const extractor: InvoiceExtractor = {
       async extract(parts, approved, attempt, signal) {
         try {

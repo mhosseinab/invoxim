@@ -8,8 +8,10 @@ import type { AuthBindings } from "../auth/configuration";
 import { createCredentialCipher } from "../security/cipher";
 import type { ClefBinding } from "./clef";
 import { receiptClassificationConfigurationSchema } from "./clef";
+import type { AiTracingBindings } from "./tracing";
+import { langsmithConfiguration } from "./tracing";
 
-export interface AiBindings extends AuthBindings {
+export interface AiBindings extends AuthBindings, AiTracingBindings {
   AI_ENABLED?: string;
   AI_REGISTRY_JSON?: string;
   AI_HOSTED_DESTINATION?: string;
@@ -188,7 +190,9 @@ export function aiConfiguration(bindings: AiBindings) {
       typeof bindings.AI.run !== "function"
     )
       return null;
+    const tracing = langsmithConfiguration(bindings);
     return {
+      ...(tracing ? { tracing } : {}),
       ...(classification?.enabled ? { classification } : {}),
       destinations,
       cipher,
