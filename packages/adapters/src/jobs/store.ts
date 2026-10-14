@@ -10,6 +10,7 @@ import type { ReceiptClassificationConfiguration } from "../ai/clef";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 import {
   connectionConsentLiveSql,
+  leaseLive,
   processingSelectionSchema,
   processingSelectionSql,
 } from "../pipeline/repository-guards";
@@ -180,8 +181,8 @@ export function createJobStore(
       throw new Error("INVALID_CLOCK");
     return value;
   };
-  // P2: one connection/consent live rule shared with pipeline/repository-guards.
-  const live = `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND c.generation=jobs.connection_generation AND pc.id=jobs.consent_id AND ${connectionConsentLiveSql()} AND pc.accepted_at<=?)`;
+  // P2/P1.5b: one connection/consent live rule shared with pipeline/repository-guards.
+  const live = `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE ${leaseLive({ alias: { jobs: "jobs" } })})`;
   // Reuse the recovery metadata shape within the existing checkpoint statement.
   // The current configuration resolver is pure: no provider call or extra D1 read.
   const processingSelection = `(SELECT ${processingSelectionSql()} FROM connections c JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id JOIN ai_settings a ON a.user_id=c.user_id WHERE c.user_id=jobs.user_id AND c.id=jobs.connection_id AND pc.id=jobs.consent_id AND a.status='active' AND (a.mode='hosted' OR a.encrypted_key IS NOT NULL) AND pc.ai_settings_revision=a.revision AND pc.inference_destination=a.provider_id AND pc.disclosure_version=a.consent_version)`;
@@ -307,8 +308,7 @@ export function createJobStore(
     const syncId = `live-${id()}`;
     const jobId = id();
     const dedupe = `sync:${connectionId}:${row.generation}:${manual ? "manual" : "hourly"}:${Math.floor(at / (manual ? 300000 : 3600000))}`;
-    const guard =
-      `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.generation=? AND pc.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=? AND (?=0 OR c.manual_sync_at IS NULL OR c.manual_sync_at<=?)) AND NOT EXISTS(SELECT 1 FROM jobs pending WHERE pending.user_id=? AND pending.connection_id=? AND pending.connection_generation=? AND pending.type='sync' AND pending.status IN ('ready','leased','retry_wait') AND pending.id<>?)`;
+    const guard = `EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND c.generation=? AND pc.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=? AND (?=0 OR c.manual_sync_at IS NULL OR c.manual_sync_at<=?)) AND NOT EXISTS(SELECT 1 FROM jobs pending WHERE pending.user_id=? AND pending.connection_id=? AND pending.connection_generation=? AND pending.type='sync' AND pending.status IN ('ready','leased','retry_wait') AND pending.id<>?)`;
     const bindings = [
       ctx.userId,
       connectionId,
