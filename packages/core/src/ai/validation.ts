@@ -7,6 +7,15 @@ import type {
   PersistableAiResult,
 } from "./types";
 
+/** Document types that cannot carry cash payment or refund evidence. */
+export const NON_CASH_DOCUMENT_TYPES = [
+  "non-purchase",
+  "cancellation",
+  "statement",
+  "unknown",
+  "credit-note",
+] as const;
+
 export function validateExtraction(
   output: string,
   parts: readonly Pick<AiTextPart, "id" | "text">[],
@@ -380,11 +389,12 @@ export function validateExtraction(
       total !== null &&
       ((tax !== null && tax > total) ||
         (paid !== null && paid > total) ||
+        (credit !== null && credit > total) ||
         (paid !== null && credit !== null && paid + credit > total))
     )
       return { status: "needs-review", reason: "semantics" };
     if (
-      ["non-purchase", "cancellation", "statement", "unknown"].includes(
+      (NON_CASH_DOCUMENT_TYPES as readonly string[]).includes(
         candidate.documentType,
       ) &&
       (record.paymentEvidence === "explicitly-paid" ||
@@ -865,13 +875,9 @@ export function validateModelExtraction(
       return { status: "needs-review", reason: "semantics" };
     if (
       (cashPayment || cashRefund) &&
-      [
-        "non-purchase",
-        "cancellation",
-        "statement",
-        "unknown",
-        "credit-note",
-      ].includes(candidate.documentType)
+      (NON_CASH_DOCUMENT_TYPES as readonly string[]).includes(
+        candidate.documentType,
+      )
     )
       return { status: "needs-review", reason: "semantics" };
     const purchaseReferences = [
