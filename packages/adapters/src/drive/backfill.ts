@@ -11,7 +11,16 @@ import type {
   ArchiveBackfillStore,
   ArchiveBackfillView,
 } from "../../../core/src/archive/backfill-types";
+import {
+  driveFileScopeSql,
+  mailboxScopeSql,
+} from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
+import {
+  liveSession as sessionSql,
+  sessionBindings,
+  RECENT_SESSION_MS,
+} from "./connections";
 import { archiveMailboxPermissionSql } from "./dispatch-store";
 import { archiveObjectAdmissionSql } from "./objects";
 
@@ -27,13 +36,23 @@ const selectionSchema = z.strictObject({
   generation: integer.min(1),
   settingsVersion: version,
 });
-const recentMs = 3600000;
-const sessionSql = `EXISTS(SELECT 1 FROM session se JOIN profiles p ON p.user_id=se.userId WHERE se.id=? AND se.userId=? AND se.expiresAt>? AND typeof(se.createdAt)='integer' AND se.createdAt<=? AND se.createdAt>=? AND p.status='active')`;
-const driveScope = `json_type(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END)='array' AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file')`;
+const driveScope = driveFileScopeSql("c");
 const runAuthority = `EXISTS(SELECT 1 FROM profiles p JOIN archive_settings a ON a.user_id=p.user_id JOIN connections c ON c.user_id=a.user_id AND c.id=a.connection_id WHERE (p.user_id=archive_backfill_runs.user_id AND p.status='active') AND (a.enabled=1 AND a.version=archive_backfill_runs.settings_version AND a.disclosure_version=1 AND a.connection_id=archive_backfill_runs.connection_id AND a.connection_generation=archive_backfill_runs.storage_generation) AND (c.kind='storage' AND c.provider='google-drive' AND c.state='connected' AND c.generation=archive_backfill_runs.storage_generation AND c.provider_subject=archive_backfill_runs.storage_subject AND c.credential_ciphertext IS NOT NULL AND c.credential_key_version>0 AND ${driveScope}))`;
-const mailScope = `length(m.scopes)<=4096 AND json_type(CASE WHEN json_valid(m.scopes) THEN m.scopes ELSE '[]' END)='array' AND json_array_length(CASE WHEN json_valid(m.scopes) THEN m.scopes ELSE '[]' END)<=16 AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(m.scopes) THEN m.scopes ELSE '[]' END) permission WHERE permission.type='text' AND ((m.provider='gmail' AND permission.value='https://www.googleapis.com/auth/gmail.readonly') OR (m.provider='outlook' AND permission.value='https://graph.microsoft.com/Mail.Read')))`;
+const mailScope = mailboxScopeSql("m");
 const objectEligible = `${archiveObjectAdmissionSql()} AND ${archiveMailboxPermissionSql}`;
 const cohortEndSql = `COALESCE((SELECT max(o.sequence) FROM archive_backfill_items i JOIN archive_document_order o ON o.user_id=i.user_id AND o.document_id=i.document_id WHERE i.user_id=archive_backfill_runs.user_id AND i.run_id=archive_backfill_runs.id),archive_backfill_runs.snapshot_sequence)`;
+/**
+ * D14: the shared backfill cohort-enumeration insert. `window` selects the
+ * order window inside archive_document_order; `guard` is an optional trailing
+ * CAS predicate.
+ */
+function backfillItemsInsertSql(window: string, guard = ""): string {
+  return `INSERT INTO archive_backfill_items(user_id,run_id,ordinal,document_id) SELECT ?,?,row_number() OVER(ORDER BY sequence),document_id FROM (SELECT o.sequence,o.document_id FROM archive_document_order o ${window} ORDER BY o.sequence LIMIT 100)${guard}`;
+}
+/** D14: the shared snapshot recount SET clauses after enumerating a cohort. */
+function backfillRecountSql(extraSet = ""): string {
+  return `snapshot_count=(SELECT count(*) FROM archive_backfill_items i WHERE i.user_id=archive_backfill_runs.user_id AND i.run_id=archive_backfill_runs.id)${extraSet},enumerated_through_sequence=${cohortEndSql},has_more=EXISTS(SELECT 1 FROM archive_document_order o WHERE o.user_id=archive_backfill_runs.user_id AND o.sequence>${cohortEndSql} AND o.sequence<=archive_backfill_runs.snapshot_sequence LIMIT 1),state=CASE WHEN EXISTS(SELECT 1 FROM archive_backfill_items i WHERE i.user_id=archive_backfill_runs.user_id AND i.run_id=archive_backfill_runs.id) THEN 'pending' ELSE 'admission_complete' END`;
+}
 interface RunRow {
   id: string;
   connection_id: string;
@@ -96,15 +115,6 @@ export function createArchiveBackfillStore(
       throw new ArchiveServiceError("UNAVAILABLE");
     return time;
   }
-  function sessionArgs(session: ArchiveSession, time: number) {
-    return [
-      session.sessionId,
-      session.tenant.userId,
-      time,
-      time,
-      Math.max(0, time - recentMs),
-    ];
-  }
   async function live(session: ArchiveSession) {
     if (session.tenant.authority !== "session")
       throw new ArchiveServiceError("UNAUTHENTICATED");
@@ -119,7 +129,7 @@ export function createArchiveBackfillStore(
     if (
       !integer.safeParse(row.createdAt).success ||
       row.createdAt > time ||
-      row.createdAt < Math.max(0, time - recentMs)
+      row.createdAt < Math.max(0, time - RECENT_SESSION_MS)
     )
       throw new ArchiveServiceError("RECENT_AUTH_REQUIRED");
   }
@@ -163,17 +173,20 @@ export function createArchiveBackfillStore(
           selection.settingsVersion,
           selection.connectionId,
           selection.generation,
-          ...sessionArgs(session, time),
+          ...sessionBindings(session, time),
           user,
         ),
       db
         .prepare(
-          `INSERT INTO archive_backfill_items(user_id,run_id,ordinal,document_id) SELECT ?,?,row_number() OVER(ORDER BY sequence),document_id FROM (SELECT o.sequence,o.document_id FROM archive_document_order o JOIN archive_backfill_runs r ON r.user_id=o.user_id AND r.id=? WHERE o.user_id=? AND o.sequence<=r.snapshot_sequence ORDER BY o.sequence LIMIT 100) WHERE EXISTS(SELECT 1 FROM archive_backfill_runs WHERE user_id=? AND id=? AND state='pending' AND revision=1)`,
+          backfillItemsInsertSql(
+            "JOIN archive_backfill_runs r ON r.user_id=o.user_id AND r.id=? WHERE o.user_id=? AND o.sequence<=r.snapshot_sequence",
+            " WHERE EXISTS(SELECT 1 FROM archive_backfill_runs WHERE user_id=? AND id=? AND state='pending' AND revision=1)",
+          ),
         )
         .bind(user, id, id, user, user, id),
       db
         .prepare(
-          `UPDATE archive_backfill_runs SET snapshot_count=(SELECT count(*) FROM archive_backfill_items i WHERE i.user_id=archive_backfill_runs.user_id AND i.run_id=archive_backfill_runs.id),enumerated_through_sequence=${cohortEndSql},has_more=EXISTS(SELECT 1 FROM archive_document_order o WHERE o.user_id=archive_backfill_runs.user_id AND o.sequence>${cohortEndSql} AND o.sequence<=archive_backfill_runs.snapshot_sequence LIMIT 1),state=CASE WHEN EXISTS(SELECT 1 FROM archive_backfill_items i WHERE i.user_id=archive_backfill_runs.user_id AND i.run_id=archive_backfill_runs.id) THEN 'pending' ELSE 'admission_complete' END WHERE user_id=? AND id=? AND revision=1`,
+          `UPDATE archive_backfill_runs SET ${backfillRecountSql()} WHERE user_id=? AND id=? AND revision=1`,
         )
         .bind(user, id),
     ]);
@@ -274,9 +287,9 @@ export function createArchiveBackfillStore(
           .bind(user, lease.runId),
         db
           .prepare(
-            `INSERT INTO archive_backfill_items(user_id,run_id,ordinal,document_id)
-          SELECT ?,?,row_number() OVER(ORDER BY sequence),document_id FROM
-          (SELECT o.sequence,o.document_id FROM archive_document_order o WHERE o.user_id=? AND o.sequence>? AND o.sequence<=? ORDER BY o.sequence LIMIT 100)`,
+            backfillItemsInsertSql(
+              "WHERE o.user_id=? AND o.sequence>? AND o.sequence<=?",
+            ),
           )
           .bind(
             user,
@@ -287,10 +300,7 @@ export function createArchiveBackfillStore(
           ),
         db
           .prepare(
-            `UPDATE archive_backfill_runs SET snapshot_count=(SELECT count(*) FROM archive_backfill_items i WHERE i.user_id=archive_backfill_runs.user_id AND i.run_id=archive_backfill_runs.id),cursor_ordinal=0,
-          enumerated_through_sequence=${cohortEndSql},has_more=EXISTS(SELECT 1 FROM archive_document_order o WHERE o.user_id=archive_backfill_runs.user_id AND o.sequence>${cohortEndSql} AND o.sequence<=archive_backfill_runs.snapshot_sequence LIMIT 1),
-          state=CASE WHEN EXISTS(SELECT 1 FROM archive_backfill_items i WHERE i.user_id=archive_backfill_runs.user_id AND i.run_id=archive_backfill_runs.id) THEN 'pending' ELSE 'admission_complete' END,
-          revision=revision+1,lease_id=NULL,lease_expires_at=0 WHERE ${gate}`,
+            `UPDATE archive_backfill_runs SET ${backfillRecountSql(",cursor_ordinal=0")},revision=revision+1,lease_id=NULL,lease_expires_at=0 WHERE ${gate}`,
           )
           .bind(...args(time)),
       ]);
@@ -319,7 +329,7 @@ export function createArchiveBackfillStore(
     const user = session.tenant.userId,
       time = now();
     const gate = `EXISTS(SELECT 1 FROM archive_backfill_runs WHERE user_id=? AND id=? AND revision=? AND state IN ('pending','admission_complete') AND fence<9007199254740991) AND ${sessionSql}`;
-    const values = [user, runId, revision, ...sessionArgs(session, time)];
+    const values = [user, runId, revision, ...sessionBindings(session, time)];
     try {
       await db.batch([
         db

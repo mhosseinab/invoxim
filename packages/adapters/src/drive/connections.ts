@@ -25,10 +25,18 @@ export interface ConnectionRow {
 }
 export const MAX = Number.MAX_SAFE_INTEGER;
 export const ARCHIVE_MAX = 2147483646;
+/** D6: one recent-session window for every Drive mutation guard. */
+export const RECENT_SESSION_MS = 3600000;
 export const fields =
   "id,provider_subject,display_address,state,generation,credential_version,credential_key_version,credential_ciphertext";
+/**
+ * D6: the one recent-session guard. Requires an active profile and an integer
+ * createdAt inside the one-hour window; the previous connections.ts copy
+ * skipped both checks.
+ * Bind order: sessionId, userId, now, now, now - RECENT_SESSION_MS.
+ */
 export const liveSession =
-  "EXISTS(SELECT 1 FROM session WHERE id=? AND userId=? AND expiresAt>? AND createdAt<=? AND createdAt>=?)";
+  "EXISTS(SELECT 1 FROM session se JOIN profiles p ON p.user_id=se.userId WHERE se.id=? AND se.userId=? AND se.expiresAt>? AND typeof(se.createdAt)='integer' AND se.createdAt<=? AND se.createdAt>=? AND p.status='active')";
 export const activeProfile =
   "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')";
 export function project(
@@ -49,8 +57,15 @@ export function project(
     archivingEnabled: configured && enabled,
   });
 }
+/** D6: the shared bind order for {@link liveSession}. */
 export function sessionBindings(session: ArchiveSession, now = Date.now()) {
-  return [session.sessionId, session.tenant.userId, now, now, now - 3600000];
+  return [
+    session.sessionId,
+    session.tenant.userId,
+    now,
+    now,
+    Math.max(0, now - RECENT_SESSION_MS),
+  ];
 }
 export async function requireLiveDriveSession(
   db: D1Database,
@@ -69,7 +84,7 @@ export async function requireLiveDriveSession(
   if (
     !Number.isSafeInteger(current.createdAt) ||
     current.createdAt > now ||
-    now - current.createdAt > 3600000
+    now - current.createdAt > RECENT_SESSION_MS
   )
     throw new ArchiveServiceError("RECENT_AUTH_REQUIRED");
 }

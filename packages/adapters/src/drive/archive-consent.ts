@@ -10,11 +10,12 @@ import {
   type ArchiveSession,
   type TenantContext,
 } from "@invoxim/core";
+import { driveFileScopeSql } from "../pipeline/repository-guards";
 import { archiveSafe as safe } from "./boundary";
+import { liveSession, sessionBindings, RECENT_SESSION_MS } from "./connections";
 export type ArchiveConsentView = ArchiveSettingsView;
 export type ArchiveEnableInput = ArchiveEnableRequest;
 const archiveMaximumVersion = 2147483646;
-const recentMs = 3600000;
 interface SettingsRow {
   enabled: number | null;
   version: number | null;
@@ -33,11 +34,7 @@ function disabled(version = 0): ArchiveSettingsView {
     acceptedAt: null,
   };
 }
-const sessionGuard =
-  "EXISTS(SELECT 1 FROM session se JOIN profiles p ON p.user_id=se.userId WHERE se.id=? AND se.userId=? AND se.expiresAt>? AND typeof(se.createdAt)='integer' AND se.createdAt<=? AND se.createdAt>=? AND p.status='active')";
-const drivePermission =
-  "json_type(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END)='array' AND EXISTS(SELECT 1 FROM json_each(CASE WHEN json_valid(c.scopes) THEN c.scopes ELSE '[]' END) permission WHERE permission.type='text' AND permission.value='https://www.googleapis.com/auth/drive.file')";
-const destinationGuard = `EXISTS(SELECT 1 FROM connections c WHERE c.user_id=? AND c.id=? AND c.kind='storage' AND c.provider='google-drive' AND c.state='connected' AND c.generation=? AND c.credential_ciphertext IS NOT NULL AND c.credential_key_version IS NOT NULL AND c.credential_key_version>0 AND ${drivePermission})`;
+const destinationGuard = `EXISTS(SELECT 1 FROM connections c WHERE c.user_id=? AND c.id=? AND c.kind='storage' AND c.provider='google-drive' AND c.state='connected' AND c.generation=? AND c.credential_ciphertext IS NOT NULL AND c.credential_key_version IS NOT NULL AND c.credential_key_version>0 AND ${driveFileScopeSql("c")})`;
 export function createArchiveConsentRepository(
   db: D1Database,
   options: { clock?: () => number } = {},
@@ -48,15 +45,6 @@ export function createArchiveConsentRepository(
     if (!Number.isSafeInteger(now) || now < 0)
       throw new ArchiveServiceError("UNAVAILABLE");
     return now;
-  }
-  function sessionArguments(session: ArchiveSession, now: number) {
-    return [
-      session.sessionId,
-      session.tenant.userId,
-      now,
-      now,
-      Math.max(0, now - recentMs),
-    ];
   }
   async function live(session: ArchiveSession): Promise<void> {
     if (session.tenant.authority !== "session")
@@ -72,7 +60,7 @@ export function createArchiveConsentRepository(
     if (
       !Number.isSafeInteger(row.createdAt) ||
       row.createdAt > now ||
-      now - row.createdAt > recentMs
+      now - row.createdAt > RECENT_SESSION_MS
     )
       throw new ArchiveServiceError("RECENT_AUTH_REQUIRED");
   }
@@ -125,7 +113,7 @@ export function createArchiveConsentRepository(
       nextVersion = input.expectedVersion + 1;
     const result = await db
       .prepare(
-        `INSERT INTO archive_settings(user_id,enabled,version,connection_id,connection_generation,disclosure_version,accepted_at) SELECT ?,1,?,?,?,?,? WHERE ${sessionGuard} AND ${destinationGuard} AND COALESCE((SELECT version FROM archive_settings WHERE user_id=?),0)=? ON CONFLICT(user_id) DO UPDATE SET enabled=1,version=excluded.version,connection_id=excluded.connection_id,connection_generation=excluded.connection_generation,disclosure_version=excluded.disclosure_version,accepted_at=excluded.accepted_at WHERE archive_settings.version=?`,
+        `INSERT INTO archive_settings(user_id,enabled,version,connection_id,connection_generation,disclosure_version,accepted_at) SELECT ?,1,?,?,?,?,? WHERE ${liveSession} AND ${destinationGuard} AND COALESCE((SELECT version FROM archive_settings WHERE user_id=?),0)=? ON CONFLICT(user_id) DO UPDATE SET enabled=1,version=excluded.version,connection_id=excluded.connection_id,connection_generation=excluded.connection_generation,disclosure_version=excluded.disclosure_version,accepted_at=excluded.accepted_at WHERE archive_settings.version=?`,
       )
       .bind(
         session.tenant.userId,
@@ -134,7 +122,7 @@ export function createArchiveConsentRepository(
         input.expectedGeneration,
         input.disclosureVersion,
         now,
-        ...sessionArguments(session, now),
+        ...sessionBindings(session, now),
         session.tenant.userId,
         input.connectionId,
         input.expectedGeneration,
@@ -171,12 +159,12 @@ export function createArchiveConsentRepository(
       nextVersion = input.expectedVersion + 1;
     const result = await db
       .prepare(
-        `INSERT INTO archive_settings(user_id,enabled,version,connection_id,connection_generation,disclosure_version,accepted_at) SELECT ?,0,?,NULL,NULL,NULL,NULL WHERE ${sessionGuard} AND COALESCE((SELECT version FROM archive_settings WHERE user_id=?),0)=? ON CONFLICT(user_id) DO UPDATE SET enabled=0,version=excluded.version,connection_id=NULL,connection_generation=NULL,disclosure_version=NULL,accepted_at=NULL WHERE archive_settings.version=?`,
+        `INSERT INTO archive_settings(user_id,enabled,version,connection_id,connection_generation,disclosure_version,accepted_at) SELECT ?,0,?,NULL,NULL,NULL,NULL WHERE ${liveSession} AND COALESCE((SELECT version FROM archive_settings WHERE user_id=?),0)=? ON CONFLICT(user_id) DO UPDATE SET enabled=0,version=excluded.version,connection_id=NULL,connection_generation=NULL,disclosure_version=NULL,accepted_at=NULL WHERE archive_settings.version=?`,
       )
       .bind(
         session.tenant.userId,
         nextVersion,
-        ...sessionArguments(session, now),
+        ...sessionBindings(session, now),
         session.tenant.userId,
         input.expectedVersion,
         input.expectedVersion,
