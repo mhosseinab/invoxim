@@ -489,9 +489,9 @@ it("FX-05: merchant edit reports committed success despite revision trigger ampl
     },
     "fx-merchant-edit-key",
   );
-  expect(
-    (await reader.detail(context, "purchase"))?.purchase.merchant,
-  ).toBe("Corrected");
+  expect((await reader.detail(context, "purchase"))?.purchase.merchant).toBe(
+    "Corrected",
+  );
   expect(edited.purchaseId).toBe("purchase");
   expect(await stamp()).not.toBe(before);
   await expect(

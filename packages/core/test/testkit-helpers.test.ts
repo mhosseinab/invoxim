@@ -54,10 +54,9 @@ it("signIdToken produces a verifiable Google-shaped id-token", async () => {
   const [headerPart, payloadPart] = signed.jwt.split(".");
   const decode = (value: string) => {
     const padded = value.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(padded + "=".repeat((4 - (padded.length % 4)) % 4))) as Record<
-      string,
-      unknown
-    >;
+    return JSON.parse(
+      atob(padded + "=".repeat((4 - (padded.length % 4)) % 4)),
+    ) as Record<string, unknown>;
   };
   expect(decode(headerPart ?? "")).toMatchObject({
     alg: "RS256",
@@ -71,7 +70,11 @@ it("createRoutedFetch routes by URL and rejects unexpected destinations", async 
   const calls: string[] = [];
   const handler = createRoutedFetch(
     [
-      urlRoute("https://example.test/ok", () => Response.json({ ok: true }), "GET"),
+      urlRoute(
+        "https://example.test/ok",
+        () => Response.json({ ok: true }),
+        "GET",
+      ),
     ],
     { calls },
   );

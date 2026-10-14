@@ -63,8 +63,12 @@ it("DB-01: rejects cross-tenant purchase observation association at database bou
 it("DB-03: populated forward upgrade preserves values, source defaults and indexed reads", async () => {
   const context = { userId: "a", authority: "session" } as TenantContext;
   const reader = createPurchaseViewReader(db);
-  expect((await reader.detail(context, "p-a"))?.purchase.documentTotalMinor).toBeNull();
-  expect((await reader.list(context, { limit: 50 })).rows.map((row) => row.id)).toEqual(["p-a"]);
+  expect(
+    (await reader.detail(context, "p-a"))?.purchase.documentTotalMinor,
+  ).toBeNull();
+  expect(
+    (await reader.list(context, { limit: 50 })).rows.map((row) => row.id),
+  ).toEqual(["p-a"]);
   expect(
     await db
       .prepare(
@@ -145,7 +149,12 @@ it("DB-04: exact aggregate crosses JavaScript safe integers and negative refund 
   const reader = createPurchaseViewReader(db);
   const eurTotals = (await reader.summary(context, { currency: "EUR" })).totals;
   expect(eurTotals).toEqual([
-    { currency: "EUR", paidMinor: "9018000000000000", refundedMinor: "0", netMinor: "9018000000000000" },
+    {
+      currency: "EUR",
+      paidMinor: "9018000000000000",
+      refundedMinor: "0",
+      netMinor: "9018000000000000",
+    },
   ]);
   const aTotals = (
     await reader.summary(
@@ -161,7 +170,12 @@ it("DB-04: exact aggregate crosses JavaScript safe integers and negative refund 
     .run();
   const allTotals = (await reader.summary(context)).totals;
   const usd = allTotals.find((t) => t.currency === "USD");
-  expect(usd).toEqual({ currency: "USD", paidMinor: "0", refundedMinor: "1200", netMinor: "-1200" });
+  expect(usd).toEqual({
+    currency: "USD",
+    paidMinor: "0",
+    refundedMinor: "1200",
+    netMinor: "-1200",
+  });
   await expect(
     db
       .prepare(
