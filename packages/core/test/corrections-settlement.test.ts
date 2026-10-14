@@ -91,3 +91,24 @@ describe("correction settlement evidence", () => {
     ).toMatchObject({ supportedMinor: "5000", paymentState: "partially_paid" });
   });
 });
+
+it("CORE-6 supported refunds suppress unpaid fallback without subtracting from paid cash", () => {
+  const unpaid = { ...purchase, paymentState: "unpaid" };
+  const refund: CorrectionSettlementEvent = { ...payment, kind: "refund" };
+  expect(evaluateCorrectionSettlement(unpaid, [refund], [])).toMatchObject({
+    paymentState: "unknown",
+    supportedMinor: "0",
+  });
+  expect(
+    evaluateCorrectionSettlement(unpaid, [payment, payment, refund], []),
+  ).toMatchObject({
+    paymentState: "paid",
+    supportedMinor: "10000",
+  });
+  expect(
+    evaluateCorrectionSettlement(unpaid, [{ ...refund, supported: false }], []),
+  ).toMatchObject({
+    paymentState: "unpaid",
+    supportedMinor: "0",
+  });
+});

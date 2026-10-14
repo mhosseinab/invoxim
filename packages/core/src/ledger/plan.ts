@@ -2,6 +2,7 @@ import { calendarDate } from "@invoxim/contracts";
 import type { AiMissingField, PersistedAiRecord } from "../ai/types";
 import { validatePersistableAiResult } from "../ai/validation";
 import { parseMoney } from "../money";
+import { derivePaymentState } from "./payment-state";
 import type {
   LedgerEvent,
   LedgerInput,
@@ -472,15 +473,18 @@ function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
       .reduce((sum, event) => sum + BigInt(event.amountMinor), 0n);
     const paymentState = purchase.overriddenFields.includes("paymentState")
       ? purchase.paymentState
-      : fullSettlement ||
-          (purchase.paymentState === "paid" && !correctedSettlement) ||
-          (paid >= BigInt(totalMinor) && paid > 0n)
-        ? "paid"
-        : paid > 0n
-          ? "partially_paid"
-          : correctedSettlement
+      : derivePaymentState({
+          totalMinor: BigInt(totalMinor),
+          settledMinor: paid,
+          // Ingestion retains earlier document settlement evidence. Corrections
+          // recompute from current cash/credit; changing this needs a product decision.
+          fullSettlement:
+            fullSettlement ||
+            (purchase.paymentState === "paid" && !correctedSettlement),
+          zeroPaymentState: correctedSettlement
             ? "unknown"
-            : purchase.paymentState;
+            : purchase.paymentState,
+        });
     const newIndex = plan.purchases.findIndex(
       (item) => item.id === purchase.id,
     );
