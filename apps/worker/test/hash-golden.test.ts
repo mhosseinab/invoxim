@@ -40,9 +40,9 @@ it("JSON-value hashing stays byte-identical (hashJsonValue)", async () => {
   expect(await hashJsonValue({ mode: "hosted", settingsRevision: 1 })).toBe(
     goldenOnboardingDigest,
   );
-  expect(
-    await hashJsonValue(["user-1", "conn-1", "msg-1"]),
-  ).toBe(goldenJsonArraySha);
+  expect(await hashJsonValue(["user-1", "conn-1", "msg-1"])).toBe(
+    goldenJsonArraySha,
+  );
 });
 
 it("extraction fingerprint stays byte-identical across all three recipes", async () => {

@@ -1280,8 +1280,7 @@ async function interruptedFinancial(
   unfinished = false,
   paidReceipt?: { content: DocumentInput; output: string },
 ) {
-  const { hashJsonValue } =
-    await import("../../../packages/adapters/src/hash");
+  const { hashJsonValue } = await import("../../../packages/adapters/src/hash");
   config = {
     ...config,
     promptVersion: version,
@@ -1608,8 +1607,7 @@ it("AI-CLEF-PRECISION-01 uncertain classification is metered and never invokes f
   ).toBe("known");
 });
 it("AI-CLEF-PRECISION-01 policy identity invalidates custom configuration cache fingerprints", async () => {
-  const { hashJsonValue } =
-    await import("../../../packages/adapters/src/hash");
+  const { hashJsonValue } = await import("../../../packages/adapters/src/hash");
   const { CLEF_RECEIPT_POLICY_VERSION } =
     await import("../../../packages/adapters/src/ai/clef");
   const repository = createPipelineRepository(db, {
