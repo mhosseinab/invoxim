@@ -92,3 +92,25 @@ it("identifies elapsed Gmail deadline even before the abort timer callback", asy
     reason: "timeout",
   });
 });
+
+it("keeps the empty-list result count in Gmail's partial response instead of projecting every field away", async () => {
+  const transport = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      return url.searchParams
+        .get("fields")
+        ?.split(",")
+        .includes("resultSizeEstimate")
+        ? Response.json({ resultSizeEstimate: 0 })
+        : new Response(null, { status: 204 });
+    });
+  await expect(
+    createGmailDiscovery("synthetic").list({
+      range: { startMs: 1, cutoffMs: 1000, timezone: "UTC" },
+      queryMode: "filtered",
+      signal: new AbortController().signal,
+    }),
+  ).resolves.toEqual({ ids: [] });
+  expect(transport).toHaveBeenCalledTimes(1);
+});

@@ -336,7 +336,7 @@ export function createGmailDiscovery(
         maxResults: "5",
         includeSpamTrash: "false",
         q: `after:${after} before:${before}${selection}`,
-        fields: "messages/id,nextPageToken",
+        fields: "messages/id,nextPageToken,resultSizeEstimate",
       });
       if (input.pageToken)
         parameters.set("pageToken", tokenSchema.parse(input.pageToken));
