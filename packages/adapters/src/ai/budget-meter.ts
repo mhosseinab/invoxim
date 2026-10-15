@@ -468,8 +468,11 @@ export function createMeter(
     const prepared = await prepare(input);
     if (!prepared) return false;
     const json = result === undefined ? null : JSON.stringify(result);
-    if (json !== null && new TextEncoder().encode(json).byteLength > 65536)
-      result = undefined;
+    // An oversized result is not written (like complete()), but usage still
+    // settles; the caller is told the result was not persisted.
+    const unpersistable =
+      json !== null && new TextEncoder().encode(json).byteLength > 65536;
+    if (unpersistable) result = undefined;
     const attempt = attemptId(input.runKey, input.attemptNumber);
     const event = await db
       .prepare(
@@ -614,6 +617,7 @@ export function createMeter(
               ),
           ]),
     ]);
+    if (unpersistable) return false;
     return result === undefined
       ? (settled[0]?.meta.changes ?? 0) === 1
       : (settled[3]?.meta.changes ?? 0) === 1;

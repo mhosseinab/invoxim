@@ -1108,3 +1108,67 @@ it("AI-CLASSIFIER-PROVIDER on the final lease an active provider cooldown is a r
   });
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
+
+it("AI-CLASSIFIER-PROVIDER an oversized result still settles usage but is reported as not persisted", async () => {
+  const { createUsageStore } =
+    await import("../../../packages/adapters/src/ai/budget-store");
+  const { aiRunIdentityKey } = await import("@invoxim/core");
+  const repository = createPipelineRepository(db, {
+    processingDigest: async () => "f".repeat(64),
+  });
+  const work = await repository.load(lease);
+  if (!work) throw new Error("fixture work missing");
+  const opened = await createReceiptClassifierFactory(db, classification, {
+    perplexityApiKey: KEY,
+  }).open(lease, work, [], {
+    config,
+    extractor: { extract: vi.fn() },
+    pricing: new Map([[config.fingerprint, price]]),
+  });
+  const store = createUsageStore<unknown>({
+    db,
+    owner: { kind: "extraction", lease },
+    options: {
+      policy,
+      pricing: opened.pricing,
+      classificationAuthorization: {
+        ...opened.authorization,
+        destination: opened.destination,
+      },
+    },
+    validate: (value) => value,
+    wrap: (operation) => operation(),
+  });
+  const checkpoint = {
+    tenant,
+    identity: {
+      documentId: "d",
+      contentHash: work.documents[0]?.contentHash ?? "",
+      extractionVersion: "email-classification-v1",
+    },
+    config: opened.config,
+  };
+  const attempt = {
+    ...checkpoint,
+    attemptNumber: 1,
+    attemptId: `${await aiRunIdentityKey(checkpoint)}:1`,
+  };
+  expect(await store.checkpoint(checkpoint)).toEqual({ status: "ready" });
+  expect(await store.reserve(attempt)).toBe("reserved");
+  expect(await store.authorize(attempt)).toBe(true);
+  expect(
+    await store.settle(
+      attempt,
+      {
+        state: "known",
+        usage: { input: 1000, output: 0, other: 0, source: "reported" },
+      },
+      { padding: "x".repeat(70000) },
+    ),
+  ).toBe(false);
+  const state = await classificationState();
+  expect(state.extraction).toEqual([{ result_json: null }]);
+  expect(state.events).toEqual([
+    { attempt_number: 1, state: "known", actual_usd_micros: "20" },
+  ]);
+});
