@@ -8,6 +8,7 @@ import { beforeAll, expect, it } from "vitest";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { createPurchaseRoutes } from "../src/purchase-routes";
 import { useCurrentSchema } from "./support/db";
+import { faultingDatabase } from "./support/faults";
 
 const db = env.DB;
 
@@ -363,4 +364,32 @@ it("source metadata endpoint requires authentication and never caches error resp
   );
   expect(response.status).toBe(401);
   expect(response.headers.get("Cache-Control")).toBe("no-store");
+});
+
+it("WRK-5 a transient review-source failure stays retryable for the web client", async () => {
+  // A transient D1 failure while resolving the review's source provider.
+  const { db: transient } = faultingDatabase(env.DB, [
+    {
+      match: "SELECT c.provider FROM review_items r",
+      on: "first",
+      fire: async () => {
+        throw new Error("D1_ERROR: synthetic transient network failure");
+      },
+    },
+  ]);
+  const response = await app.request(
+    `${config.origin}/api/review/any-review/source`,
+    { headers: { Cookie: cookie() } },
+    { ...bindings, DB: transient },
+  );
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  const body = (await response.json()) as {
+    error: { code: string; retryable: boolean };
+  };
+  expect(body.error).toMatchObject({
+    code: "source_unavailable",
+    retryable: true,
+  });
+  expect(JSON.stringify(body)).not.toContain("synthetic transient");
 });

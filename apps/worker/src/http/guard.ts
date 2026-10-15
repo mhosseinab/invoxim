@@ -20,7 +20,11 @@ import { createInvocationDatabase } from "../invocation-database";
 
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 const RECENT_SESSION_MS = 3600000;
-/** 503 codes that describe operator configuration, not transient unavailability. */
+/**
+ * 503 codes that describe operator configuration, not transient unavailability.
+ * `source_unavailable` is deliberately absent: it also reports transient
+ * D1/provider failures while reading a review source, which stay retryable.
+ */
 const PERMANENT_503 = new Set([
   "auth_not_configured",
   "not_implemented",
@@ -29,7 +33,6 @@ const PERMANENT_503 = new Set([
   "fx_not_configured",
   "recurring_not_configured",
   "jobs_not_configured",
-  "source_unavailable",
 ]);
 
 export interface ApiErrorOptions {
