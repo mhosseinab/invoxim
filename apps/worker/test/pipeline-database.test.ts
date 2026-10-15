@@ -1,6 +1,7 @@
 // Explicit populated historical-upgrade fixture; old SQL is never an active deployment migration.
 
 import { env } from "cloudflare:workers";
+import { purchaseCorrectionRequestSchema } from "@invoxim/contracts";
 import {
   type JobLease,
   type LedgerInput,
@@ -8,6 +9,7 @@ import {
   type TenantContext,
 } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { createCorrectionStore } from "../../../packages/adapters/src/corrections/store";
 import { createPipelineRepository } from "../../../packages/adapters/src/pipeline/repository";
 import { createPurchaseViewReader } from "../../../packages/adapters/src/purchase-views";
 import { useCurrentSchema } from "./support/db";
@@ -1196,4 +1198,217 @@ it("P0.5 commit and skipDocument share one source status rule for an unresolved 
 
   expect(commitStatus).toBe(skipStatus);
   expect(commitStatus).toBe("review");
+});
+
+/** Re-arm the seeded job so the same document can be reconciled again (replay). */
+async function releaseForReplay(user = "pipeline-a") {
+  const current = lease(user);
+  await db
+    .prepare(
+      "UPDATE jobs SET status='leased',lease_id=?,lease_expires_at=? WHERE user_id=? AND id=?",
+    )
+    .bind(current.leaseId, now + 300000, user, current.jobId)
+    .run();
+  await db
+    .prepare(
+      "UPDATE discovery_source_jobs SET pipeline_stage='reconcile',extraction_fingerprint=? WHERE user_id=?",
+    )
+    .bind(input().identity.extractionFingerprint, user)
+    .run();
+  return current;
+}
+
+// Retargeted from the deleted HYG-2 sources.ts test
+// "T04 exact financial replay preserves a manual merchant edit and version".
+it("T04 EDIT-01 exact pipeline replay preserves a manual merchant edit, version and single cash fact", async () => {
+  const repo = createPipelineRepository(db, repoOptions());
+  const candidate = input();
+  const first = await repo.loadSnapshot(lease(), candidate);
+  if (!first) throw new Error("missing synthetic snapshot");
+  const initial = planLedgerIngestion(candidate, first);
+  expect(
+    await repo.commit(lease(), {
+      input: candidate,
+      plan: initial,
+      nextDocumentIndex: null,
+    }),
+  ).toBe("committed");
+  const purchaseId = initial.purchases[0]?.id;
+  if (!purchaseId) throw new Error("missing synthetic purchase");
+  const committedVersion = await db
+    .prepare(
+      "SELECT version FROM purchases WHERE user_id='pipeline-a' AND id=?",
+    )
+    .bind(purchaseId)
+    .first<number>("version");
+  if (committedVersion === null) throw new Error("missing committed version");
+  await db
+    .prepare(
+      "INSERT INTO session(id,expiresAt,token,createdAt,updatedAt,userId) VALUES('pipeline-manual-edit',9999999999999,'synthetic-pipeline-edit-token',0,0,'pipeline-a')",
+    )
+    .run();
+  const edited = await createCorrectionStore(db, () => now).execute(
+    {
+      tenant: { userId: "pipeline-a", authority: "session" } as TenantContext,
+      sessionId: "pipeline-manual-edit",
+    },
+    {
+      kind: "purchase-edit",
+      purchaseId,
+      request: purchaseCorrectionRequestSchema.parse({
+        version: committedVersion,
+        changes: { merchant: "Manual synthetic merchant" },
+      }),
+    },
+    "pipeline-manual-edit-key",
+  );
+  const editedVersion = committedVersion + 1;
+  expect(edited.version).toBe(editedVersion);
+
+  const replayLease = await releaseForReplay();
+  const snapshot = await repo.loadSnapshot(replayLease, candidate);
+  if (!snapshot) throw new Error("missing replay snapshot");
+  const replay = planLedgerIngestion(candidate, snapshot);
+  expect(replay.purchases).toEqual([]);
+  expect(
+    await repo.commit(replayLease, {
+      input: candidate,
+      plan: replay,
+      nextDocumentIndex: null,
+    }),
+  ).toBe("committed");
+  expect(
+    await db
+      .prepare(
+        "SELECT merchant_raw,merchant_normalized,version,total_minor FROM purchases WHERE user_id='pipeline-a' AND id=?",
+      )
+      .bind(purchaseId)
+      .first(),
+  ).toEqual({
+    merchant_raw: "Manual synthetic merchant",
+    merchant_normalized: "manual synthetic merchant",
+    version: editedVersion,
+    total_minor: 1000,
+  });
+  expect(await tableCount("purchases")).toBe(1);
+  expect(await tableCount("purchase_evidence")).toBe(1);
+  expect(await tableCount("ledger_entries")).toBe(1);
+  expect(await tableCount("observations")).toBe(1);
+});
+
+// Retargeted from the deleted HYG-2 sources.ts test
+// "T04 concurrent event replay with a different purchase rejects phantom records".
+it("T04 LEDGER-01 concurrent commits of two sources planned against the same empty snapshot keep one purchase and one payment", async () => {
+  const user = "pipeline-a",
+    secondFingerprint = "f".repeat(64),
+    secondHash = "e".repeat(64);
+  const firstInput = input();
+  if (firstInput.result.status !== "accepted" || !firstInput.result.records[0])
+    throw new Error("missing synthetic record");
+  // Different document references (so a different planned purchase) but the
+  // same merchant and payment reference (so the same cash business key).
+  const secondResult = {
+    ...firstInput.result,
+    records: [
+      {
+        ...firstInput.result.records[0],
+        invoiceNumber: "INV-PHANTOM",
+        orderReference: "ORDER-PHANTOM",
+      },
+    ],
+  };
+  await db
+    .prepare(
+      "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES('s2',?,'c','message-2',?,1)",
+    )
+    .bind(user, now)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length,pipeline_index,parser_version,parse_state) VALUES('d2',?,'s2','body',?,'text/plain',100,0,'parser-v1','ready')",
+    )
+    .bind(user, secondHash)
+    .run();
+  const second = lease(user, "job-second");
+  await db
+    .prepare(
+      "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at,lease_id,lease_expires_at,fence) VALUES(?,?,'c','consent',1,'source-extract',?,'leased',?,?,?,1)",
+    )
+    .bind(second.jobId, user, second.jobId, now, second.leaseId, now + 300000)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO discovery_source_jobs(user_id,job_id,source_message_id,pipeline_stage,extraction_fingerprint) VALUES(?,?,'s2','reconcile',?)",
+    )
+    .bind(user, second.jobId, secondFingerprint)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO ai_extractions(user_id,run_key,purpose,document_id,content_hash,extraction_version,config_fingerprint,mode,destination_id,model_id,config_version,settings_revision,generation,credential_version,reservation_nonce,result_json,completed_at,created_at) VALUES(?,?,'extraction','d2',?,'parser-v1',?,'hosted','processor','model','config',1,1,0,'nonce-2',?,?,?)",
+    )
+    .bind(
+      user,
+      secondFingerprint,
+      secondHash,
+      "c".repeat(64),
+      JSON.stringify(secondResult),
+      now,
+      now,
+    )
+    .run();
+  const secondInput: LedgerInput = {
+    identity: {
+      documentId: "d2",
+      contentHash: secondHash,
+      extractionFingerprint: secondFingerprint,
+    },
+    result: secondResult,
+  };
+  const repo = createPipelineRepository(db, repoOptions());
+  const [firstSnapshot, secondSnapshot] = await Promise.all([
+    repo.loadSnapshot(lease(user), firstInput),
+    repo.loadSnapshot(second, secondInput),
+  ]);
+  if (!firstSnapshot || !secondSnapshot)
+    throw new Error("missing synthetic snapshots");
+  const firstPlan = planLedgerIngestion(firstInput, firstSnapshot),
+    secondPlan = planLedgerIngestion(secondInput, secondSnapshot);
+  // Both racers independently plan a new purchase for the same payment identity.
+  expect(firstPlan.purchases).toHaveLength(1);
+  expect(secondPlan.purchases).toHaveLength(1);
+  expect(firstPlan.purchases[0]?.id).not.toBe(secondPlan.purchases[0]?.id);
+  expect(secondPlan.events[0]?.businessKey).toBe(
+    firstPlan.events[0]?.businessKey,
+  );
+  const results = await Promise.allSettled([
+    repo.commit(lease(user), {
+      input: firstInput,
+      plan: firstPlan,
+      nextDocumentIndex: null,
+    }),
+    repo.commit(second, {
+      input: secondInput,
+      plan: secondPlan,
+      nextDocumentIndex: null,
+    }),
+  ]);
+  const fulfilled = results.filter((result) => result.status === "fulfilled");
+  expect(fulfilled).toEqual([{ status: "fulfilled", value: "committed" }]);
+  const rejected = results.filter((result) => result.status === "rejected");
+  expect(rejected).toHaveLength(1);
+  expect(String(rejected[0]?.reason)).toContain("PIPELINE_CONFLICT");
+  expect(await tableCount("purchases")).toBe(1);
+  expect(await tableCount("ledger_entries")).toBe(1);
+  expect(await tableCount("purchase_evidence")).toBe(1);
+  expect(await tableCount("observations")).toBe(1);
+  expect(
+    (
+      await db
+        .prepare(
+          "SELECT status FROM jobs WHERE user_id=? AND id IN (?,?) ORDER BY status",
+        )
+        .bind(user, lease(user).jobId, second.jobId)
+        .all<{ status: string }>()
+    ).results.map((row) => row.status),
+  ).toEqual(["completed", "leased"]);
 });

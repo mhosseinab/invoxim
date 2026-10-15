@@ -166,59 +166,111 @@ it("DB-04 scopes list, joined detail, update and delete to synthetic trusted con
 
 it("DB-02 unique source-message identity rejects a second source with the same provider message", async () => {
   await seedPurchase("qa-a", "dup-first");
-  await expect(
+  const insert = (id: string, providerMessageId: string) =>
     db
       .prepare(
-        "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES('dup-other','qa-a','connection-qa-a','message-dup-first',0,1)",
+        "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES(?,?,?,?,0,1)",
       )
-      .run(),
-  ).rejects.toThrow();
+      .bind(id, "qa-a", "connection-qa-a", providerMessageId)
+      .run();
+  // Positive control: the identical statement with a fresh provider message is valid.
+  await insert("dup-control", "message-dup-control");
+  expect(await count("source_messages", "qa-a", "dup-control")).toBe(1);
+  await expect(insert("dup-other", "message-dup-first")).rejects.toThrow(
+    /UNIQUE constraint failed: source_messages\.user_id, source_messages\.connection_id, source_messages\.provider_message_id/,
+  );
   expect(await count("source_messages", "qa-a", "source-dup-first")).toBe(1);
+  expect(await count("source_messages", "qa-a", "dup-other")).toBe(0);
 });
 
 it("DB-02 unique ledger business event key rejects a second entry", async () => {
   await seedPurchase("qa-a", "event-first");
-  await expect(
+  const insert = (id: string, businessEventKey: string) =>
     db
       .prepare(
-        "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES('event-dup','qa-a','purchase-event-first','obs-event-first','event-event-first','payment',1200,'EUR','2026-10-01','document-date',1)",
+        "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES(?,?,?,?,?,'payment',1200,'EUR','2026-10-01','document-date',1)",
       )
-      .run(),
-  ).rejects.toThrow();
+      .bind(
+        id,
+        "qa-a",
+        "purchase-event-first",
+        "obs-event-first",
+        businessEventKey,
+      )
+      .run();
+  // Positive control: same purchase/observation with a fresh business event key is valid.
+  await insert("event-control", "event-event-control");
+  expect(await count("ledger_entries", "qa-a", "event-control")).toBe(1);
+  await expect(insert("event-dup", "event-event-first")).rejects.toThrow(
+    /UNIQUE constraint failed: ledger_entries\.user_id, ledger_entries\.business_event_key/,
+  );
   expect(await count("ledger_entries", "qa-a", "entry-event-first")).toBe(1);
+  expect(await count("ledger_entries", "qa-a", "event-dup")).toBe(0);
 });
 
 it("T04 unique document part identity rejects a second document without discarding original", async () => {
   await seedPurchase("qa-a", "part-first");
-  await expect(
+  const insert = (id: string, partKey: string) =>
     db
       .prepare(
-        "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES('part-dup','qa-a','source-part-first','body','b'.repeat(64),'text/plain',10)",
+        "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES(?,?,?,?,?,'text/plain',10)",
       )
-      .run(),
-  ).rejects.toThrow();
+      .bind(id, "qa-a", "source-part-first", partKey, "b".repeat(64))
+      .run();
+  // Positive control: same source message with a fresh part key is valid.
+  await insert("part-control", "attachment-control");
+  expect(await count("documents", "qa-a", "part-control")).toBe(1);
+  await expect(insert("part-dup", "body")).rejects.toThrow(
+    /UNIQUE constraint failed: documents\.user_id, documents\.source_message_id, documents\.part_key/,
+  );
   expect(await count("documents", "qa-a", "doc-part-first")).toBe(1);
+  expect(await count("documents", "qa-a", "part-dup")).toBe(0);
 });
 
 it("T04 unique observation fingerprint rejects a second observation with the same fingerprint", async () => {
   await seedPurchase("qa-a", "obs-first");
-  await expect(
+  const insert = (id: string, fingerprint: string) =>
     db
       .prepare(
-        "INSERT INTO observations(id,user_id,document_id,segment_index,extraction_fingerprint,extraction_version,evidence_code,normalized_fields,review_state) VALUES('obs-dup','qa-a','doc-obs-first',0,'fp-obs-first',1,'explicitly-paid','{\"schemaVersion\":1}','accepted')",
+        "INSERT INTO observations(id,user_id,document_id,segment_index,extraction_fingerprint,extraction_version,evidence_code,normalized_fields,review_state) VALUES(?,?,?,0,?,1,'explicitly-paid','{\"schemaVersion\":1}','accepted')",
       )
-      .run(),
-  ).rejects.toThrow();
+      .bind(id, "qa-a", "doc-obs-first", fingerprint)
+      .run();
+  // Positive control: same document segment with a fresh fingerprint is valid.
+  await insert("obs-control", "fp-obs-control");
+  expect(await count("observations", "qa-a", "obs-control")).toBe(1);
+  await expect(insert("obs-dup", "fp-obs-first")).rejects.toThrow(
+    /UNIQUE constraint failed: observations\.user_id, observations\.document_id, observations\.segment_index, observations\.extraction_fingerprint/,
+  );
   expect(await count("observations", "qa-a", "obs-obs-first")).toBe(1);
+  expect(await count("observations", "qa-a", "obs-dup")).toBe(0);
 });
 
 it("T04 amount bound rejects values above 9000000000000", async () => {
   await seedPurchase("qa-a", "bound-first");
-  await expect(
+  // Amounts stay SQL integer literals so typeof(amount_minor)='integer' is not
+  // confounded by parameter binding; only identifiers are bound.
+  const insert = (
+    id: string,
+    amountLiteral: "9000000000000" | "9000000000001",
+  ) =>
     db
       .prepare(
-        "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES('over-bound','qa-a','purchase-bound-first','observation-bound-first','event-over-bound','payment',9000000000001,'EUR','2026-10-01','document-date',1)",
+        `INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES(?,?,?,?,?,'payment',${amountLiteral},'EUR','2026-10-01','document-date',1)`,
       )
-      .run(),
-  ).rejects.toThrow();
+      .bind(
+        id,
+        "qa-a",
+        "purchase-bound-first",
+        "obs-bound-first",
+        `event-${id}`,
+      )
+      .run();
+  // Positive control: the inclusive upper bound is accepted with the same parents.
+  await insert("at-bound", "9000000000000");
+  expect(await count("ledger_entries", "qa-a", "at-bound")).toBe(1);
+  await expect(insert("over-bound", "9000000000001")).rejects.toThrow(
+    /CHECK constraint failed: typeof\(amount_minor\)='integer' AND amount_minor>=0 AND amount_minor<=9000000000000/,
+  );
+  expect(await count("ledger_entries", "qa-a", "over-bound")).toBe(0);
 });
