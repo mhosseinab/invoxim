@@ -497,5 +497,8 @@ it.each([
       fetcher.mockRestore();
     }
   },
-  20000,
+  // Real local PDF conversion for up to eight attachments; a timed-out case
+  // keeps running and leaks its lease into the next case, so the budget must
+  // cover a loaded parallel run. Statement budgets above are unchanged.
+  90000,
 );
