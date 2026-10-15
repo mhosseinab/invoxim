@@ -52,6 +52,24 @@ test("synthetic assignment exemption is narrow and never exempts structured keys
       .length,
   );
 });
+test("nested test-run evidence output gets the root evidence synthetic exemption only", () => {
+  const synthetic = 'apiKey = "synthetic-model-key-fixture"';
+  for (const file of [
+    "evidence/implementation/error-context.md",
+    "apps/web/evidence/implementation/error-context.md",
+  ])
+    assert.deepEqual(secretFindings(synthetic, file), []);
+  assert.ok(
+    secretFindings(synthetic, "apps/web/evidence-notes/implementation/a.md")
+      .length,
+  );
+  assert.ok(
+    secretFindings(
+      `apiKey = "${token}"`,
+      "apps/web/evidence/implementation/error-context.md",
+    ).length,
+  );
+});
 test("symlinks and exceeded scan bounds fail closed", async () =>
   temporary(async (root) => {
     await writeFile(path.join(root, "source.ts"), "123456789");
