@@ -88,17 +88,20 @@ export const RECEIPT_CLASSIFIER_NOTICE = Object.freeze({
     "https://developers.cloudflare.com/workers-ai/platform/data-usage/",
 });
 /**
- * Perplexity Decisions API notice. Its documentation (checked 2026-10-15)
- * publishes no data-retention or training terms, so none are claimed here.
+ * Perplexity Decisions API notice, truthful against Perplexity's Privacy &
+ * Security page (checked 2026-10-15): general API terms say customer content
+ * is not used to train generative AI models; zero data retention is not
+ * default and only for eligible customers; practices vary by API, model and
+ * account. The page does not name the Decisions API, so neither does this.
  */
 export const PERPLEXITY_DECIDER_CLASSIFIER_NOTICE = Object.freeze({
-  id: "perplexity-decider-v1",
+  id: "perplexity-decider-v2",
   displayName: "Perplexity Decisions API — pplx-decider email classification",
   dataUseSummary:
-    "Each readable document, including locally converted PDF text, is sent to Perplexity to identify financial document type and category. An attachment does not qualify its covering email. Plausible uncertain documents may be verified by your selected financial provider.",
+    "Each readable document, including locally converted PDF text, is sent to Perplexity to identify financial document type and category. An attachment does not qualify its covering email. Plausible uncertain documents may be verified by your selected financial provider. Perplexity's general API terms state that customer content is not used to train generative AI models.",
   retentionSummary:
-    "This app does not store email text or model transcripts. Perplexity's Decisions API documentation does not publish data-retention or model-training terms, so this app makes no retention or no-training claim for Perplexity.",
-  privacyUrl: "https://docs.perplexity.ai/docs/decisions/quickstart",
+    "This app does not store email text or model transcripts. Perplexity states that zero data retention is not on by default, so Perplexity or its model providers may retain request content under their terms; retention and use vary by API, model and account configuration.",
+  privacyUrl: "https://docs.perplexity.ai/docs/resources/privacy-security",
 });
 /** The disclosed processor notice for the configured classification provider. */
 export function receiptClassifierNotice(

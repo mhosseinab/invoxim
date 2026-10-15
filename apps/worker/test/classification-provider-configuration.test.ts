@@ -231,7 +231,7 @@ it("AI-CLASSIFIER-PROVIDER switching provider changes the reviewed processing di
   expect(otherModel).not.toBe(perplexityDigest);
 });
 
-it("AI-CLASSIFIER-PROVIDER disclosure names the actual processor without inventing retention terms", () => {
+it("AI-CLASSIFIER-PROVIDER disclosure names the actual processor with the published training and retention framing", () => {
   const clef = receiptClassificationConfigurationSchema.parse(legacyClef);
   const pplx = receiptClassificationConfigurationSchema.parse(perplexity);
   expect(receiptClassifierNotice(clef)).toEqual(RECEIPT_CLASSIFIER_NOTICE);
@@ -243,11 +243,27 @@ it("AI-CLASSIFIER-PROVIDER disclosure names the actual processor without inventi
     "Each readable document, including locally converted PDF text, is sent to Perplexity",
   );
   expect(notice.dataUseSummary).not.toMatch(/Cloudflare|Clef/);
-  expect(notice.retentionSummary).toContain("does not publish");
-  expect(`${notice.dataUseSummary} ${notice.retentionSummary}`).not.toMatch(
-    /does not train|not train|deleted after|retain(?:s|ed)? for|zero retention/i,
+  // Truthful against https://docs.perplexity.ai/docs/resources/privacy-security
+  // (general API terms; the page does not name the Decisions API).
+  expect(notice.dataUseSummary).toContain(
+    "Perplexity's general API terms state that customer content is not used to train generative AI models",
   );
+  expect(notice.retentionSummary).toContain(
+    "This app does not store email text or model transcripts.",
+  );
+  expect(notice.retentionSummary).toContain(
+    "zero data retention is not on by default",
+  );
+  expect(notice.retentionSummary).toContain(
+    "Perplexity or its model providers may retain request content",
+  );
+  const text = `${notice.dataUseSummary} ${notice.retentionSummary}`;
+  expect(text).not.toMatch(
+    /zero data retention is (?:enabled|on)\b|zero data retention applies|is not retained|not stored by Perplexity|deleted after|Decisions API terms/i,
+  );
+  expect(notice.dataUseSummary.length).toBeLessThanOrEqual(400);
+  expect(notice.retentionSummary.length).toBeLessThanOrEqual(400);
   expect(notice.privacyUrl).toBe(
-    "https://docs.perplexity.ai/docs/decisions/quickstart",
+    "https://docs.perplexity.ai/docs/resources/privacy-security",
   );
 });

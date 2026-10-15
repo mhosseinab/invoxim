@@ -129,7 +129,7 @@ Start error/fence repair released from frozen `6eebd6c` after full `pnpm verify`
 
 ## Perplexity pplx-decider classification rollout (AI-CLASSIFIER-PROVIDER-01)
 
-`config/ai.classification.production.json` now selects `perplexity-decider` / `pplx-decider-v1.1-27b` (owner decision 2026-10-15, including acceptance of Perplexity as a processing destination whose Decisions API docs publish no retention terms). Not deployed by this change.
+`config/ai.classification.production.json` now selects `perplexity-decider` / `pplx-decider-v1.1-27b` (owner decision 2026-10-15, including acceptance of Perplexity as a processing destination; its Privacy & Security page says API customer content is not used for training but zero data retention is not default). Not deployed by this change.
 
 - Before deploying, set the secret: `pnpm --filter @invoxim/worker exec wrangler secret put PERPLEXITY_API_KEY`. Without it AI configuration is unavailable and mailbox processing/onboarding Start are not ready (fail closed; no fallback to Clef).
 - Deploy Worker and frontend together. The provider, model, tariff and processor notice change the reviewed processing digest: every existing processing consent needs renewed Review/Start that names Perplexity before background processing resumes.
