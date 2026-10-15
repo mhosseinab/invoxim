@@ -1871,7 +1871,8 @@
         "Security review fix 2 (cc401f1) RED: 401 run returned {kind:'completed'} (expected paused handler-unavailable); transport 401/403 expected zero usage plus cooldown -> GREEN 70/70",
         "Security review fix 3 (71c2e2d) characterization test; mutation RED (classification removed from digest): resolver returned '19a0da3c...' instead of null -> reverted, GREEN 9/9",
         "Security review fix 4 (75029d0) RED meter admitted an allowlisted but unconfigured pair: {status:'ready'} expected 'stale' -> GREEN 75/75",
-        "Disclosure follow-up (a4f75ea) RED notice lacked the published API training/ZDR framing -> GREEN 16/16"
+        "Disclosure follow-up (a4f75ea) RED notice lacked the published API training/ZDR framing -> GREEN 16/16",
+        "pnpm verify on 0987f45 (after review fixes): run 4 exit 1 (direct-model-native-headroom 20 s timeout plus follow-on retry, same signature as pre-fix run 2; file passes 4/4 twice in isolation), run 5 exit 0: worker 2029/2029 in 166 files, core 493/493, contracts 54/54, node tools 63/63, secrets/deps 0 findings, build guard passed, Playwright 122 passed"
       ],
       "completionEvidence": [],
       "blockedBy": [
