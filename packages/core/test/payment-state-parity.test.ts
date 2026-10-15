@@ -559,3 +559,27 @@ it("CORE-6 intended rule: all three paths agree when settlement evidence agrees"
     }).toEqual({ name: scenario.name, settlement: plan, sql: plan });
   }
 });
+
+it.each([
+  ["0", "unknown"],
+  ["1", "partially_paid"],
+  ["9999", "partially_paid"],
+  ["10000", "paid"],
+  ["10001", "paid"],
+] as const)(
+  "CORE-6 equivalent evidence: %s minor units yields %s on every path",
+  (amountMinor, expected) => {
+    const base = scenarios[0];
+    const entry = base?.entries[0];
+    if (!base || !entry) throw new Error("Missing synthetic payment fixture");
+    const scenario: Scenario = {
+      ...base,
+      entries: [{ ...entry, amountMinor }],
+    };
+    expect({
+      plan: runPlan(scenario),
+      settlement: runTsSettlement(scenario).paymentState,
+      sql: runSqlSettlement(scenario).paymentState,
+    }).toEqual({ plan: expected, settlement: expected, sql: expected });
+  },
+);
