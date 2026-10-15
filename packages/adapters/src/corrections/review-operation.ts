@@ -179,11 +179,15 @@ export async function executeReview(
       else if (field === "documentDate")
         corrected.document_date = String(value);
     }
-    const unblock =
-      result.reviewStatus === "resolved"
-        ? await planReviewUnblock(db, user, row, { owned: corrected })
-        : null;
-    if (unblock) checks.push(...unblock.checks);
+    // A corrected total or currency changes settlement even if nothing
+    // unblocks, so the owned purchase is always recomputed then.
+    const unblock = await planReviewUnblock(db, user, row, {
+      owned: corrected,
+      recomputeOwned:
+        "totalMinor" in request.changes || "currency" in request.changes,
+      keepOpen: result.reviewStatus !== "resolved",
+    });
+    checks.push(...unblock.checks);
     // Result must reflect only the fields actually corrected, not a blanket resolution.
     const updated = correctionTransaction(
       db,
@@ -228,7 +232,7 @@ export async function executeReview(
       { status: row.status },
       { status: result.reviewStatus },
     );
-    unblock?.write(updated, clock);
+    unblock.write(updated, clock);
     return updated.commit();
   }
   const unblock = await planReviewUnblock(db, user, row, { owned });
