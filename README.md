@@ -29,8 +29,12 @@ Vite does not provide the production Pages service-binding proxy. Running both p
 | `pnpm lint:biome`                   | Check source and tests; warnings fail                                                                                                  |
 | `pnpm lint`                         | Alias for `pnpm lint:biome`                                                                                                            |
 | `pnpm format:check`                 | Check Prettier formatting of the derived file set (see `.prettierignore`)                                                              |
+| `pnpm check:boundaries`             | Check workspace package boundaries and import paths with `tools/implementation/check-boundaries.mjs`                                   |
+| `pnpm check:secrets`                | Scan the working tree for credential patterns                                                                                          |
+| `pnpm check:dependency-policy`      | Check exact dependency pins, workspace links and lockfile integrity offline                                                            |
 | `pnpm typecheck`                    | Typecheck workspace packages                                                                                                           |
-| `pnpm test:unit`                    | Run tooling and workspace unit tests                                                                                                   |
+| `pnpm test:unit`                    | Run tooling tests (including documentation path and script checks) and workspace unit tests                                            |
+| `pnpm test:contracts`               | Run only the contracts package unit tests                                                                                              |
 | `pnpm test:integration`             | Run native Worker/D1 integration tests                                                                                                 |
 | `pnpm test:e2e`                     | Run browser tests                                                                                                                      |
 | `pnpm test:a11y`                    | Run browser cases matching `accessibility`                                                                                             |
@@ -71,7 +75,7 @@ pnpm --filter @invoxim/worker exec wrangler d1 migrations apply invoxim-db --loc
 pnpm --filter @invoxim/worker exec wrangler d1 migrations apply invoxim-db --remote
 ```
 
-Apply runs all remaining discovered migrations. The migration directory includes M1 work still under integration; these commands are not approval to apply every draft. The consolidated `0001_initial.sql` initializes an empty database. Do not replay it on a populated database: follow the [baseline transition checklist](docs/runbooks/baseline-transition-checklist.md). The app does not migrate at startup, and deploying code does not synchronize the schema. See [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/).
+Apply runs all remaining discovered migrations. The migration directory includes M1 work still under integration; these commands are not approval to apply every draft. The consolidated `0001_initial.sql` initializes an empty database; `0002` through `0007` are incremental migrations applied after it. Do not replay it on a populated database: follow the [baseline transition checklist](docs/runbooks/baseline-transition-checklist.md). The app does not migrate at startup, and deploying code does not synchronize the schema. See [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/).
 
 ## Deployment commands
 
@@ -86,7 +90,7 @@ pnpm --filter @invoxim/web exec wrangler pages deploy dist --project-name invoxi
 
 Pages forwards `/api/*` through its `API` service binding to `invoxim-api`. Confirm that binding and the Worker's `DB` binding in the deployed environment. Configure Google login separately from mailbox and Drive authorization; the exact login callback is `<AUTH_ORIGIN>/api/auth/callback/google`. Secret names and feature prerequisites are documented in [Worker configuration](apps/worker/CONFIGURATION.md).
 
-The production Worker configuration binds `JOBS` to the existing `invoxim-jobs` Queue, consumes one message per invocation and routes exhausted deliveries to `invoxim-jobs-dlq`. Settled jobs enqueue a bounded dispatch wakeup so ready continuation stages can start in a fresh invocation without waiting for Cron. The minute Cron remains the recovery fallback; recurring mailbox checks remain hourly in D1. Gmail discovery, extraction and jobs are enabled in that configuration. Import still requires the user's explicit reviewed Start; credentials remain Wrangler secrets.
+The production Worker configuration binds `JOBS` to the existing `invoxim-jobs` Queue, consumes one message per invocation (at most two concurrent consumer invocations) and routes exhausted deliveries to `invoxim-jobs-dlq`. Settled jobs enqueue a bounded dispatch wakeup so ready continuation stages can start in a fresh invocation without waiting for Cron. The minute Cron remains the recovery fallback; recurring mailbox checks remain hourly in D1. Gmail discovery, extraction, jobs and corrections are enabled in that configuration; Outlook, Drive, lifecycle operations and FX reference rates are not. Import still requires the user's explicit reviewed Start; credentials remain Wrangler secrets.
 
 ```bash
 # Restore Cloudflare CLI authentication if needed
@@ -122,19 +126,20 @@ flowchart LR
   Queue[Queue: opaque job IDs] --> Worker
 ```
 
-| Path                                      | Responsibility                                                                          |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| [apps/web](apps/web/)                     | Landing/example, onboarding and private workspace; Pages API forwarding                 |
-| [apps/worker](apps/worker/)               | Authentication, validated routes, runtime composition, scheduled and queue entry points |
-| [packages/contracts](packages/contracts/) | Shared request/response schemas and copy contracts                                      |
-| [packages/core](packages/core/)           | Money, evidence, authorization, extraction validation and workflow rules                |
-| [packages/adapters](packages/adapters/)   | Tenant repositories, migrations and concrete external-service adapters                  |
-| [test-design](test-design/)               | Acceptance requirements and synthetic fixtures                                          |
-| [.agents](.agents/)                       | Canonical rules, specialist skills, backlog and review templates                        |
+| Path                                      | Responsibility                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [apps/web](apps/web/)                     | Landing/example, onboarding and private workspace; Pages API forwarding                       |
+| [apps/worker](apps/worker/)               | Authentication, validated routes, runtime composition, scheduled and queue entry points       |
+| [packages/contracts](packages/contracts/) | Shared request/response schemas and copy contracts                                            |
+| [packages/core](packages/core/)           | Money, evidence, authorization, extraction validation and workflow rules                      |
+| [packages/adapters](packages/adapters/)   | Tenant repositories, migrations and concrete external-service adapters                        |
+| [packages/testkit](packages/testkit/)     | Test-only synthetic helpers and the offline extraction corpus; rejected in production bundles |
+| [test-design](test-design/)               | Acceptance requirements and synthetic fixtures                                                |
+| [.agents](.agents/)                       | Canonical rules, specialist skills, backlog and review templates                              |
 
 ## Data flow
 
-This describes the approved flow and current module boundaries, not proof of deployed completion. Gmail and Outlook processing are composed in the Worker. Outlook remains disabled by default until Microsoft registration and live personal/work-account smoke checks pass. Drive queue/backfill integration and full-period FX reporting retain their separate release gates.
+This describes the approved flow and current module boundaries, not proof of deployed completion. Gmail and Outlook processing are composed in the Worker. Outlook is flag-gated (`OUTLOOK_ENABLED` is `false` and `OUTLOOK_DISCOVERY_ENABLED` is unset in the checked-in configuration) and has not been live-verified; it stays off until Microsoft registration and live personal/work-account smoke checks pass. Drive queue/backfill integration and full-period FX reporting retain their separate release gates.
 
 ```mermaid
 flowchart TD
