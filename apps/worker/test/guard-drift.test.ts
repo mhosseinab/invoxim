@@ -1,8 +1,11 @@
 import { env } from "cloudflare:workers";
 import type { AuthBindings } from "@invoxim/adapters";
+import { issueWorkspaceMutationToken } from "@invoxim/adapters";
+import { Hono } from "hono";
 import { beforeAll, expect, it } from "vitest";
 import { createAuthRoutes } from "../src/auth-routes";
 import { createFxRoutes } from "../src/fx-routes";
+import { requireTenantContext } from "../src/http/guard";
 import { useCurrentSchema } from "./support/db";
 import { seedTenant, signedSession } from "./support/tenant";
 
@@ -33,10 +36,12 @@ const fx = createFxRoutes({
 });
 
 let cookie = "";
+let sessionId = "";
 beforeAll(async () => {
   await useCurrentSchema(db);
   const seeded = await seedTenant(db, { userId: "guard-drift" });
   cookie = await signedSession(secret, seeded.sessionToken);
+  sessionId = seeded.sessionId;
 });
 
 function errorBody(body: unknown) {
@@ -92,22 +97,76 @@ it("G3 503 configuration failures are not retryable", async () => {
 });
 
 it("G3 auth_not_configured is not retryable", async () => {
+  const unconfigured = {
+    ...bindings,
+    AUTH_ENABLED: undefined,
+    AUTH_SECRET: undefined,
+  };
+  // Login configuration missing → /api/me has no tenant guard: 401, not 503.
   const response = await auth.request(
     `${origin}/api/me`,
     { headers: { Cookie: cookie, Origin: origin } },
-    { ...bindings, AUTH_ENABLED: undefined, AUTH_SECRET: undefined },
+    unconfigured,
   );
-  // Login configuration missing → 401 on /api/me (no service), not a 503.
-  // Use the auth/* catch-all path that reports auth_not_configured.
+  expect(response.status).toBe(401);
+  expect(errorBody(await response.json())).toMatchObject({
+    code: "unauthorized",
+    retryable: false,
+  });
+  // The auth/* path reports the operator configuration gap.
   const login = await auth.request(
     `${origin}/api/auth/get-session`,
     { headers: { Cookie: cookie, Origin: origin } },
-    { ...bindings, AUTH_ENABLED: undefined, AUTH_SECRET: undefined },
+    unconfigured,
   );
-  expect([401, 503]).toContain(response.status);
-  if (login.status === 503) {
-    expect(errorBody(await login.json()).retryable).toBe(false);
-  }
+  expect(login.status).toBe(503);
+  expect(errorBody(await login.json())).toMatchObject({
+    code: "auth_not_configured",
+    retryable: false,
+  });
+});
+
+it("G3 a mutation guard without a token purpose fails closed instead of accepting a corrections token", async () => {
+  const app = new Hono<{ Bindings: AuthBindings }>();
+  app.post("/api/synthetic-mutation", async (c) => {
+    const ready = await requireTenantContext(
+      c,
+      // A caller that forgot the purpose (only reachable by bypassing types).
+      { mutation: true, recent: false } as never,
+    );
+    if ("response" in ready) return ready.response;
+    return Response.json({ ok: true });
+  });
+  const token = await issueWorkspaceMutationToken(
+    { userId: "guard-drift", sessionId: sessionId },
+    secret,
+    Date.now,
+    "corrections",
+  );
+  const response = await app.request(
+    `${origin}/api/synthetic-mutation`,
+    {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: origin, "X-Workspace-Token": token },
+    },
+    bindings,
+  );
+  expect(response.status).toBe(403);
+  expect(errorBody(await response.json()).code).toBe(
+    "workspace_changed_or_expired",
+  );
+});
+
+it("G3 the guard's token purpose is required by type for every mutation-capable call", () => {
+  // Type-level pin, checked by `tsc --noEmit` (tests are in the tsconfig).
+  type Options = Parameters<typeof requireTenantContext>[1];
+  // @ts-expect-error a mutation-capable guard must name its token purpose
+  const missing: Options = { recent: false };
+  // @ts-expect-error a mutation guard must name its token purpose
+  const mutation: Options = { mutation: true };
+  const readOnly: Options = { mutation: false, recent: false };
+  const purposeful: Options = { purpose: "lifecycle" };
+  expect([missing, mutation, readOnly, purposeful]).toHaveLength(4);
 });
 
 it("G3 mutation without an Origin header is rejected", async () => {
