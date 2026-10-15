@@ -3,8 +3,10 @@ import { cleanupConnection } from "./connection-cleanup";
 import { cleanupM1Leaves } from "./m1-leaf-cleanup";
 
 /**
- * Account-scope erasure stages, in fixed integer order (restore/replay depends
- * on the indices). New leaf tables belong in `m1LeafTables`, not here.
+ * Account-scope erasure stages, in fixed integer order: an in-flight deletion
+ * persists its index in `lifecycle_deletions.stage`, so renumbering would
+ * resume it at the wrong table. New leaf tables belong in `m1LeafTables`, not
+ * here.
  */
 export const accountTables = [
   "usage_events",
