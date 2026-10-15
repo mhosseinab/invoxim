@@ -10,6 +10,7 @@ import type {
   InvoiceExtractor,
 } from "@invoxim/core";
 import { z } from "zod";
+import { parseRetryAfter, readJsonResponseBody } from "../http";
 import type { AiDestination, AiModel } from "./configuration";
 import { aiDestinationSchema, aiModelSchema } from "./configuration";
 import { invokeChatModel } from "./langchain";
@@ -70,51 +71,10 @@ async function boundedBody(
   signal: AbortSignal,
   deadline: number,
 ) {
-  if (Number(response.headers.get("content-length") ?? 0) > maximum)
-    throw new Error("Response unavailable");
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("Response unavailable");
-  const cancelled = () => {
-    void reader.cancel().catch(() => undefined);
-  };
-  signal.addEventListener("abort", cancelled, { once: true });
-  const bytes = new Uint8Array(maximum);
-  let size = 0;
-  let nonemptyChunks = 0;
-  let emptyChunks = 0;
-  let completed = false;
-  const checkDeadline = () => {
-    if (signal.aborted || Date.now() >= deadline)
-      throw new Error("Response unavailable");
-  };
   try {
-    while (true) {
-      checkDeadline();
-      const item = await reader.read();
-      checkDeadline();
-      if (item.done) {
-        completed = true;
-        break;
-      }
-      if (item.value.byteLength === 0) {
-        if (++emptyChunks > 32) throw new Error("Response unavailable");
-        continue;
-      }
-      if (++nonemptyChunks > 4096 || item.value.byteLength > maximum - size)
-        throw new Error("Response unavailable");
-      bytes.set(item.value, size);
-      size += item.value.byteLength;
-    }
-    checkDeadline();
-    return JSON.parse(
-      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
-        bytes.subarray(0, size),
-      ),
-    );
-  } finally {
-    if (!completed) cancelled();
-    signal.removeEventListener("abort", cancelled);
-    reader.releaseLock();
+    return await readJsonResponseBody(response, maximum, { signal, deadline });
+  } catch {
+    throw new Error("Response unavailable");
   }
 }
 
@@ -128,19 +88,7 @@ async function readChatResponse(
   if (response.status === 401 || response.status === 403)
     return failure("invalid-key");
   if (response.status === 429) {
-    const header = response.headers.get("retry-after");
-    const numeric = header !== null && /^[0-9]+$/.test(header);
-    const floor = numeric
-      ? Number(header) * 1000
-      : header
-        ? Date.parse(header) - Date.now()
-        : 30000;
-    const delay =
-      numeric || Number.isFinite(floor)
-        ? Number.isSafeInteger(floor) && floor <= 86400000
-          ? Math.max(1000, floor)
-          : 86400001
-        : 30000;
+    const delay = parseRetryAfter(response.headers.get("retry-after")) ?? 30000;
     return {
       status: "failed",
       reason: "rate-limit",
