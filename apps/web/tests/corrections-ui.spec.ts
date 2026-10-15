@@ -250,6 +250,48 @@ test("EDIT-03 unknown payment confirmation retry reuses its request identity", a
   });
 });
 
+test("EDIT-03 a saved payment confirmation closes its editor so a second write needs re-entered values", async ({
+  page,
+}) => {
+  const writes: { path: string; body: unknown; key: string | undefined }[] = [];
+  await workspace(page, (request) => {
+    writes.push(request);
+    return { body: { ...result, entryId: "confirmed-event", entryVersion: 1 } };
+  });
+  await page.goto("/purchases/purchase-a");
+  await page
+    .getByRole("button", { name: "Confirm a payment", exact: true })
+    .click();
+  await page.getByLabel("Payment amount", { exact: true }).fill("25.00");
+  await page.getByLabel("Event date", { exact: true }).fill("2026-10-02");
+  await page
+    .getByLabel("I confirm this payment was completed.", { exact: true })
+    .check();
+  await page
+    .getByRole("button", { name: "Save confirmed payment", exact: true })
+    .click();
+  await expect.poll(() => writes.length).toBe(1);
+  // The background refresh returns the same version (adversarial): the filled
+  // form must still not survive the successful save.
+  await expect(
+    page.getByRole("button", { name: "Save confirmed payment", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Confirm a payment", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Confirm a payment", exact: true })
+    .click();
+  await expect(page.getByLabel("Payment amount", { exact: true })).toHaveValue(
+    "",
+  );
+  await expect(page.getByLabel("Event date", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByLabel("I confirm this payment was completed.", { exact: true }),
+  ).not.toBeChecked();
+  expect(writes).toHaveLength(1);
+});
+
 test("EDIT-01 correcting a cash event preserves its identity and carries the read-time workspace token", async ({
   page,
 }) => {

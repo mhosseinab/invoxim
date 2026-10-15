@@ -36,10 +36,13 @@ export function Corrections({
     "Checking correction availability…",
   );
   const [editor, setEditor] = useState<Editor>(null);
+  // A saved write closes the editor, so a filled cash form cannot be submitted
+  // again under a fresh idempotency key. Focus refresh does not close it (OD-8).
   const mutation = useCorrectionMutation(
     onReload,
     expectedUserId,
     state?.mutationToken ?? "",
+    () => setEditor(null),
   );
   const purchaseId = detail.purchase.id;
   const askedReload = useRef(false);
