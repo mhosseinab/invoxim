@@ -1,11 +1,16 @@
 import type {
   AcceptedImportInput,
+  DiscoveryProcessingSelection,
   DiscoveryProviderFactory,
   DiscoveryReadinessPort,
   JobLease,
   TenantContext,
 } from "@invoxim/core";
 import { DiscoveryError, planDiscoveryRange } from "@invoxim/core";
+import {
+  processingSelectionSchema,
+  processingSelectionSql,
+} from "../pipeline/repository-guards";
 import { buildAcceptedImportStatements } from "./import-plan";
 import { createDiscoveryPages } from "./pages";
 export interface DiscoveryServiceOptions {
@@ -22,6 +27,20 @@ interface ConsentRow {
   timezone: string;
   processing_selection?: string;
   accepted_configuration_digest?: string;
+}
+function reviewedSelection(
+  encoded: string | undefined,
+): DiscoveryProcessingSelection & { acceptedDigest: string } {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(encoded ?? "null");
+  } catch {
+    throw new DiscoveryError("UNAUTHORIZED");
+  }
+  const parsed = processingSelectionSchema.safeParse(decoded);
+  if (!parsed.success || parsed.data.acceptedDigest === null)
+    throw new DiscoveryError("UNAUTHORIZED");
+  return { ...parsed.data, acceptedDigest: parsed.data.acceptedDigest };
 }
 export function createDiscoveryService(
   db: D1Database,
@@ -46,7 +65,7 @@ export function createDiscoveryService(
     charge();
     const result = await db
       .prepare(
-        `SELECT c.generation,s.disclosure_version,s.ai_settings_revision,s.query_mode,p.timezone${options.readiness.requiresProcessingSelection ? ",json_object('mode',a.mode,'settingsRevision',a.revision,'providerId',a.provider_id,'modelId',a.model_id,'configVersion',a.config_version,'policyVersion',a.consent_version,'acceptedDigest',s.accepted_configuration_digest) AS processing_selection" : ""} FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents s ON s.user_id=c.user_id AND s.connection_id=c.id ${options.readiness.requiresProcessingSelection ? "JOIN ai_settings a ON a.user_id=c.user_id AND a.status='active' AND a.revision=s.ai_settings_revision AND a.provider_id=s.inference_destination AND a.consent_version=s.disclosure_version" : ""} WHERE c.user_id=? AND c.id=? AND c.generation=? AND c.provider='gmail' AND c.kind='mailbox' AND c.state='connected' AND c.credential_ciphertext IS NOT NULL AND p.status='active' AND s.id=? AND s.revoked_at IS NULL AND s.background_authorized=1 AND s.query_mode=? AND s.accepted_at<=? AND EXISTS(SELECT 1 FROM json_each(c.scopes) WHERE value='https://www.googleapis.com/auth/gmail.readonly')`,
+        `SELECT c.generation,s.disclosure_version,s.ai_settings_revision,s.query_mode,p.timezone${options.readiness.requiresProcessingSelection ? `,${processingSelectionSql({ consent: "s" })} AS processing_selection` : ""} FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents s ON s.user_id=c.user_id AND s.connection_id=c.id ${options.readiness.requiresProcessingSelection ? "JOIN ai_settings a ON a.user_id=c.user_id AND a.status='active' AND a.revision=s.ai_settings_revision AND a.provider_id=s.inference_destination AND a.consent_version=s.disclosure_version" : ""} WHERE c.user_id=? AND c.id=? AND c.generation=? AND c.provider='gmail' AND c.kind='mailbox' AND c.state='connected' AND c.credential_ciphertext IS NOT NULL AND p.status='active' AND s.id=? AND s.revoked_at IS NULL AND s.background_authorized=1 AND s.query_mode=? AND s.accepted_at<=? AND EXISTS(SELECT 1 FROM json_each(c.scopes) WHERE value='https://www.googleapis.com/auth/gmail.readonly')`,
       )
       .bind(
         context.userId,
@@ -57,27 +76,24 @@ export function createDiscoveryService(
         clock(),
       )
       .first<ConsentRow>();
+    if (!result) throw new DiscoveryError("UNAUTHORIZED");
+    // P1: the one shared consent-review schema; malformed or incomplete
+    // selections never reach the readiness port.
+    const selection = options.readiness.requiresProcessingSelection
+      ? reviewedSelection(result.processing_selection)
+      : undefined;
     if (
-      !result ||
       !(await options.readiness.allow(context, {
         ...input,
         disclosureVersion: result.disclosure_version,
         settingsRevision: result.ai_settings_revision,
-        ...(result.processing_selection
-          ? { processingSelection: JSON.parse(result.processing_selection) }
-          : {}),
+        ...(selection ? { processingSelection: selection } : {}),
       }))
     )
       throw new DiscoveryError("UNAUTHORIZED");
-    if (options.readiness.requiresProcessingSelection) {
-      const digest = JSON.parse(
-        result.processing_selection ?? "null",
-      )?.acceptedDigest;
-      if (typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest))
-        throw new DiscoveryError("UNAUTHORIZED");
-      return { ...result, accepted_configuration_digest: digest };
-    }
-    return result;
+    return selection
+      ? { ...result, accepted_configuration_digest: selection.acceptedDigest }
+      : result;
   }
   async function beginAcceptedImport(
     context: TenantContext,
