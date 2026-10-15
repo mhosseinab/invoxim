@@ -445,7 +445,7 @@ function network(
 }
 async function invocation(jobId: string, beforeCommit?: () => Promise<void>) {
   const meter = createInvocationDatabase(env.DB, 40),
-    store = createJobStore(meter.db, { policy });
+    store = createJobStore(meter.db, { processingReview: null, policy });
   const lease = await store.claim(jobId);
   expect(lease).not.toBeNull();
   if (!lease) throw new Error("Positive-control claim failed");
@@ -565,7 +565,11 @@ it("T12 native full pipeline counts multiple MIME documents and records under on
   );
   expect(persisted).not.toContain('"quote"');
   expect(persisted).not.toContain("Paid by card.");
-  expect(await createJobStore(db, { policy }).claim(`j-${name}`)).toBeNull();
+  expect(
+    await createJobStore(db, { processingReview: null, policy }).claim(
+      `j-${name}`,
+    ),
+  ).toBeNull();
   expect(calls.modelCalls()).toBe(2);
 });
 it("LEDGER-08 identical source content stays tenant-owned through the real pipeline", async () => {
@@ -599,7 +603,7 @@ async function prepared(name: string) {
     .first<string>("id");
   if (!commitJob) throw new Error("Missing reconcile continuation");
   const meter = createInvocationDatabase(env.DB, 40),
-    store = createJobStore(meter.db, { policy });
+    store = createJobStore(meter.db, { processingReview: null, policy });
   const lease = await store.claim(commitJob);
   if (!lease) throw new Error("Missing reconcile lease");
   const repository = createPipelineRepository(meter.db, {
@@ -672,6 +676,7 @@ it("T12 old lease cannot commit after reassignment; the fresh owner can", async 
     .bind(test.lease.jobId)
     .run();
   const replacement: JobLease | null = await createJobStore(db, {
+    processingReview: null,
     policy,
   }).claim(test.lease.jobId);
   if (!replacement) throw new Error("Missing replacement positive control");
@@ -1287,7 +1292,7 @@ it("GMAIL-06/LEDGER-08/LIFECYCLE-06 two approved Gmail mailboxes share one owned
       const meter = createInvocationDatabase(env.DB, 40),
         sent: { schemaVersion: 1; jobId: string }[] = [];
       const engine = createJobEngine({
-        store: createJobStore(meter.db, { policy }),
+        store: createJobStore(meter.db, { processingReview: null, policy }),
         queue: {
           send: async (body) => {
             sent.push({ ...body });
@@ -1417,7 +1422,10 @@ it("GMAIL-06/LEDGER-08/LIFECYCLE-06 two approved Gmail mailboxes share one owned
   const redeliveryMeter = createInvocationDatabase(env.DB, 40);
   expect(
     await createJobEngine({
-      store: createJobStore(redeliveryMeter.db, { policy }),
+      store: createJobStore(redeliveryMeter.db, {
+        processingReview: null,
+        policy,
+      }),
       queue: {
         send: async () => {
           throw new Error("Redelivery must not dispatch");
@@ -1434,17 +1442,17 @@ it("GMAIL-06/LEDGER-08/LIFECYCLE-06 two approved Gmail mailboxes share one owned
   const enqueueMeter = createInvocationDatabase(env.DB, 40),
     replayJob = `j-${first}-replay`;
   expect(
-    await createJobStore(enqueueMeter.db, { policy }).enqueue(
-      initialLease.context,
-      {
-        id: replayJob,
-        connectionId: initialLease.connectionId,
-        consentId: initialLease.consentId,
-        generation: initialLease.generation,
-        type: "source-extract",
-        dedupeKey: replayJob,
-      },
-    ),
+    await createJobStore(enqueueMeter.db, {
+      processingReview: null,
+      policy,
+    }).enqueue(initialLease.context, {
+      id: replayJob,
+      connectionId: initialLease.connectionId,
+      consentId: initialLease.consentId,
+      generation: initialLease.generation,
+      type: "source-extract",
+      dedupeKey: replayJob,
+    }),
   ).toBe(true);
   statementCounts.push({
     stage: "enqueue",

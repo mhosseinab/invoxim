@@ -48,7 +48,11 @@ beforeAll(async () => {
   await useCurrentSchema(db);
 });
 it("JOBS-01: concurrent duplicate delivery yields one valid leased owner", async () => {
-  const store = createJobStore(db, { policy, clock: () => 1000 });
+  const store = createJobStore(db, {
+    processingReview: null,
+    policy,
+    clock: () => 1000,
+  });
   const results = await Promise.all([
     store.claim("duplicate-claim"),
     store.claim("duplicate-claim"),
@@ -64,7 +68,11 @@ it("JOBS-02: missing-handler delivery cannot ACK when durable pause lost its lea
       "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at) VALUES('ack-fence','job-a','conn-a','consent-a',1,'extract','ack-fence','ready',0)",
     )
     .run();
-  const store = createJobStore(db, { policy, clock: () => 1000 });
+  const store = createJobStore(db, {
+    processingReview: null,
+    policy,
+    clock: () => 1000,
+  });
   const fencedStore = {
     ...store,
     async finish(
@@ -124,7 +132,11 @@ it("JOBS-03 / ONBOARD-13: active manual sync returns durable ID, coalesces and e
     userId,
     authority,
   } as TenantContext;
-  const store = createJobStore(db, { policy, clock: () => 1000 });
+  const store = createJobStore(db, {
+    processingReview: null,
+    policy,
+    clock: () => 1000,
+  });
   const first = await store.manualSync(context, "conn-a");
   expect(first.kind).toBe("queued");
   if (first.kind !== "queued")
@@ -161,6 +173,7 @@ it("JOBS-02: an uncooperative handler cannot hold the queue beyond the lease dea
     .run();
   const at = Date.now();
   const store = createJobStore(db, {
+    processingReview: null,
     policy: { ...policy, leaseMs: 10 },
     clock: () => at,
   });
@@ -200,7 +213,11 @@ it("JOBS-03: new periodic scheduling commits its job and advances the processed 
       "UPDATE scheduler_cursors SET last_user_id='job-0' WHERE kind='schedule'",
     )
     .run();
-  const store = createJobStore(db, { policy, clock: () => 1000 });
+  const store = createJobStore(db, {
+    processingReview: null,
+    policy,
+    clock: () => 1000,
+  });
   expect(await store.scheduleDue()).toBe(1);
   expect(
     await db
@@ -252,7 +269,11 @@ it("JOBS-06: an existing due sync cannot consume cursor headroom and starve the 
       "UPDATE scheduler_cursors SET last_user_id='job-0' WHERE kind='schedule'",
     )
     .run();
-  await createJobStore(db, { policy, clock: () => 1000 }).scheduleDue();
+  await createJobStore(db, {
+    processingReview: null,
+    policy,
+    clock: () => 1000,
+  }).scheduleDue();
   expect(
     await db
       .prepare(
@@ -261,7 +282,11 @@ it("JOBS-06: an existing due sync cannot consume cursor headroom and starve the 
       .first("last_user_id"),
   ).toBe("job-a");
   expect(
-    await createJobStore(db, { policy, clock: () => 1000 }).scheduleDue(),
+    await createJobStore(db, {
+      processingReview: null,
+      policy,
+      clock: () => 1000,
+    }).scheduleDue(),
   ).toBe(1);
   expect(
     await db
@@ -309,6 +334,7 @@ it("JOBS-05/06: minimum production budget cancels stale work and dispatches whil
       .bind(kind)
       .run();
   const store = createJobStore(db, {
+    processingReview: null,
     policy: { ...policy, queryLimit: 24 },
     clock: () => 1000,
   });

@@ -194,6 +194,7 @@ it("RECENT-03/09 accepted recent page durably stages references and processing o
     .first<{ id: string }>();
   if (!pending) throw new Error("Synthetic discovery job missing");
   const store = createJobStore(db, {
+    processingReview: null,
     clock: () => now,
     policy: {
       dispatchLimit: 10,

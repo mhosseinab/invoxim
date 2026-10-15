@@ -108,9 +108,10 @@ async function claimed(
       `j-${name}`,
     )
     .run();
-  const lease = await createJobStore(claimDatabase, { policy }).claim(
-    `j-${name}`,
-  );
+  const lease = await createJobStore(claimDatabase, {
+    processingReview: null,
+    policy,
+  }).claim(`j-${name}`);
   if (!lease) throw new Error("Synthetic Outlook job lease unavailable");
   return lease;
 }
@@ -608,7 +609,10 @@ it("OUTLOOK-04 hourly sync resumes each folder from its saved opaque delta URL",
     .bind(lease.context.userId, lease.syncStateId)
     .first<{ id: string }>();
   if (!ready) throw new Error("Hourly continuation missing");
-  const nextLease = await createJobStore(env.DB, { policy }).claim(ready.id);
+  const nextLease = await createJobStore(env.DB, {
+    processingReview: null,
+    policy,
+  }).claim(ready.id);
   if (!nextLease) throw new Error("Hourly continuation not claimable");
   let requested = 0;
   const graph: OutlookGraphDiscoveryPort = {
@@ -683,7 +687,10 @@ it("OUTLOOK-05 expired delta performs bounded range recovery before acquiring a 
       .bind(lease.context.userId, lease.syncStateId)
       .first<{ id: string }>();
     if (!ready) throw new Error("Recovery continuation missing");
-    const nextLease = await createJobStore(env.DB, { policy }).claim(ready.id);
+    const nextLease = await createJobStore(env.DB, {
+      processingReview: null,
+      policy,
+    }).claim(ready.id);
     if (!nextLease) throw new Error("Recovery continuation not claimable");
     return nextLease;
   };
@@ -1175,7 +1182,7 @@ it("OUTLOOK-02 cannot begin inventory when a required exclusion alias is unavail
 it("OUTLOOK-02 cold alias resolution makes durable progress under the real shared job checkpoint budget", async () => {
   const meter = createInvocationDatabase(env.DB, 40);
   const lease = await claimed("cold-alias-budget", "live", meter.db);
-  const jobs = createJobStore(meter.db, { policy });
+  const jobs = createJobStore(meter.db, { processingReview: null, policy });
   const checkpoint = () => jobs.checkpoint(lease);
   expect(await checkpoint()).toBe(true);
   const lookedUp: string[] = [];
@@ -1706,7 +1713,10 @@ it("INT-5/G3 Outlook backfill writes folder enumerated/matched/unknown counters 
     .bind(lease.context.userId, `outlook:page:${lease.jobId}`)
     .first<string>("id");
   if (!continuation) throw new Error("Missing Outlook page continuation");
-  const next = await createJobStore(env.DB, { policy }).claim(continuation);
+  const next = await createJobStore(env.DB, {
+    processingReview: null,
+    policy,
+  }).claim(continuation);
   if (!next) throw new Error("Outlook page continuation lease unavailable");
   const parent = createInvocationDatabase(env.DB, 40);
   expect(
@@ -1781,7 +1791,10 @@ it("INT-5/G4 consecutive inventory 429s pause rate service at the shared failure
     )
       .bind(lease.context.userId, continuation)
       .run();
-    const next = await createJobStore(env.DB, { policy }).claim(continuation);
+    const next = await createJobStore(env.DB, {
+      processingReview: null,
+      policy,
+    }).claim(continuation);
     if (!next) throw new Error("Outlook rate continuation lease unavailable");
     lease = next;
   }
@@ -1972,7 +1985,7 @@ it("INT-5/O5 Outlook page-commit shortfall after Graph reads returns retry/trans
 it("INT-5/O5 a persistent Outlook statement shortfall exhausts the job at the retry cap (current OD-11 outcome)", async () => {
   let lease = await claimed("o5-retry-cap");
   await seedLiveFolder(lease, "folder-o5-cap", "inbox-folder");
-  const jobs = createJobStore(env.DB, { policy });
+  const jobs = createJobStore(env.DB, { processingReview: null, policy });
   const runner = createOutlookJobRunner(env.DB, {
     open: async () => {
       throw new Error("A budget shortfall must not open Graph");

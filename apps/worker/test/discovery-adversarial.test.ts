@@ -709,6 +709,7 @@ async function pageTurn(
   if (!ready) throw new Error("No runnable synthetic discovery job");
   const invocation = createInvocationDatabase(options.database ?? env.DB, 40);
   const store = createJobStore(invocation.db, {
+    processingReview: null,
     policy: jobPolicy,
     clock: () => at,
   });
@@ -742,6 +743,7 @@ async function liveJob(tenant: TenantContext, id: string) {
   if (!state) throw new Error("Missing live state");
   expect(
     await createJobStore(db, {
+      processingReview: null,
       policy: jobPolicy,
       clock: () => now,
     }).enqueue(tenant, {
@@ -1083,6 +1085,7 @@ it("native consumption, expired-credential refresh and discovery make durable pr
   const at = Date.now();
   const invocation = createInvocationDatabase(env.DB, 40);
   const store = createJobStore(invocation.db, {
+    processingReview: null,
     policy: jobPolicy,
     clock: () => at,
   });
@@ -1194,6 +1197,7 @@ it("RECENT-09 committed discovery survives missing ACK and native duplicate deli
   expect(committed.outcome).toEqual({ kind: "completed" });
   const invocation = createInvocationDatabase(env.DB, 40);
   const store = createJobStore(invocation.db, {
+    processingReview: null,
     policy: jobPolicy,
     clock: () => now,
   });
@@ -1675,7 +1679,11 @@ it("INT-5/O5 Gmail statement shortfall returns retry/transient before provider a
     .bind(tenant.userId)
     .first<string>("id");
   if (!ready) throw new Error("No runnable synthetic discovery job");
-  const store = createJobStore(env.DB, { policy: jobPolicy, clock: () => now });
+  const store = createJobStore(env.DB, {
+    processingReview: null,
+    policy: jobPolicy,
+    clock: () => now,
+  });
   const lease = await store.claim(ready);
   if (!lease) throw new Error("Synthetic discovery lease unavailable");
   let opens = 0;

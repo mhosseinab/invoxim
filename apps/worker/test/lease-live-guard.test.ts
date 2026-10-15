@@ -132,7 +132,7 @@ it("P1.5b: store live guard drops a credential-less connection through the share
     jobId: "job-nocred",
     credentials: false,
   });
-  const store = createJobStore(db, { policy, clock });
+  const store = createJobStore(db, { processingReview: null, policy, clock });
   expect(await store.claim("job-nocred")).toBeNull();
 });
 
@@ -144,7 +144,7 @@ it("P1.5b: store live guard drops a revoked-consent lease", async () => {
     jobId: "job-revoked",
     backgroundAuthorized: false,
   });
-  const store = createJobStore(db, { policy, clock });
+  const store = createJobStore(db, { processingReview: null, policy, clock });
   expect(await store.claim("job-revoked")).toBeNull();
 });
 
@@ -159,7 +159,7 @@ it("P1.5b: checkpoint fails closed when the lease's consent is no longer authori
     consentId: "consent-checkpoint",
     jobId: "job-checkpoint",
   });
-  const store = createJobStore(db, { policy, clock });
+  const store = createJobStore(db, { processingReview: null, policy, clock });
   const lease = await store.claim("job-checkpoint");
   if (!lease) throw new Error("Synthetic job did not acquire lease");
   await db

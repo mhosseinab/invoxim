@@ -76,7 +76,11 @@ function delivery(body: unknown) {
 }
 function invocation(sent: unknown[], handler?: JobHandler, failWakeup = false) {
   const meter = createInvocationDatabase(env.DB, 40);
-  const store = createJobStore(meter.db, { policy, clock: () => 1000 });
+  const store = createJobStore(meter.db, {
+    processingReview: null,
+    policy,
+    clock: () => 1000,
+  });
   const recover = vi.fn(() => store.recover()),
     scheduleDue = vi.fn(() => store.scheduleDue());
   const runtime = createJobRuntime({

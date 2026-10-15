@@ -383,7 +383,7 @@ it("LIFECYCLE-02 export shares period/filter oracle with list and summary withou
 it("LIFECYCLE-03 configured journal refusal atomically disables access but cannot erase before durable acknowledgment; recovery resumes", async () => {
   const owner = await seed("qa-life-journal");
   const lease = await leasedSource(owner);
-  const jobStore = createJobStore(db, { policy });
+  const jobStore = createJobStore(db, { processingReview: null, policy });
   expect(await jobStore.checkpoint(lease)).toBe(true);
   let acknowledged = false;
   const append = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -524,7 +524,7 @@ it("LIFECYCLE-04 local disconnect preserves shared cash, cancels a leased consum
   const owner = await seed("qa-life-disconnect"),
     connection = `c-${owner.name}-a`;
   const lease = await leasedSource(owner);
-  const store = createJobStore(db, { policy });
+  const store = createJobStore(db, { processingReview: null, policy });
   expect(await store.checkpoint(lease)).toBe(true);
   const body = { confirmed: true, generation: 1, credentialVersion: 1 };
   const response = await request(

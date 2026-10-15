@@ -741,7 +741,11 @@ it("ONBOARD-09 actual disconnect and reviewed generation recovery preserve old l
     .bind(accepted.importRunId, session.tenant.userId)
     .run();
   const oldJob = "00-qa-generation-source-0000",
-    oldStore = createJobStore(db, { policy, clock: () => now }),
+    oldStore = createJobStore(db, {
+      processingReview: null,
+      policy,
+      clock: () => now,
+    }),
     oldLease = await oldStore.claim(oldJob);
   if (!oldLease) throw new Error("Synthetic source lease not claimed");
   await db
@@ -1101,9 +1105,11 @@ it("ONBOARD-06/09 revoked hourly work outside a newly reviewed narrower range st
       .first(),
   ).toMatchObject({ consent_id: oldConsent, status: "canceled" });
   expect(
-    await createJobStore(db, { policy, clock: () => now }).claim(
-      "00-qa-range-before",
-    ),
+    await createJobStore(db, {
+      processingReview: null,
+      policy,
+      clock: () => now,
+    }).claim("00-qa-range-before"),
   ).toBeNull();
   expect(
     await db
@@ -1160,6 +1166,7 @@ it("ONBOARD-08 operator-disabled processing pauses as service unavailable withou
     .run();
   const meter = createInvocationDatabase(env.DB, 40),
     store = createJobStore(meter.db, {
+      processingReview: null,
       policy: {
         dispatchLimit: 1,
         scheduleLimit: 1,
@@ -1221,6 +1228,7 @@ it("ONBOARD-08 operator-disabled processing pauses as service unavailable withou
     .run();
   const quotaMeter = createInvocationDatabase(env.DB, 40),
     quotaStore = createJobStore(quotaMeter.db, {
+      processingReview: null,
       policy: {
         dispatchLimit: 1,
         scheduleLimit: 1,
