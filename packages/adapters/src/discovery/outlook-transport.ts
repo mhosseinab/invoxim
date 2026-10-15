@@ -1,4 +1,6 @@
 import { DiscoveryError } from "@invoxim/core";
+import { parseRetryAfter } from "../http";
+import { RATE_DEFAULT_RETRY_AFTER_MS } from "./rate-decision";
 
 const graphOrigin = "https://graph.microsoft.com";
 export type OutlookCollection =
@@ -154,16 +156,11 @@ export function createOutlookGraphTransport(
       if (response.status === 401 || response.status === 403)
         throw new DiscoveryError("AUTH_REQUIRED");
       if (response.status === 429 || response.status === 503) {
-        const header = response.headers.get("retry-after");
-        const delay =
-          header && /^[0-9]+$/.test(header)
-            ? Number(header) * 1000
-            : header
-              ? Date.parse(header) - Date.now()
-              : 30000;
+        // G5: SEC-4's single Retry-After rule; absent or unusable keeps 30 s.
         throw new DiscoveryError(
           "RATE_LIMITED",
-          Number.isFinite(delay) ? Math.max(1000, delay) : 86400001,
+          parseRetryAfter(response.headers.get("retry-after")) ??
+            RATE_DEFAULT_RETRY_AFTER_MS,
         );
       }
       if (response.status === 410 && mode === "delta")

@@ -1,10 +1,12 @@
 import type { JobLease } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
+import { outlookLeaseGuard } from "./outlook-guard";
 import {
   validateOutlookContinuation,
   validateOutlookId,
 } from "./outlook-transport";
+import { rateDecision } from "./rate-decision";
 
 const id = z.string().refine((value) => Boolean(validateOutlookId(value)));
 const pageSchema = z.strictObject({
@@ -45,6 +47,22 @@ type InventoryResult =
   | { kind: "complete"; excludedFolderIds?: string[] }
   | { kind: "stale" }
   | { kind: "limit" };
+/**
+ * Read with the inventory's closing live check: what a rate deferral needs
+ * without another statement. `dedupeKey` is the leased job's key, whose
+ * `outlook:rate:<n>:` prefix counts consecutive rate deferrals (G4).
+ */
+export interface OutlookRateContext {
+  dedupeKey: string | null;
+  discoveryVersion: number | null;
+  importRunId: string | null;
+}
+const rateKeyPattern = /^outlook:rate:([0-9]+):/;
+/** Consecutive rate deferrals that led to this job; any other key resets it. */
+function rateChainDepth(dedupeKey: string | null): number {
+  const depth = Number(dedupeKey?.match(rateKeyPattern)?.[1] ?? 0);
+  return Number.isSafeInteger(depth) ? depth : 0;
+}
 const maximumFolders = 2000;
 const excludedIdsSchema = z
   .array(id)
@@ -60,20 +78,9 @@ function parseExcludedIds(value: string | null): string[] | null {
 }
 
 function authorization(lease: JobLease, now: number) {
-  return {
-    sql: `EXISTS(SELECT 1 FROM jobs j JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN profiles p ON p.user_id=j.user_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id WHERE j.user_id=? AND j.id=? AND j.connection_id=? AND j.consent_id=? AND j.connection_generation=? AND j.status='leased' AND j.lease_id=? AND j.fence=? AND j.lease_expires_at>? AND j.type IN ('mailbox-backfill','discover','sync') AND c.provider='outlook' AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND p.status='active' AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=COALESCE((SELECT a.revision FROM ai_settings a WHERE a.user_id=p.user_id AND a.status='active'),0) AND EXISTS(SELECT 1 FROM json_each(c.scopes) WHERE value='https://graph.microsoft.com/Mail.Read'))`,
-    values: [
-      lease.context.userId,
-      lease.jobId,
-      lease.connectionId,
-      lease.consentId,
-      lease.generation,
-      lease.leaseId,
-      lease.fence,
-      now,
-      now,
-    ],
-  };
+  return outlookLeaseGuard(lease, now, {
+    types: ["mailbox-backfill", "discover", "sync"],
+  });
 }
 function owner(lease: JobLease) {
   return [lease.context.userId, lease.connectionId, lease.generation];
@@ -123,8 +130,43 @@ export function createOutlookFolderStore(db: D1Database) {
       .first<number>("n");
     return (count ?? 0) + ids.length > maximumFolders;
   }
-  async function getNextInventory(lease: JobLease): Promise<InventoryResult> {
-    if (!(await allowed(lease))) return { kind: "stale" };
+  /** The guarded closing read: null when the lease is no longer live. */
+  async function liveRateContext(
+    lease: JobLease,
+  ): Promise<OutlookRateContext | null> {
+    const guard = authorization(lease, Date.now());
+    const row = await db
+      .prepare(
+        `SELECT (SELECT dedupe_key FROM jobs WHERE user_id=? AND id=?) AS dedupe_key,(SELECT discovery_version FROM sync_states WHERE user_id=? AND id=? AND connection_id=?) AS discovery_version,(SELECT import_run_id FROM sync_states WHERE user_id=? AND id=? AND connection_id=?) AS import_run_id WHERE ${guard.sql}`,
+      )
+      .bind(
+        lease.context.userId,
+        lease.jobId,
+        lease.context.userId,
+        lease.syncStateId,
+        lease.connectionId,
+        lease.context.userId,
+        lease.syncStateId,
+        lease.connectionId,
+        ...guard.values,
+      )
+      .first<{
+        dedupe_key: string | null;
+        discovery_version: number | null;
+        import_run_id: string | null;
+      }>();
+    return row
+      ? {
+          dedupeKey: row.dedupe_key,
+          discoveryVersion: row.discovery_version,
+          importRunId: row.import_run_id,
+        }
+      : null;
+  }
+  async function readInventory(
+    lease: JobLease,
+  ): Promise<{ next: InventoryResult; rate: OutlookRateContext | null }> {
+    if (!(await allowed(lease))) return { next: { kind: "stale" }, rate: null };
     let result: InventoryResult;
     if (await exceedsLimit(lease)) result = { kind: "limit" };
     else {
@@ -173,7 +215,11 @@ export function createOutlookFolderStore(db: D1Database) {
             };
       }
     }
-    return (await allowed(lease)) ? result : { kind: "stale" };
+    const rate = await liveRateContext(lease);
+    return rate ? { next: result, rate } : { next: { kind: "stale" }, rate };
+  }
+  async function getNextInventory(lease: JobLease): Promise<InventoryResult> {
+    return (await readInventory(lease)).next;
   }
 
   async function saveExclusions(lease: JobLease, ids: string[]) {
@@ -263,26 +309,31 @@ export function createOutlookFolderStore(db: D1Database) {
     );
   }
 
-  async function deferRate(lease: JobLease, retryAfterMs: number) {
+  /**
+   * G4: defer or pause rate service through the shared rateDecision. The
+   * consecutive count rides the continuation's dedupe key, so a successful
+   * page (whose continuation key differs) resets it without another write.
+   * Both paths are one batch whose final settlement reports the result.
+   */
+  async function deferRate(
+    lease: JobLease,
+    retryAfterMs: number | undefined,
+    rate: OutlookRateContext,
+  ) {
     const guard = authorization(lease, Date.now());
-    if (!Number.isFinite(retryAfterMs) || retryAfterMs > 86400000) {
-      const parent = await db
-        .prepare(
-          "SELECT discovery_version,import_run_id FROM sync_states WHERE user_id=? AND id=? AND connection_id=?",
-        )
-        .bind(lease.context.userId, lease.syncStateId, lease.connectionId)
-        .first<{
-          discovery_version: number;
-          import_run_id: string | null;
-        }>();
-      if (!parent) return false;
+    const decision = rateDecision({
+      retryAfterMs,
+      consecutiveFailures: rateChainDepth(rate.dedupeKey),
+    });
+    if (decision.kind === "pause") {
+      if (rate.discoveryVersion === null) return false;
       const nonce = crypto.randomUUID();
       const marker =
         "EXISTS(SELECT 1 FROM sync_states parent WHERE parent.user_id=? AND parent.id=? AND parent.discovery_version=? AND parent.pending_history_id=? AND parent.stage='paused_rate')";
       const markerValues = [
         lease.context.userId,
         lease.syncStateId,
-        parent.discovery_version + 1,
+        rate.discoveryVersion + 1,
         nonce,
       ];
       const statements: D1PreparedStatement[] = [
@@ -295,11 +346,11 @@ export function createOutlookFolderStore(db: D1Database) {
             lease.context.userId,
             lease.syncStateId,
             lease.connectionId,
-            parent.discovery_version,
+            rate.discoveryVersion,
             ...guard.values,
           ),
       ];
-      if (parent.import_run_id)
+      if (rate.importRunId)
         statements.push(
           db
             .prepare(
@@ -307,7 +358,7 @@ export function createOutlookFolderStore(db: D1Database) {
             )
             .bind(
               lease.context.userId,
-              parent.import_run_id,
+              rate.importRunId,
               lease.connectionId,
               ...markerValues,
               ...guard.values,
@@ -316,31 +367,24 @@ export function createOutlookFolderStore(db: D1Database) {
       statements.push(
         db
           .prepare(
-            `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='rate_paused' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql}${parent.import_run_id ? " AND EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.id=? AND r.stage='paused_rate')" : ""}`,
+            `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='rate_paused' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql}${rate.importRunId ? " AND EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.id=? AND r.stage='paused_rate')" : ""}`,
           )
           .bind(
             lease.context.userId,
             lease.jobId,
             ...markerValues,
             ...guard.values,
-            ...(parent.import_run_id
-              ? [lease.context.userId, parent.import_run_id]
+            ...(rate.importRunId
+              ? [lease.context.userId, rate.importRunId]
               : []),
           ),
       );
-      await db.batch(statements);
-      return Boolean(
-        await db
-          .prepare(
-            "SELECT 1 FROM jobs WHERE user_id=? AND id=? AND status='completed' AND outcome_code='rate_paused'",
-          )
-          .bind(lease.context.userId, lease.jobId)
-          .first(),
-      );
+      const results = await db.batch(statements);
+      return results.at(-1)?.meta.changes === 1;
     }
-    const dispatchAt = Date.now() + Math.max(1000, retryAfterMs);
-    const dedupeKey = `outlook:rate:${lease.jobId}`;
-    await db.batch([
+    const dispatchAt = Date.now() + decision.delayMs;
+    const dedupeKey = `outlook:rate:${decision.failures}:${lease.jobId}`;
+    const results = await db.batch([
       db
         .prepare(
           `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
@@ -370,14 +414,7 @@ export function createOutlookFolderStore(db: D1Database) {
           dedupeKey,
         ),
     ]);
-    return Boolean(
-      await db
-        .prepare(
-          "SELECT 1 FROM jobs WHERE user_id=? AND id=? AND status='completed'",
-        )
-        .bind(lease.context.userId, lease.jobId)
-        .first(),
-    );
+    return results.at(-1)?.meta.changes === 1;
   }
 
   async function commitInventoryPage(
@@ -583,6 +620,7 @@ export function createOutlookFolderStore(db: D1Database) {
   return {
     refreshInventory,
     getNextInventory,
+    readInventory,
     saveExclusions,
     stageExclusions,
     deferRate,
