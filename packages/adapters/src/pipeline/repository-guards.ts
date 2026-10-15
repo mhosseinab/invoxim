@@ -165,6 +165,21 @@ export function activeProfile(alias: string): string {
 export const activeProfileSql =
   "EXISTS(SELECT 1 FROM profiles WHERE user_id=? AND status='active')";
 /**
+ * O6: the session-live guard. A WHERE fragment over the `session` table: the
+ * session exists for this user, has not expired, and the user's profile is
+ * active. Unlike the Drive `liveSession` (D6) it has no recent-auth window.
+ * Bind order: sessionId, userId, now, userId.
+ */
+export function sessionLiveWhere(
+  session: { sessionId: string; userId: string },
+  now: number,
+): Predicate {
+  return {
+    sql: `id=? AND userId=? AND expiresAt>? AND ${activeProfileSql}`,
+    values: [session.sessionId, session.userId, now, session.userId],
+  };
+}
+/**
  * D5: the drive.file scope fragment. INT-4 migrates the drive call sites.
  * Bind order: none (correlated on the connection alias).
  */

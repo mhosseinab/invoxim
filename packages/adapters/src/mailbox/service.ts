@@ -10,7 +10,11 @@ import {
   MailboxError,
   requireRecentMailboxSession,
 } from "@invoxim/core";
-import { activeProfile, activeProfileSql } from "../pipeline/repository-guards";
+import {
+  activeProfile,
+  activeProfileSql,
+  sessionLiveWhere,
+} from "../pipeline/repository-guards";
 import { stateHash } from "../security/helpers";
 import { createOAuthStateStore } from "../security/oauth-state";
 import type { CredentialCipher } from "../security/types";
@@ -463,16 +467,13 @@ export function createMailboxService(
 }
 
 async function liveMailboxSession(db: D1Database, session: MailboxSession) {
+  const live = sessionLiveWhere(
+    { sessionId: session.sessionId, userId: session.tenant.userId },
+    Date.now(),
+  );
   const found = await db
-    .prepare(
-      `SELECT id FROM session WHERE id=? AND userId=? AND expiresAt>? AND ${activeProfileSql}`,
-    )
-    .bind(
-      session.sessionId,
-      session.tenant.userId,
-      Date.now(),
-      session.tenant.userId,
-    )
+    .prepare(`SELECT id FROM session WHERE ${live.sql}`)
+    .bind(...live.values)
     .first();
   if (!found) throw new MailboxError("UNAUTHENTICATED");
 }
