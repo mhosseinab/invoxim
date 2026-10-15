@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { EXTRACTION_PROMPT_VERSION } from "@invoxim/contracts";
 import {
   type ApprovedAiConfig,
+  aiRunIdentityKey,
   createDocumentTextExtractor,
   type DocumentInput,
   type JobLease,
@@ -959,6 +960,68 @@ it("CLEF-01 classifier authorization cannot substitute consent, revision, mode o
       .bind(tenant.userId)
       .first("n"),
   ).toBe(0);
+});
+it("AI-7 classification store input lacking identity cannot bypass the attemptId check to reserve, authorize or settle", async () => {
+  const { createClassificationUsageStore } =
+    await import("../../../packages/adapters/src/ai/budget");
+  const repository = createPipelineRepository(db, {
+    processingDigest: async () => "f".repeat(64),
+  });
+  const work = await repository.load(lease);
+  if (!work) throw new Error("fixture work missing");
+  const classifier = await createReceiptClassifierFactory(db, classification, {
+    binding: { run: vi.fn() },
+  }).open(lease, work, [], {
+    config,
+    extractor: { extract: vi.fn() },
+    pricing: new Map([[config.fingerprint, price]]),
+  });
+  const store = createClassificationUsageStore(db, {
+    lease,
+    policy,
+    pricing: classifier.pricing,
+    authorization: classifier.authorization,
+  });
+  type Attempt = Parameters<typeof store.reserve>[0];
+  const forged = { tenant, config: classifier.config } as unknown as Attempt;
+  const forgedWithClaim = {
+    tenant,
+    config: classifier.config,
+    attemptNumber: 1,
+    attemptId: "f".repeat(64),
+  } as unknown as Attempt;
+  for (const input of [forged, forgedWithClaim]) {
+    expect(await store.reserve(input)).toBe("budget");
+    expect(await store.authorize(input)).toBe(false);
+    await store.settle(input, {
+      state: "known",
+      usage: { input: 1, output: 1, other: 0, source: "reported" },
+    });
+  }
+  const events = () =>
+    db
+      .prepare("SELECT COUNT(*) AS n FROM usage_events WHERE user_id=?")
+      .bind(tenant.userId)
+      .first("n");
+  expect(await events()).toBe(0);
+  // Positive control: a correctly claimed attempt on the same store reserves.
+  const checkpoint = {
+    tenant,
+    config: classifier.config,
+    identity: {
+      documentId: "d",
+      contentHash: work.documents[0]?.contentHash ?? "",
+      extractionVersion: "email-classification-v1",
+    },
+  };
+  const valid = {
+    ...checkpoint,
+    attemptNumber: 1,
+    attemptId: `${await aiRunIdentityKey(checkpoint)}:1`,
+  };
+  expect(await store.reserve(valid)).toBe("reserved");
+  expect(await store.authorize(valid)).toBe(true);
+  expect(await events()).toBe(1);
 });
 for (const pauseAfter of [
   "classifier",
