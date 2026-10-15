@@ -182,6 +182,26 @@ it.each([
   },
 );
 it.each([
+  ["token carries another nonce", { nonce: "attacker-chosen-nonce" }],
+  ["token carries no nonce", { nonce: undefined }],
+])(
+  "Outlook authorization-code exchange with nonce '' is rejected before the code is redeemed (%s)",
+  async (_label, extra) => {
+    const fixture = await signed(extra);
+    const calls = transport(tokens({ id_token: fixture.jwt }), {
+      keys: [fixture.key],
+    });
+    await expect(
+      createOutlookAuthorization(configuration).exchange({
+        code: "synthetic-code",
+        ...input,
+        nonce: "",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(calls).toEqual([]);
+  },
+);
+it.each([
   "wrong-signature",
   "wrong-key-issuer",
   "duplicate-key",

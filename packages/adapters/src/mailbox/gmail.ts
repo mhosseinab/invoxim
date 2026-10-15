@@ -44,9 +44,9 @@ export function createGmailAuthorization(configuration: {
   }
   async function identityToken(
     idToken: string | undefined,
-    nonce?: string,
+    expectedNonce: string | null,
   ): Promise<MailboxIdentity> {
-    const claims = await google.verifyIdToken(idToken, nonce);
+    const claims = await google.verifyIdToken(idToken, expectedNonce);
     return { subject: claims.sub, address: claims.email.toLowerCase() };
   }
   return {
@@ -54,6 +54,8 @@ export function createGmailAuthorization(configuration: {
       return (await google.authorizationUrl(input)).toString();
     },
     async exchange(input) {
+      // Never redeem a code without the state-bound nonce.
+      if (!input.nonce) throw new MailboxError("INVALID_STATE");
       const result = await google.token({
         grant_type: "authorization_code",
         code: input.code,
@@ -85,7 +87,7 @@ export function createGmailAuthorization(configuration: {
       if (access.subject !== expectedIdentity.subject)
         throw new MailboxError("ACCOUNT_MISMATCH");
       if (result.id_token) {
-        const identity = await identityToken(result.id_token);
+        const identity = await identityToken(result.id_token, null);
         if (
           identity.subject !== access.subject ||
           identity.address !== access.address

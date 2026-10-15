@@ -255,7 +255,7 @@ export function createDriveAuthorization(
       if (access.sub !== stored.data.subject)
         throw new ArchiveAuthorizationError("ACCOUNT_MISMATCH");
       if (result.id_token) {
-        const identity = await google.verifyIdToken(result.id_token);
+        const identity = await google.verifyIdToken(result.id_token, null);
         if (identity.sub !== access.sub)
           throw new ArchiveAuthorizationError("ACCOUNT_MISMATCH");
       }
