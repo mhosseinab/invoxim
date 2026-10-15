@@ -34,26 +34,21 @@ export function createJobRoutes() {
           .success
       )
         return apiError(400, "invalid_request");
-      // Ownership/review classification precedes the jobs-config gate so a
-      // missing connection is 404 and a non-live one is 409 even when jobs
-      // are unconfigured.
-      const classified = await classifyManualSync(
-        ready.db,
-        ready.tenant.userId,
-        id.data,
-      );
-      if (classified === "not-found") return apiError(404, "not_found");
-      if (classified === "review-required")
-        return apiError(409, "review_required");
+      // W14: store.manualSync owns the single ownership/eligibility
+      // statement. Without jobs configured the same classification still maps
+      // a missing mailbox to 404 and a non-live one to 409 before the 503.
       const policy = jobConfiguration(context.env ?? {});
-      if (!policy) return apiError(503, "jobs_not_configured");
-      const result = await createJobStore(ready.db, { policy }).manualSync(
-        ready.tenant,
-        id.data,
-      );
+      const result = policy
+        ? await createJobStore(ready.db, { policy }).manualSync(
+            ready.tenant,
+            id.data,
+          )
+        : await classifyManualSync(ready.db, ready.tenant.userId, id.data);
       if (result.kind === "not-found") return apiError(404, "not_found");
       if (result.kind === "review-required")
         return apiError(409, "review_required");
+      if (result.kind === "eligible")
+        return apiError(503, "jobs_not_configured");
       if (result.kind === "cooldown") return apiError(429, "sync_cooldown");
       return json(syncQueuedResponseSchema.parse({ jobId: result.jobId }), 202);
     } catch (cause) {

@@ -58,27 +58,47 @@ export class JobStorageError extends Error {
     this.name = "JobStorageError";
   }
 }
+export type ManualSyncTarget =
+  | { kind: "not-found" }
+  | { kind: "review-required" }
+  | { kind: "eligible"; connection: EligibleConnection };
 /**
- * W14: one ownership/eligibility classification for manual sync. Returns
- * `not-found` when the tenant does not own the mailbox connection,
- * `review-required` when it exists but is not live/eligible, and `eligible`
- * otherwise. Single statement so the route can map 404/409 before the
- * jobs-not-configured gate without adding to the G-40 budget.
+ * W14: the one ownership/eligibility statement for manual sync. `not-found`
+ * when the tenant does not own the mailbox, `review-required` when it is owned
+ * but not live/consented, `eligible` with the newest live consent otherwise.
+ * The outer one-row select always yields a row, so an absent row is a storage
+ * anomaly and fails closed. store.manualSync runs this through its budgeted
+ * `prepare`; the route only calls it directly when jobs are not configured.
  */
 export async function classifyManualSync(
-  db: D1Database,
+  db: Pick<D1Database, "prepare">,
   userId: string,
   connectionId: string,
   at: number = Date.now(),
-): Promise<"not-found" | "review-required" | "eligible"> {
+): Promise<ManualSyncTarget> {
   const row = await db
     .prepare(
-      `SELECT EXISTS(SELECT 1 FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=?) AS eligible, EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND kind='mailbox') AS owned`,
+      `SELECT e.id,e.generation,e.consent_id,e.next_sync_at,e.manual_sync_at,EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND kind='mailbox') AS owned FROM (SELECT 1) LEFT JOIN (SELECT c.id,c.generation,pc.id AS consent_id,c.next_sync_at,c.manual_sync_at FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=? ORDER BY pc.accepted_at DESC,pc.id LIMIT 1) e ON 1`,
     )
-    .bind(userId, connectionId, at, userId, connectionId)
-    .first<{ eligible: number; owned: number }>();
-  if (!row || row.eligible) return "eligible";
-  return row.owned ? "review-required" : "not-found";
+    .bind(userId, connectionId, userId, connectionId, at)
+    .first<
+      { [K in keyof EligibleConnection]: EligibleConnection[K] | null } & {
+        owned: number;
+      }
+    >();
+  if (row?.owned !== 1) return { kind: "not-found" };
+  if (row.id === null || row.generation === null || row.consent_id === null)
+    return { kind: "review-required" };
+  return {
+    kind: "eligible",
+    connection: {
+      id: row.id,
+      generation: row.generation,
+      consent_id: row.consent_id,
+      next_sync_at: row.next_sync_at,
+      manual_sync_at: row.manual_sync_at,
+    },
+  };
 }
 export function createJobStore(
   db: D1Database,
@@ -294,13 +314,6 @@ export function createJobStore(
       .run();
     return result.meta.changes === 1;
   }
-  async function eligibleConnection(ctx: TenantContext, connectionId: string) {
-    return prepare(
-      `SELECT c.id,c.generation,pc.id AS consent_id,c.next_sync_at,c.manual_sync_at FROM connections c JOIN profiles p ON p.user_id=c.user_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id WHERE c.user_id=? AND c.id=? AND ${connectionConsentLiveSql()} AND pc.accepted_at<=? ORDER BY pc.accepted_at DESC,pc.id LIMIT 1`,
-    )
-      .bind(ctx.userId, connectionId, now())
-      .first<EligibleConnection>();
-  }
   async function schedule(
     ctx: TenantContext,
     connectionId: string,
@@ -313,18 +326,12 @@ export function createJobStore(
     | { kind: "cooldown" }
   > {
     checkText(connectionId);
-    const row =
-      knownConnection ?? (await eligibleConnection(ctx, connectionId));
-    if (!row) {
-      // W14: ownership check (was job-routes.ts:65). Distinguish missing
-      // connection from one that exists but is not live/eligible.
-      const owned = await prepare(
-        "SELECT 1 FROM connections WHERE user_id=? AND id=? AND kind='mailbox'",
-      )
-        .bind(ctx.userId, connectionId)
-        .first();
-      return owned ? { kind: "review-required" } : { kind: "not-found" };
-    }
+    // W14: ownership and eligibility in the one classification statement.
+    const target: ManualSyncTarget = knownConnection
+      ? { kind: "eligible", connection: knownConnection }
+      : await classifyManualSync({ prepare }, ctx.userId, connectionId, now());
+    if (target.kind !== "eligible") return target;
+    const row = target.connection;
     const at = now();
     if (
       manual &&

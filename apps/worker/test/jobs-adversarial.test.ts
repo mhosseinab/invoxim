@@ -9,10 +9,13 @@ import { createLoginAuth } from "@invoxim/adapters";
 import type { JobPolicy, TenantContext } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
-import { createJobStore } from "../../../packages/adapters/src/jobs/store";
+import {
+  classifyManualSync,
+  createJobStore,
+} from "../../../packages/adapters/src/jobs/store";
 import worker from "../src/index";
 import { createJobRuntime } from "../src/job-runtime";
-import { statementCounter } from "./support/faults";
+import { faultingDatabase, statementCounter } from "./support/faults";
 
 const db = env.DB;
 
@@ -107,6 +110,135 @@ it.each([
     ).toBe(0);
   },
 );
+
+const syntheticQueue: Queue<{ schemaVersion: 1; jobId: string }> = {
+  async send() {
+    throw new Error("Unexpected queue send from the manual sync route");
+  },
+  async sendBatch() {
+    throw new Error("Unexpected synthetic batch send");
+  },
+  async metrics() {
+    throw new Error("Unexpected synthetic queue metrics");
+  },
+};
+const jobBindings = {
+  ...bindings,
+  JOBS_ENABLED: "true",
+  JOBS: syntheticQueue,
+};
+async function manualSyncRoute(id: string, routeBindings: object) {
+  return worker.fetch(
+    new Request(`${configuration.origin}/api/connections/${id}/sync`, {
+      method: "POST",
+      headers: {
+        cookie,
+        origin: configuration.origin,
+        "content-type": "application/json",
+      },
+      body: "{}",
+    }),
+    routeBindings,
+  );
+}
+/** A jobs-a mailbox with live background consent; only the given states vary. */
+async function jobsAMailbox(
+  id: string,
+  schedulingState: "awaiting_import" | "active" | "paused",
+  state = "connected",
+) {
+  await db
+    .prepare(
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state,scheduling_state,credential_ciphertext,credential_key_version) VALUES(?,'jobs-a','mailbox','gmail',?,?,?,?,'synthetic-envelope',1)",
+    )
+    .bind(id, `subject-${id}`, `${id}@example.invalid`, state, schedulingState)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,'jobs-a',?,1,'synthetic','synthetic',1,0,1)",
+    )
+    .bind(`consent-${id}`, id)
+    .run();
+}
+
+it.each([
+  ["w14-paused", "paused", "connected"],
+  ["w14-awaiting", "awaiting_import", "connected"],
+  ["w14-disconnected", "active", "disconnected"],
+] as const)(
+  "W14: manual sync of %s with live consent is review-required with or without jobs configured",
+  async (id, schedulingState, state) => {
+    await jobsAMailbox(id, schedulingState, state);
+    for (const routeBindings of [bindings, jobBindings]) {
+      const response = await manualSyncRoute(id, routeBindings);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        error: { code: "review_required" },
+      });
+    }
+    expect(
+      await db
+        .prepare("SELECT COUNT(*) AS count FROM jobs WHERE connection_id=?")
+        .bind(id)
+        .first("count"),
+    ).toBe(0);
+  },
+);
+
+it("W14: a configured manual sync reads connection ownership and eligibility once", async () => {
+  await jobsAMailbox("w14-live", "active");
+  const reads = faultingDatabase(db, [
+    {
+      match: (sql) => /^SELECT\b/.test(sql) && /\bFROM connections\b/.test(sql),
+      on: "first",
+      once: false,
+      fire: ({ proceed }) => proceed(),
+    },
+  ]);
+  const response = await manualSyncRoute("w14-live", {
+    ...jobBindings,
+    DB: reads.db,
+  });
+  expect(response.status).toBe(202);
+  expect(reads.fireCounts[0]).toBe(1);
+});
+
+it("W14: store.manualSync classifies missing, foreign and non-live mailboxes in one statement", async () => {
+  const ctx = await tenant("w14-store");
+  await db
+    .prepare("UPDATE connections SET scheduling_state='paused' WHERE id=?")
+    .bind(`conn-${ctx.userId}`)
+    .run();
+  for (const [id, kind] of [
+    [`conn-${ctx.userId}`, "review-required"],
+    ["conn-w14-missing", "not-found"],
+    ["connection-jobs-b", "not-found"],
+  ] as const) {
+    const { db: measured, count } = statementCounter(db);
+    expect(
+      await createJobStore(measured, {
+        policy,
+        clock: () => instant,
+      }).manualSync(ctx, id),
+    ).toEqual({ kind });
+    expect(count()).toBe(1);
+  }
+});
+
+it("W14: an empty ownership read fails closed instead of reporting eligible", async () => {
+  const empty = {
+    prepare: () => ({ bind: () => ({ first: async () => null }) }),
+  } as unknown as D1Database;
+  expect(
+    await classifyManualSync(empty, "jobs-a", "connection-jobs-a"),
+  ).toEqual({ kind: "not-found" });
+  expect(
+    await createJobStore(empty, { policy }).manualSync(
+      { userId: "jobs-a", authority: "session" } as TenantContext,
+      "connection-jobs-a",
+    ),
+  ).toEqual({ kind: "not-found" });
+});
 
 const policy: JobPolicy = {
   dispatchLimit: 2,
