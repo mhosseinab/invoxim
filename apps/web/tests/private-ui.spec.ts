@@ -1461,6 +1461,67 @@ test("UX-PRIVATE-LISTS-01 a permanent source failure never offers a retry", asyn
   ).toHaveCount(0);
 });
 
+test("UX-PRIVATE-LISTS-01 a revoked mailbox authorization points to reconnecting in Connections", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: [
+          {
+            id: "reauthorize-source",
+            documentId: "reauthorize-document",
+            purchaseId: null,
+            sourceMessageId: "reauthorize-message",
+            reason: "document-review",
+            missingFields: [],
+            sourceContext: {
+              mailboxAddress: "receipts@example.test",
+              receivedAt: 1,
+              provider: "gmail",
+              available: true,
+            },
+          },
+        ],
+        hasMore: false,
+      },
+    }),
+  );
+  let attempts = 0;
+  await page.route("**/api/review/reauthorize-source/source", (route) => {
+    attempts += 1;
+    return route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "source_reauthorization_required",
+          message: "Request unavailable",
+          requestId: "synthetic",
+          retryable: false,
+        },
+      },
+    });
+  });
+  await page.goto("/needs-attention");
+  const row = page.locator(".private-review");
+  await row.getByRole("button", { name: "Review email", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(
+    "This inbox needs to be reconnected before the source email can be shown.",
+  );
+  await expect(dialog).not.toContainText("retrying will not change that");
+  await expect(dialog).not.toContainText("no longer available");
+  await expect(dialog).not.toContainText("You can retry");
+  await expect(
+    dialog.getByRole("button", { name: "Show source email" }),
+  ).toHaveCount(0);
+  const link = dialog.getByRole("link", { name: "Reconnect in Connections" });
+  await expect(link).toHaveAttribute("href", "/connections");
+  // One list preview plus the dialog's own load; nothing retries afterwards.
+  expect(attempts).toBe(2);
+});
+
 test("UX-PRIVATE-LISTS-01 actor change while identifying email never publishes old metadata", async ({
   page,
 }) => {

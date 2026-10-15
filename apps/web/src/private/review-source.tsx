@@ -29,6 +29,8 @@ export function ReviewSource({
   const [error, setError] = useState("");
   // The server marked the failure permanent (retryable:false): no retry offer.
   const [permanent, setPermanent] = useState(false);
+  // The mailbox authorization was rejected: reconnecting it, not a retry, helps.
+  const [reauthorize, setReauthorize] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const autoRequested = useRef(false);
   useEffect(() => () => controller.current?.abort(), []);
@@ -60,7 +62,16 @@ export function ReviewSource({
         return;
       }
       if (request.signal.aborted) return;
-      if (failure instanceof PrivateLoadError && failure.retryable === false) {
+      if (
+        failure instanceof PrivateLoadError &&
+        failure.code === "source_reauthorization_required"
+      ) {
+        setPermanent(true);
+        setReauthorize(true);
+      } else if (
+        failure instanceof PrivateLoadError &&
+        failure.retryable === false
+      ) {
         setPermanent(true);
         setError(copy["review.sourcePermanentlyUnavailable"]);
       } else
@@ -141,6 +152,11 @@ export function ReviewSource({
         <button type="button" disabled={loading} onClick={() => void load()}>
           {loading ? "Loading source email…" : "Show source email"}
         </button>
+      ) : reauthorize ? (
+        <p>
+          {copy["review.sourceReauthorizationRequired"]}{" "}
+          <a href="/connections">{copy["review.sourceReconnectLink"]}</a>
+        </p>
       ) : (
         <p className="muted">The source email is no longer available.</p>
       )}

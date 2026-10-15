@@ -18,6 +18,7 @@ const safeCodes = new Set([
   "processing_unavailable",
   "allowance_unavailable",
   "mailbox_reconnect_required",
+  "source_reauthorization_required",
   "mailbox_api_disabled",
   "conflict",
   "unauthorized",

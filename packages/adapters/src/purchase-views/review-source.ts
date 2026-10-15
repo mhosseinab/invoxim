@@ -13,9 +13,12 @@ import { createCredentialVault } from "../security/vault";
 import { loadOutlookReviewMetadata } from "./outlook-review-metadata";
 
 /**
- * `source_unavailable` is transient (network, deadline, provider 429/5xx) and
- * stays retryable. `source_unreadable` is a provider answer a retry cannot
- * change (message gone, access revoked, response over the cap or off-schema).
+ * `source_unavailable` is transient (network, deadline, provider 429/5xx,
+ * Gmail 403 rate limits) and stays retryable. `source_reauthorization_required`
+ * is a rejected mailbox authorization (Gmail 401/auth 403, Outlook
+ * AUTH_REQUIRED) that reconnecting the mailbox fixes; a retry does not.
+ * `source_unreadable` is a provider answer neither a retry nor a reconnect can
+ * change (message gone, admin policy, response over the cap or off-schema).
  */
 export class ReviewSourceError extends Error {
   constructor(
@@ -23,6 +26,7 @@ export class ReviewSourceError extends Error {
       | "not_found"
       | "source_unavailable"
       | "source_unreadable"
+      | "source_reauthorization_required"
       | "source_changed",
   ) {
     super(code);
@@ -52,6 +56,89 @@ const metadataPartSchema = z.object({
     .optional(),
   parts: z.array(z.unknown()).max(64).optional(),
 });
+/** Gmail 403 reasons that are quota/rate limits: transient, not an authorization failure. */
+const GMAIL_RATE_LIMIT_REASONS = new Set([
+  "rateLimitExceeded",
+  "userRateLimitExceeded",
+  "dailyLimitExceeded",
+]);
+/** A Workspace admin policy blocks API access; reconnecting the mailbox cannot change it. */
+const GMAIL_POLICY_REASONS = new Set(["domainPolicy"]);
+const GMAIL_ERROR_BODY_LIMIT = 4096;
+const gmailErrorSchema = z.object({
+  error: z.object({
+    errors: z.array(z.object({ reason: z.string().max(64) })).max(8),
+  }),
+});
+/**
+ * Reads at most 4 KiB of a Gmail 403 body and returns only the machine
+ * `reason` values (zod strips everything else). Provider message text is never
+ * returned, logged or thrown. `null` means the body could not be read in time
+ * (transport trouble); an oversized or off-schema body has no usable reason.
+ */
+async function gmailForbiddenReasons(
+  response: Response,
+  assertWithinDeadline: () => void,
+): Promise<string[] | null> {
+  const reader = response.body?.getReader();
+  if (!reader) return [];
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (let reads = 0; reads < 64; reads++) {
+      assertWithinDeadline();
+      const next = await reader.read();
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > GMAIL_ERROR_BODY_LIMIT) return [];
+      chunks.push(next.value);
+    }
+  } catch {
+    return null;
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const parsed = gmailErrorSchema.safeParse(
+      JSON.parse(
+        new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+          bytes,
+        ),
+      ),
+    );
+    return parsed.success
+      ? parsed.data.error.errors.map((item) => item.reason)
+      : [];
+  } catch {
+    return [];
+  }
+}
+/** Gmail failure status → review-source code. 403 needs the bounded reason. */
+async function gmailFailureCode(
+  response: Response,
+  assertWithinDeadline: () => void,
+): Promise<ReviewSourceError["code"]> {
+  if (response.status === 401) return "source_reauthorization_required";
+  if (response.status === 403) {
+    const reasons = await gmailForbiddenReasons(response, assertWithinDeadline);
+    if (reasons === null) return "source_unavailable";
+    if (reasons.some((reason) => GMAIL_RATE_LIMIT_REASONS.has(reason)))
+      return "source_unavailable";
+    if (reasons.some((reason) => GMAIL_POLICY_REASONS.has(reason)))
+      return "source_unreadable";
+    return "source_reauthorization_required";
+  }
+  return [404, 410].includes(response.status)
+    ? "source_unreadable"
+    : "source_unavailable";
+}
 const headersSchema = z.object({
   id: z.string(),
   payload: metadataPartSchema.extend({
@@ -98,12 +185,11 @@ export async function loadGmailReviewHeaders(
     throw new ReviewSourceError("source_unavailable");
   }
   if (!response.ok || !response.body) {
+    const code = response.ok
+      ? "source_unavailable"
+      : await gmailFailureCode(response, assertWithinDeadline);
     await response.body?.cancel().catch(() => {});
-    throw new ReviewSourceError(
-      [401, 403, 404, 410].includes(response.status)
-        ? "source_unreadable"
-        : "source_unavailable",
-    );
+    throw new ReviewSourceError(code);
   }
   const reader = response.body.getReader();
   const cancel = () => {
@@ -201,20 +287,23 @@ export async function loadGmailReviewHeaders(
   };
 }
 /**
- * Outlook metadata failures a retry cannot change: Graph 404/401/403, or a
- * response that fails the metadata schema/identity checks. Generic transport
- * `UNAVAILABLE` (network, deadline, redirect, size) and `RATE_LIMITED` stay
- * transient because the transport does not distinguish them.
+ * Outlook metadata failure → review-source code. Graph 401/403
+ * (`AUTH_REQUIRED`) needs a mailbox reconnect. Graph 404 or a response that
+ * fails the metadata schema/identity checks is permanently unreadable. Generic
+ * transport `UNAVAILABLE` (network, deadline, redirect, size) and
+ * `RATE_LIMITED` stay transient because the transport does not distinguish them.
  */
-function permanentOutlookFailure(cause: unknown): boolean {
-  if (cause instanceof DiscoveryError)
-    return (
-      cause.code === "SOURCE_UNAVAILABLE" || cause.code === "AUTH_REQUIRED"
-    );
-  return (
-    cause instanceof z.ZodError ||
+function outlookFailureCode(cause: unknown): ReviewSourceError["code"] {
+  if (cause instanceof DiscoveryError) {
+    if (cause.code === "AUTH_REQUIRED")
+      return "source_reauthorization_required";
+    if (cause.code === "SOURCE_UNAVAILABLE") return "source_unreadable";
+    return "source_unavailable";
+  }
+  return cause instanceof z.ZodError ||
     (cause instanceof Error && cause.message === "OUTLOOK_REVIEW_METADATA")
-  );
+    ? "source_unreadable"
+    : "source_unavailable";
 }
 /** O3: the one open-review→document→source→connection join. Bind order: userId, reviewId. */
 const reviewConnectionJoin =
@@ -326,11 +415,7 @@ export function createReviewSourceReader(
               );
       } catch (cause) {
         if (cause instanceof ReviewSourceError) throw cause;
-        throw new ReviewSourceError(
-          permanentOutlookFailure(cause)
-            ? "source_unreadable"
-            : "source_unavailable",
-        );
+        throw new ReviewSourceError(outlookFailureCode(cause));
       }
       const after = await source(tenant, id);
       const latestCredentials = await vault.read(

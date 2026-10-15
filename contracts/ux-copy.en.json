@@ -55,7 +55,9 @@
     "privacy.pilotDeclined": "Optional usage measurement is off. All product features remain available.",
     "release.unavailable": "This feature is not available in this beta.",
     "import.reviewNeeded": "Purchase documents were found, but some details need your review. No uncertain payments have been added to spending.",
-    "review.sourcePermanentlyUnavailable": "The source email cannot be shown here, and retrying will not change that. You can still find it in the inbox listed above by its received time."
+    "review.sourcePermanentlyUnavailable": "The source email cannot be shown here, and retrying will not change that. You can still find it in the inbox listed above by its received time.",
+    "review.sourceReauthorizationRequired": "This inbox needs to be reconnected before the source email can be shown. Its access was revoked or has expired. Reconnecting the inbox in Connections restores access; this question stays open.",
+    "review.sourceReconnectLink": "Reconnect in Connections"
   },
   "guards": {
     "landing.betaAllowance": "Show only when hosted processing is actually available; place real remaining allowance in authenticated review.",
