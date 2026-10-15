@@ -75,7 +75,7 @@ Effect on this plan (findings O1–O14 in the appendix):
   - Otherwise the card depends on QA-1.
 - **G8. Cross-cutting sweeps run last, one at a time (W3).** They touch about 20–30 files across lanes. Re-run the dead-code sweep at that point, because earlier cards change usage.
 - **G9. Appendix IDs are the specification.** Cards cite IDs such as `P2` or `ext#12` rather than copying the finding. Read the appendix entry before starting.
-- **G-T17. T17 freeze (OD-12).** Until OD-12 is answered, refactor lanes must not edit these files, because the owner may still be committing T17 fixes:
+- **G-T17. T17 freeze (OD-12). Lifted 2026-10-15:** the owner answered OD-12 ("continue implementing the rest"), so the files below are no longer frozen. Original rule, kept for history: until OD-12 is answered, refactor lanes must not edit these files, because the owner may still be committing T17 fixes:
   - `discovery/outlook-*`
   - `apps/worker/src/mailbox-runtime.ts`
   - `mailbox/service.ts`
@@ -133,13 +133,20 @@ Additions:
 | OD-3 | What were `overriddenFields` meant to cover ("total" checks are dead; currency override treated 2 ways: plan.ts:430 vs 207/711)? Same item as P0.11/K4. | Make it a typed union of the fields that can actually be overridden; currency override follows plan.ts:430. | CORE-8 |
 | OD-4 | Wire in or delete the test-only modules `lifecycle/restore.ts`, `fx/purchase-reporting.ts`, `core/lifecycle/export.ts spreadsheetText`? These were re-checked through the barrels at 33afa0e and have no production consumer. *(`purchase-views/review-source.ts` was removed from this list: it is production code, reached via the adapters barrel at index.ts:89 and extended by T17.)* | Delete them with their tests; git keeps them. Decide `purchase-reporting` **before PIPE-8**, which merges FX totals. | HYG-2 (PIPE), PIPE-8 |
 | OD-5 | Drop ESLint in favour of Biome (T3)? | Yes. Package boundaries are then enforced only by `tools/check-boundaries.mjs`. | TOOL-3 |
-| OD-6 | `evidence/` is gitignored but 165 files are tracked (T2). Which way? | Keep tracking it and remove the ignore rule; AGENTS.md relies on evidence records. | TOOL-4 |
+| OD-6 | `evidence/` is gitignored but 165 files are tracked (T2). Which way? | ~~Keep tracking it and remove the ignore rule.~~ **Answered by the owner (2026-10-15): untracked.** The owner removed `evidence/` in fe99887 and ignores `evidence/implementation/` (b2a2a88). Docs state that evidence records are kept outside git; backlog paths are historical. | ~~TOOL-4~~ (superseded) |
 | OD-7 | The real allowed-email is committed in `wrangler.jsonc:15` (also in history since 8172a32). | Move it to a Wrangler secret. History stays as it is; rewriting it is your call. | TOOL-5 |
 | OD-8 | Focus refresh discards an open correction editor (F4). | Background refresh, matching onboarding. | WEB-7 |
 | OD-9 | `queryLimit` 24–39 is accepted but disables extraction (0.4). | Narrow the schema to exactly 40, then name the constant. | WRK-3 |
 | OD-10 | Private nav lacks `/recurring` (F6). | Add it only if recurring ships; otherwise leave it. | WEB-8 |
-| OD-11 | When a run hits its budget, Outlook returns `retry/transient` (16 sites, magic thresholds), while Gmail `pages.ts:144` and the core engine return `paused/budget`. Which is intended? | Keep each provider's current outcome, pin both in tests, and name the thresholds. Unify only if you say the Gmail behaviour is wrong. | INT-5 (O5 part) |
-| OD-12 | Freeze the T17 Outlook files to refactor lanes until T17 is accepted (G-T17)? | **Yes.** INT-5 and INT-7 wait. Every other lane proceeds. | INT-2 (mailbox part), INT-5, INT-7, WRK-6 (runtime SQL) |
+| OD-11 | When a run hits its budget, Outlook returns `retry/transient` (16 sites, magic thresholds), while Gmail `pages.ts:144` and the core engine return `paused/budget`. Which is intended? | Keep each provider's current outcome, pin both in tests, and name the thresholds. Unify only if you say the Gmail behaviour is wrong. **Answered by the owner (2026-10-15): the default.** Keep each provider's outcome. | INT-5 (O5 part) |
+| OD-12 | Freeze the T17 Outlook files to refactor lanes until T17 is accepted (G-T17)? | **Yes.** INT-5 and INT-7 wait. Every other lane proceeds. **Answered by the owner (2026-10-15): freeze lifted** ("continue implementing the rest"). G-T17 no longer applies. | ~~INT-2 (mailbox part), INT-5, INT-7, WRK-6 (runtime SQL)~~ (unblocked) |
+
+### Owner answers recorded 2026-10-15
+
+- **OD-6: untracked.** Evidence records stay outside git (fe99887 removed `evidence/`; b2a2a88 ignores `evidence/implementation/`). TOOL-4 is superseded.
+- **OD-11: the recommended default.** Keep each provider's budget-shortfall outcome.
+- **OD-12: freeze lifted** ("continue implementing the rest"). G-T17 no longer blocks any card.
+- **PIPE-1 rule:** a committed source is processed; unsupported siblings stay visible as unsupported parts; the progress review count equals the open review items.
 
 ---
 
@@ -174,7 +181,7 @@ graph LR
   CON2 --> SEC1[SEC-1 signToken]
   CORE7[CORE-7 vocab unions] --> CON4[CON-4 enum from core]
   PIPE4[PIPE-4 leaseLive] --> INT5[INT-5 Outlook activation gate G1-G4+O5]
-  OD12{{OD-12 T17 freeze}} -.-> INT5
+  OD12{{OD-12 T17 freeze, lifted}} -.-> INT5
   PIPE5[PIPE-5 guards + review-source lookup] --> WRK6
   PIPE3 --> WRK6
   INT5 --> INT7[INT-7 outlook splits]
@@ -219,7 +226,7 @@ graph LR
   - WRK-7 (verify-and-close)
   - AI-2, CORE-3, PIPE-2, WEB-1 (unverified)
   - CORE-8 (needs OD-3)
-  - INT-5 (Outlook activation gate; needs OD-12)
+  - INT-5 (Outlook activation gate; OD-12 answered: freeze lifted)
 - **P0b** (dead code and false coverage): CORE-2, CORE-4, INT-1, AI-3, CON-3, HYG-2, TOOL-1
 - **P2** (test infrastructure): QA-1 to QA-5, WEB-5
 - **P1** (consolidation):
@@ -262,7 +269,7 @@ graph LR
 
 | ID | Task (refs) | Write-set | Depends / OD | Size |
 |---|---|---|---|---|
-| PIPE-1 [$] | **P0.5 divergence.** RED test: for a `parse_state` that is not ready/extracted, `commit` (repository.ts:1154) and `skipDocument` (:1232) return different `processing_status`. Write the intended rule into the test, then extract one SQL CASE fragment. **G7 applies**: keep the statement prefix. | repository.ts, pipeline test | — (G7) | S |
+| PIPE-1 [$] | **P0.5 divergence.** RED test: for a `parse_state` that is not ready/extracted, `commit` (repository.ts:1154) and `skipDocument` (:1232) return different `processing_status`. Write the intended rule into the test, then extract one SQL CASE fragment. **Owner rule (2026-10-15):** a committed source is processed; unsupported siblings stay visible as unsupported parts; the progress review count equals the open review items. **G7 applies**: keep the statement prefix. | repository.ts, pipeline test | — (G7) | S |
 | PIPE-2 [T] | **P0.9 unverified.** Make `processingDigest` required in the prod interface (P7). Tests pass it explicitly. | repository.ts types, tests | after PIPE-1 | S |
 | PIPE-3 [T] | **P1.5a** connection/consent "live" fragment (~10×, drifted: store.ts:315, repository-guards.ts:33). Consent-review lookup with one Zod schema (P1, 4×). Lives in `pipeline/repository-guards.ts`. | repository-guards.ts, repository.ts, jobs/store.ts, onboarding-recovery.ts | QA-1, QA-2 | M |
 | PIPE-4 [T] | **P1.5b** `leaseLive({alias, extras})` (repository-guards.ts:29, jobs/store.ts:179, sources.ts:145). Export it for INT-5. (G2, ext#12) | repository-guards.ts, jobs/store.ts | PIPE-3 | S |
@@ -355,7 +362,7 @@ graph LR
 | TOOL-1 | Delete the broken Python blueprint tools and their references in .agents/ADAPTERS.md, START_HERE and security-gates.mjs:88 (T1). Delete the stale spikes/ allowlist entries (T12). Wire `clef-eval.mjs` to a script; remove the stub scripts (T7). Ignore `.mimocode/` and `.aws/` (T13). | tools/**, package.json, .gitignore | — | S |
 | TOOL-2 | Packages: `build = tsc --noEmit` duplicates typecheck (T4). CI: dependency-policy runs twice, and test:security re-runs integration tests (T8). **CI change: show the diff to the user before merging.** | packages/*/package.json, .github/** | — | S |
 | TOOL-3 | Drop ESLint; derive the Prettier file list (T3) | root config | OD-5 | S |
-| TOOL-4 | Apply the evidence/ policy (T2) | .gitignore | OD-6 | S |
+| TOOL-4 | ~~Apply the evidence/ policy (T2)~~ **Superseded (2026-10-15).** OD-6 was answered "untracked", not the recommended default. The follow-up on branch `refactor/evidence-refs` restores the baseline transition checklist as `docs/runbooks/baseline-transition-checklist.md`, marks removed evidence references as historical, widens the ignore rule to `**/evidence/implementation/`, and adds a docs path check. | .gitignore, docs | OD-6 (answered) | S |
 | TOOL-5 | Allowed-email → secret (`wrangler.jsonc:15`); update DEPLOYMENT_CHECKLIST | wrangler.jsonc, docs | OD-7 | S |
 | TOOL-6 | Docs: START_HERE, CHANGELOG and BLUEPRINT are stale (T5); MANUAL_TASKS duplicates DEPLOYMENT_CHECKLIST (T6), and T17 added the same 6 lines to both, so they are actively being double-maintained (O13); contracts README (T10); agent definitions triplicated (T11) | docs | — | M |
 
@@ -488,7 +495,7 @@ graph LR
 ## Tools / config / hygiene
 
 - T1 Python blueprint tools are unwired and broken.
-- T2 evidence/ is gitignored but 165 files are tracked.
+- T2 evidence/ is gitignored but 165 files are tracked. *(Resolved by OD-6, 2026-10-15: untracked.)*
 - T3 ESLint ≈ Biome; the Prettier list is hand-maintained.
 - T4 `build` = `tsc --noEmit`.
 - T5 Stale spec-era docs.
