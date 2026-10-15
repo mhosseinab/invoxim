@@ -12,7 +12,7 @@ import {
   planAllocations,
   writeAllocations,
 } from "./allocation";
-import type { PurchaseRow } from "./data";
+import type { PurchaseRow, ReviewRow } from "./data";
 import { events, purchase, purchaseVersion, reviewFact, reviews } from "./data";
 import { correctionTransaction } from "./transaction";
 
@@ -406,14 +406,31 @@ export async function executeUnmerge(
     throw new CorrectionError("CONFLICT");
   validateRefundAllocation(targetEvents);
   validateRefundAllocation(sourceEvents);
+  // OQ-B: each side's cash is also blocked by the superset reviews that are
+  // owned by no restored purchase but linked to that side's own entries
+  // through their observation or, without observation, their document.
+  const blockers = (owned: readonly ReviewRow[], side: typeof currentEvents) =>
+    [
+      ...owned,
+      ...currentReviews.filter(
+        (review) =>
+          review.purchase_id !== target.id &&
+          side.some((entry) =>
+            review.observation_id !== null
+              ? review.observation_id === entry.observationId
+              : review.document_id !== null &&
+                review.document_id === entry.documentId,
+          ),
+      ),
+    ].map(reviewFact);
   const targetSettlement = evaluateCorrectionSettlement(
     settlementPurchase(target),
-    settlementEvents(targetEvents, targetReviews.map(reviewFact)),
+    settlementEvents(targetEvents, blockers(targetReviews, targetEvents)),
     await creditProofs(db, user, target.id, map.target.evidence),
   );
   const sourceSettlement = evaluateCorrectionSettlement(
     settlementPurchase(source),
-    settlementEvents(sourceEvents, sourceReviews.map(reviewFact)),
+    settlementEvents(sourceEvents, blockers(sourceReviews, sourceEvents)),
     await creditProofs(db, user, target.id, map.source.evidence),
   );
   const targetAllocations = planAllocations(

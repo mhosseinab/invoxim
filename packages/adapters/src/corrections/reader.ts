@@ -74,7 +74,9 @@ export async function readCorrectionPurchase(
         | "documentDate"
       )[],
       status: item.status,
-      actions: reviewActions(reviewFact(item)),
+      // Superset reviews (another or no purchase) are listed because they
+      // block this purchase's cash; their actions belong to their own page.
+      actions: item.purchase_id === id ? reviewActions(reviewFact(item)) : [],
     })),
     merges: history.results.map((item) => ({
       ...item,

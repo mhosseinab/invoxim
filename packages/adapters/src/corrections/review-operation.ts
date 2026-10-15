@@ -6,12 +6,14 @@ import {
   normalizeLedgerMerchant,
 } from "@invoxim/core";
 import {
+  type PurchaseRow,
   purchase,
   purchaseVersion,
   review,
   reviewFact,
   reviewVersion,
 } from "./data";
+import { planReviewUnblock } from "./review-unblock";
 import { sourceNotDiscardedSql } from "./source-decision";
 import { discardableSource, executeSourceDiscard } from "./source-discard";
 import { correctionTransaction } from "./transaction";
@@ -76,6 +78,9 @@ export async function executeReview(
       reviewVersion: row.version + 1,
       reviewStatus: status as "open" | "resolved",
     };
+    const unblock =
+      status === "resolved" ? await planReviewUnblock(db, user, row) : null;
+    if (unblock) checks.push(...unblock.checks);
     const tx = correctionTransaction(
       db,
       session,
@@ -121,6 +126,7 @@ export async function executeReview(
       { status: row.status },
       { status },
     );
+    unblock?.write(tx, clock);
     return tx.commit();
   }
   const result: CorrectionResult = {
@@ -164,6 +170,20 @@ export async function executeReview(
       (field) => !addressed.has(field),
     );
     result.reviewStatus = remaining.length ? "open" : "resolved";
+    // The purchase as this correction leaves it, for the payment recompute.
+    const corrected: PurchaseRow = { ...owned };
+    for (const [field, value] of Object.entries(request.changes)) {
+      if (field === "merchant") corrected.merchant_raw = String(value);
+      else if (field === "currency") corrected.currency = String(value);
+      else if (field === "totalMinor") corrected.total_minor = Number(value);
+      else if (field === "documentDate")
+        corrected.document_date = String(value);
+    }
+    const unblock =
+      result.reviewStatus === "resolved"
+        ? await planReviewUnblock(db, user, row, { owned: corrected })
+        : null;
+    if (unblock) checks.push(...unblock.checks);
     // Result must reflect only the fields actually corrected, not a blanket resolution.
     const updated = correctionTransaction(
       db,
@@ -208,8 +228,11 @@ export async function executeReview(
       { status: row.status },
       { status: result.reviewStatus },
     );
+    unblock?.write(updated, clock);
     return updated.commit();
   }
+  const unblock = await planReviewUnblock(db, user, row, { owned });
+  checks.push(...unblock.checks);
   const tx = correctionTransaction(
     db,
     session,
@@ -269,5 +292,6 @@ export async function executeReview(
     { status: row.status },
     { status: result.reviewStatus },
   );
+  unblock.write(tx, clock);
   return tx.commit();
 }
