@@ -1,6 +1,7 @@
 import type { JobLease, JobOutcome } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import type { OutlookGraphDiscoveryPort } from "./outlook";
+import { OUTLOOK_STATEMENTS, outlookBudgetShortfall } from "./outlook-budget";
 import { createOutlookDeltaRunner } from "./outlook-delta";
 import {
   createOutlookFolderStore,
@@ -57,8 +58,8 @@ export function createOutlookJobRunner(
       };
       let rate: OutlookRateContext | null = null;
       try {
-        if (options.remainingStatements() < 20)
-          return { kind: "retry", code: "transient" };
+        if (options.remainingStatements() < OUTLOOK_STATEMENTS.jobStart)
+          return outlookBudgetShortfall();
         if (!(await active())) return { kind: "paused", code: "auth" };
         let read = await store.readInventory(lease);
         let next = read.next;
@@ -76,15 +77,21 @@ export function createOutlookJobRunner(
         const provider = await options.open(lease, control.signal);
         if (!(await active())) return { kind: "paused", code: "auth" };
         // Refresh may consume this invocation; resume with the durable fresh token.
-        if (options.remainingStatements() < (next.excludedFolderIds ? 20 : 16))
-          return { kind: "retry", code: "transient" };
+        if (
+          options.remainingStatements() <
+          (next.excludedFolderIds
+            ? OUTLOOK_STATEMENTS.afterOpenWithExclusions
+            : OUTLOOK_STATEMENTS.afterOpen)
+        )
+          return outlookBudgetShortfall();
         const excludedFolderIds =
           next.excludedFolderIds ?? (await resolveExclusions(provider));
         if (
           next.kind === "ready" &&
           next.expectedVersion === 0 &&
           next.excludedFolderIds === undefined &&
-          options.remainingStatements() < 14
+          options.remainingStatements() <
+            OUTLOOK_STATEMENTS.stageExclusionsOnlyBelow
         ) {
           const staged = await store.stageExclusions(lease, excludedFolderIds, {
             jobId: crypto.randomUUID(),
@@ -113,8 +120,8 @@ export function createOutlookJobRunner(
           return delta.run(lease, control, provider);
         }
         if (!(await active())) return { kind: "paused", code: "auth" };
-        if (options.remainingStatements() < 12)
-          return { kind: "retry", code: "transient" };
+        if (options.remainingStatements() < OUTLOOK_STATEMENTS.inventoryPage)
+          return outlookBudgetShortfall();
         const page = await provider.folders({
           ...(next.parentFolderId === null
             ? {}
@@ -125,8 +132,8 @@ export function createOutlookJobRunner(
         if (!(await active())) return { kind: "paused", code: "auth" };
         if (next.nextLink !== null && page.nextLink === next.nextLink)
           return { kind: "terminal", code: "malformed" };
-        if (options.remainingStatements() < 9)
-          return { kind: "retry", code: "transient" };
+        if (options.remainingStatements() < OUTLOOK_STATEMENTS.inventoryCommit)
+          return outlookBudgetShortfall();
         const committed = await store.commitInventoryPage(
           lease,
           {
@@ -166,8 +173,8 @@ export function createOutlookJobRunner(
             if (!(await active()) || !rate)
               return { kind: "paused", code: "auth" };
             // One batch whether rateDecision defers or pauses (G4).
-            if (options.remainingStatements() < 3)
-              return { kind: "retry", code: "transient" };
+            if (options.remainingStatements() < OUTLOOK_STATEMENTS.rateDeferral)
+              return outlookBudgetShortfall();
             const deferred = await store.deferRate(
               lease,
               cause.retryAfterMs,

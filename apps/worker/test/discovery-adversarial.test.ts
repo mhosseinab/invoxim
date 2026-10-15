@@ -1664,3 +1664,61 @@ it.each(["recent", "live"] as const)(
     });
   },
 );
+
+it("INT-5/O5 Gmail statement shortfall returns retry/transient before provider access (OD-11 pin)", async () => {
+  const tenant = await owner("o5-gmail-shortfall");
+  await service().beginAcceptedImport(tenant, accepted(tenant));
+  const ready = await db
+    .prepare(
+      "SELECT j.id FROM jobs j JOIN sync_states s ON s.user_id=j.user_id AND s.id=j.sync_state_id WHERE j.user_id=? AND s.slice_key='recent' AND j.status='ready' LIMIT 1",
+    )
+    .bind(tenant.userId)
+    .first<string>("id");
+  if (!ready) throw new Error("No runnable synthetic discovery job");
+  const store = createJobStore(env.DB, { policy: jobPolicy, clock: () => now });
+  const lease = await store.claim(ready);
+  if (!lease) throw new Error("Synthetic discovery lease unavailable");
+  let opens = 0;
+  const pages = createDiscoveryService(env.DB, {
+    providers: {
+      async open() {
+        opens++;
+        return pageProvider();
+      },
+    },
+    readiness: {
+      async allow() {
+        return true;
+      },
+    },
+    remainingStatements: () => 2,
+    clock: () => now,
+  });
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  expect(
+    await pages.runPage(lease, {
+      signal: new AbortController().signal,
+      checkpoint: () => store.checkpoint(lease),
+    }),
+  ).toEqual({ kind: "retry", code: "transient" });
+  expect(opens).toBe(0);
+});
+
+it("INT-5/O5 Gmail rate-paused slice returns paused/budget without provider access (OD-11 pin)", async () => {
+  const tenant = await owner("o5-gmail-paused");
+  await service().beginAcceptedImport(tenant, accepted(tenant));
+  await db
+    .prepare(
+      "UPDATE sync_states SET stage='paused_rate' WHERE user_id=? AND slice_key='recent'",
+    )
+    .bind(tenant.userId)
+    .run();
+  const provider = pageProvider();
+  provider.list = async () => {
+    throw new Error("A paused slice must not list provider mail");
+  };
+  expect((await pageTurn(tenant, provider)).outcome).toEqual({
+    kind: "paused",
+    code: "budget",
+  });
+});

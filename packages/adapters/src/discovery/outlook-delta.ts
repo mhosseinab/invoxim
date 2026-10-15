@@ -3,6 +3,7 @@ import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
 import { sourceKey } from "../hash";
 import type { OutlookGraphDiscoveryPort } from "./outlook";
+import { OUTLOOK_STATEMENTS, outlookBudgetShortfall } from "./outlook-budget";
 import { outlookLeaseGuard } from "./outlook-guard";
 import {
   validateOutlookContinuation,
@@ -153,8 +154,8 @@ export function createOutlookDeltaRunner(
         : null;
     if (control.signal.aborted || !(await control.checkpoint()))
       return { kind: "paused", code: "auth" };
-    if (options.remainingStatements() < 6)
-      return { kind: "retry", code: "transient" };
+    if (options.remainingStatements() < OUTLOOK_STATEMENTS.advanceParent)
+      return outlookBudgetShortfall();
     const now = clock();
     const nonce = crypto.randomUUID();
     const leaseGuard = guard(lease, now);
@@ -331,8 +332,8 @@ export function createOutlookDeltaRunner(
     if (!approved) return { kind: "paused", code: "auth" };
     if (control.signal.aborted || !(await control.checkpoint()))
       return { kind: "paused", code: "auth" };
-    if (options.remainingStatements() < 5)
-      return { kind: "retry", code: "transient" };
+    if (options.remainingStatements() < OUTLOOK_STATEMENTS.resetExpired)
+      return outlookBudgetShortfall();
     const now = clock();
     const nonce = crypto.randomUUID();
     const leaseGuard = guard(lease, now);
@@ -409,8 +410,8 @@ export function createOutlookDeltaRunner(
   ): Promise<JobOutcome> {
     if (control.signal.aborted || !(await control.checkpoint()))
       return { kind: "paused", code: "auth" };
-    if (options.remainingStatements() < 5)
-      return { kind: "retry", code: "transient" };
+    if (options.remainingStatements() < OUTLOOK_STATEMENTS.folderRate)
+      return outlookBudgetShortfall();
     const now = clock();
     const decision = rateDecision({
       retryAfterMs: delayMs,
@@ -566,8 +567,8 @@ export function createOutlookDeltaRunner(
           folder.retry_at - now,
           false,
         );
-      if (options.remainingStatements() < 16)
-        return { kind: "retry", code: "transient" };
+      if (options.remainingStatements() < OUTLOOK_STATEMENTS.folderPage)
+        return outlookBudgetShortfall();
       if (control.signal.aborted || !(await control.checkpoint()))
         return { kind: "paused", code: "auth" };
       const continuation = folder.page_token ?? folder.history_cursor;
@@ -655,8 +656,12 @@ export function createOutlookDeltaRunner(
       }
       if (control.signal.aborted || !(await control.checkpoint()))
         return { kind: "paused", code: "auth" };
-      if (options.remainingStatements() < metadata.length * 4 + 5)
-        return { kind: "retry", code: "transient" };
+      if (
+        options.remainingStatements() <
+        metadata.length * OUTLOOK_STATEMENTS.folderCommitPerReference +
+          OUTLOOK_STATEMENTS.folderCommitFixed
+      )
+        return outlookBudgetShortfall();
       const leaseGuard = guard(lease, now);
       const nonce = crypto.randomUUID();
       const childMarker = `EXISTS(SELECT 1 FROM sync_states child WHERE child.user_id=? AND child.id=? AND child.discovery_version=? AND child.pending_history_id=?)`;

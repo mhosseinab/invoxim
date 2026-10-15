@@ -1886,3 +1886,140 @@ it("INT-5/G4 an over-day inventory Retry-After pauses within the same statement 
       .first("outcome_code"),
   ).toBe("rate_paused");
 });
+
+it("INT-5/O5 Outlook statement shortfall before any Graph access returns retry/transient (OD-11 pin)", async () => {
+  const lease = await claimed("o5-start-shortfall");
+  await seedLiveFolder(lease, "folder-o5-start", "inbox-folder");
+  let opens = 0;
+  const runner = createOutlookJobRunner(env.DB, {
+    open: async () => {
+      opens++;
+      return provider(async () => ({ folders: [] }));
+    },
+    remainingStatements: () => 19,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "retry", code: "transient" });
+  expect(opens).toBe(0);
+  expect(
+    await env.DB.prepare("SELECT status FROM jobs WHERE user_id=? AND id=?")
+      .bind(lease.context.userId, lease.jobId)
+      .first("status"),
+  ).toBe("leased");
+});
+
+it("INT-5/O5 Outlook page-commit shortfall after Graph reads returns retry/transient without staging (OD-11 pin)", async () => {
+  const lease = await claimed("o5-commit-shortfall");
+  const folderId = "inbox-folder";
+  const stateId = "folder-o5-commit";
+  await seedLiveFolder(lease, stateId, folderId);
+  const meter = createInvocationDatabase(env.DB, 40);
+  let read = false;
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => ({
+      ...provider(async () => {
+        throw new Error("Inventory is complete");
+      }),
+      deltaFolder: async () => ({
+        ids: ["o5-message"],
+        folderRemovedIds: [],
+        deltaLink: `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=o5`,
+      }),
+      metadata: async (id) => {
+        read = true;
+        return {
+          id,
+          parentFolderId: folderId,
+          receivedAtMs: Date.parse("2026-10-12T12:00:00.000Z"),
+          available: true,
+          excluded: false,
+          candidate: "matched",
+        };
+      },
+    }),
+    // One reference needs 4 + 5 statements to commit; leave one short.
+    remainingStatements: () =>
+      read
+        ? Math.min(8, meter.remainingStatements())
+        : meter.remainingStatements(),
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "retry", code: "transient" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,history_cursor,discovery_version FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first(),
+  ).toEqual({ stage: "queued", history_cursor: null, discovery_version: 0 });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM source_messages WHERE user_id=?",
+    )
+      .bind(lease.context.userId)
+      .first("n"),
+  ).toBe(0);
+});
+
+it("INT-5/O5 a persistent Outlook statement shortfall exhausts the job at the retry cap (current OD-11 outcome)", async () => {
+  let lease = await claimed("o5-retry-cap");
+  await seedLiveFolder(lease, "folder-o5-cap", "inbox-folder");
+  const jobs = createJobStore(env.DB, { policy });
+  const runner = createOutlookJobRunner(env.DB, {
+    open: async () => {
+      throw new Error("A budget shortfall must not open Graph");
+    },
+    remainingStatements: () => 19,
+  });
+  const settled: unknown[] = [];
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt++) {
+    expect(lease.attempt).toBe(attempt);
+    const outcome = await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    });
+    expect(outcome).toEqual({ kind: "retry", code: "transient" });
+    expect(await jobs.finish(lease, outcome)).toBe(true);
+    settled.push(
+      await env.DB.prepare(
+        "SELECT status,outcome_code FROM jobs WHERE user_id=? AND id=?",
+      )
+        .bind(lease.context.userId, lease.jobId)
+        .first(),
+    );
+    if (attempt === policy.maxAttempts) break;
+    await env.DB.prepare(
+      "UPDATE jobs SET dispatch_at=0 WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.jobId)
+      .run();
+    const next = await jobs.claim(lease.jobId);
+    if (!next) throw new Error("Outlook retry lease unavailable");
+    lease = next;
+  }
+  // retry/transient consumes an attempt per shortfall; at the cap the job
+  // store makes it terminal and nothing re-queues the mailbox sync state.
+  expect(settled).toEqual([
+    ...Array.from({ length: policy.maxAttempts - 1 }, () => ({
+      status: "retry_wait",
+      outcome_code: "transient",
+    })),
+    { status: "terminal", outcome_code: "attempts-exhausted" },
+  ]);
+  expect(await jobs.claim(lease.jobId)).toBeNull();
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND sync_state_id=? AND status IN ('ready','retry_wait','leased')",
+    )
+      .bind(lease.context.userId, lease.syncStateId)
+      .first("n"),
+  ).toBe(0);
+});
