@@ -16,7 +16,6 @@ import {
   createProcessingReviewResolver,
   createPublicReferenceRateReader,
   createRecurringService,
-  driveConfiguration,
   fxReferenceConfiguration,
   lifecycleDependencies,
   loginConfiguration,
@@ -47,7 +46,10 @@ import {
 } from "./operational-configuration";
 import { createPurchaseRoutes } from "./purchase-routes";
 import { createRecurringRoutes } from "./recurring-routes";
-import { createStorageRoutes } from "./storage-routes";
+import {
+  createStorageRoutes,
+  DRIVE_ARCHIVING_AVAILABLE,
+} from "./storage-routes";
 
 const app = new Hono<{ Bindings: WorkerBindings }>();
 app.use("/api/*", async (context, next) => {
@@ -67,12 +69,6 @@ function recurringEnabled(bindings: object) {
   return (
     "RECURRING_ENABLED" in bindings &&
     (bindings as { RECURRING_ENABLED?: string }).RECURRING_ENABLED === "true"
-  );
-}
-function tagsEnabled(bindings: object) {
-  return (
-    "TAGS_ENABLED" in bindings &&
-    (bindings as { TAGS_ENABLED?: string }).TAGS_ENABLED === "true"
   );
 }
 // Public capabilities derive from validated server configuration; never expose settings or keys.
@@ -100,9 +96,11 @@ app.get("/api/public-config", (context) => {
       mailProviders: providers,
       features: {
         outlook: providers.includes("outlook"),
-        driveArchive: driveConfiguration(bindings) !== null,
+        // Same value storage settings report as `archivingAvailable`.
+        driveArchive: DRIVE_ARCHIVING_AVAILABLE,
         recurring: recurringEnabled(bindings),
-        useTags: tagsEnabled(bindings),
+        // No route serves tags yet; advertise nothing behind it.
+        useTags: false,
       },
     }),
   );
@@ -163,7 +161,6 @@ type WorkerBindings = DriveBindings &
     OUTLOOK_DISCOVERY_ENABLED?: string;
     EXTRACTION_ENABLED?: string;
     RECURRING_ENABLED?: string;
-    TAGS_ENABLED?: string;
   } & LifecycleBindings &
   OperationalBindings &
   FxReferenceBindings;

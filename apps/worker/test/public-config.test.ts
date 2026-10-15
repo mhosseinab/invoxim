@@ -58,7 +58,7 @@ it("T29 public login capability follows validated server configuration without e
   expect(await disabled.json()).toMatchObject({ loginEnabled: false });
 });
 
-it("WRK-2 public feature flags follow each route's configuration when enabled", async () => {
+it("WRK-2 public feature flags report only capabilities whose routes are actually wired", async () => {
   const { default: worker } = await import("../src/index");
   const bindings = {
     DB: env.DB,
@@ -80,8 +80,11 @@ it("WRK-2 public feature flags follow each route's configuration when enabled", 
   };
   const request = new Request("https://synthetic.example/api/public-config");
   const enabled = await worker.request(request, undefined, bindings);
+  // Recurring routes are wired behind RECURRING_ENABLED. Drive authorization
+  // alone does not make archiving reachable (T18 not wired), and no route
+  // serves tags, so a TAGS_ENABLED binding must not advertise them.
   expect(await enabled.json()).toMatchObject({
-    features: { driveArchive: true, recurring: true, useTags: true },
+    features: { driveArchive: false, recurring: true, useTags: false },
   });
   const off = await worker.request(request, undefined, {
     DB: env.DB,

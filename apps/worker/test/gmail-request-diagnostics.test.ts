@@ -42,6 +42,7 @@ it("redacts unexpected credential-read errors while identifying the preparation 
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   const { db: database } = faultingDatabase(env.DB, [
     {
+      once: false,
       on: "prepare",
       fire: () => {
         throw new Error("private-database-content");

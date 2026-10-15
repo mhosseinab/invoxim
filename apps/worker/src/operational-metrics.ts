@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { QUERY_LIMIT } from "./job-configuration";
 
 const measurements = {
-  consumedQueryCount: z.number().int().min(0).max(40),
+  consumedQueryCount: z.number().int().min(0).max(QUERY_LIMIT),
   // Supplied elapsed wall time is not Worker CPU time.
   wallDurationMs: z.number().int().min(0).max(3600000),
 };

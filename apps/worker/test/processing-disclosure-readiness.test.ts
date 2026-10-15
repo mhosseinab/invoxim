@@ -178,6 +178,7 @@ it("ONBOARD-04 unavailable processors preserve strict disclosure query validatio
 it("ONBOARD-04 runtime failures remain retryable even when processing is unconfigured", async () => {
   const { db: unavailableDatabase } = faultingDatabase(db, [
     {
+      once: false,
       on: "prepare",
       fire: () => {
         throw new Error("Synthetic database unavailable");

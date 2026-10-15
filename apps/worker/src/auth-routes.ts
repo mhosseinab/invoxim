@@ -19,13 +19,14 @@ import {
   requireTenantContext,
 } from "./http/guard";
 import { createInvocationDatabase } from "./invocation-database";
+import { QUERY_LIMIT } from "./job-configuration";
 export function createAuthRoutes() {
   const app = new Hono<{ Bindings: AuthBindings }>();
   async function service(bindings: AuthBindings) {
     const configuration = loginConfiguration(bindings);
     if (!configuration || !bindings.DB) return null;
     try {
-      const db = createInvocationDatabase(bindings.DB, 40).db;
+      const db = createInvocationDatabase(bindings.DB, QUERY_LIMIT).db;
       const auth = createLoginAuth(db, configuration);
       return {
         auth,
@@ -72,9 +73,12 @@ export function createAuthRoutes() {
         await readAuthJson(context.req.raw),
       );
       if (!input.success) return apiError(400, "invalid_request");
-      const enabled = await service(context.env ?? {});
-      if (!enabled) return apiError(401, "unauthorized");
-      const profile = await enabled.profiles.update(ready.tenant, input.data);
+      // G-40: the update shares the guard's statement meter (one per request).
+      const profile = await createProfileService(
+        ready.db,
+        createLoginAuth(ready.db, ready.login),
+        ready.login,
+      ).update(ready.tenant, input.data);
       if (!profile) return apiError(409, "version_conflict");
       return json(projectProfile({ ...ready.current, profile }));
     } catch (cause) {

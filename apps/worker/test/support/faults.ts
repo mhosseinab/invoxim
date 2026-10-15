@@ -64,6 +64,16 @@ export function faultingDatabase(
   const seen = rules.map(() => 0);
   let asserted = false;
   const originals = new WeakMap<D1PreparedStatement, D1PreparedStatement>();
+  /** SQL text of every statement prepared through this database (incl. bound). */
+  const sqlText = new WeakMap<D1PreparedStatement, string>();
+  function statementSql(statement: D1PreparedStatement): string {
+    return (
+      sqlText.get(statement) ??
+      // A native statement prepared elsewhere still carries its SQL text.
+      (statement as { statement?: unknown }).statement?.toString() ??
+      ""
+    );
+  }
 
   function tryFire(
     ruleIndex: number,
@@ -129,6 +139,7 @@ export function faultingDatabase(
         }) as D1PreparedStatement["raw"],
       };
       originals.set(wrapped, inner);
+      sqlText.set(wrapped, sql);
       return wrapped;
     }
     return wrap(statement);
@@ -161,7 +172,7 @@ export function faultingDatabase(
       return wrapStatement(native.prepare(query), query);
     },
     batch<T = unknown>(statements: D1PreparedStatement[]) {
-      const sql = statements.map((s) => String(s)).join(";");
+      const sql = statements.map(statementSql).join(";");
       const idx = rules.findIndex((r) => r.on === "batch" && matches(r, sql));
       const unwrapped = unwrapStatements(statements, originals);
       const proceed = () =>

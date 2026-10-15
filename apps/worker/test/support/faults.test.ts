@@ -119,6 +119,31 @@ describe("faultingDatabase", () => {
     expect(() => faulted.prepare("SELECT 1")).toThrow("PREPARE_FAULT");
     expect(() => assertFaultsFired()).not.toThrow();
   });
+
+  it("matches a string batch rule against the batched statements' SQL text", async () => {
+    let seen = "";
+    const { db: faulted, assertFaultsFired } = faultingDatabase(db, [
+      {
+        match: "SELECT id FROM qa_faults WHERE id=?",
+        on: "batch",
+        fire: async ({ sql }) => {
+          seen = sql;
+          throw new Error("BATCH_FAULT");
+        },
+      },
+    ]);
+    await expect(
+      faulted.batch([
+        faulted.prepare("SELECT id FROM qa_faults WHERE id=?").bind("a"),
+        faulted.prepare("SELECT id FROM qa_faults WHERE id='b'"),
+      ]),
+    ).rejects.toThrow("BATCH_FAULT");
+    expect(seen).toBe(
+      "SELECT id FROM qa_faults WHERE id=?;SELECT id FROM qa_faults WHERE id='b'",
+    );
+    expect(seen).not.toContain("[object Object]");
+    expect(() => assertFaultsFired()).not.toThrow();
+  });
 });
 
 describe("statementCounter", () => {

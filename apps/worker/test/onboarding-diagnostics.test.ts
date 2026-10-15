@@ -47,6 +47,7 @@ async function fixture(id: string, cause: unknown) {
     {
       match:
         "SELECT user_id,timezone,reporting_currency,version,onboarding_completed_at FROM profiles",
+      once: false,
       on: "prepare",
       fire: () => {
         throw cause;

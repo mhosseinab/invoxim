@@ -75,7 +75,7 @@ export function createCorrectionRoutes() {
       return json(
         correctionStateSchema.parse({
           ...state,
-          mutationToken: await issueMutationToken(guard.ready),
+          mutationToken: await issueMutationToken(guard.ready, "corrections"),
         }),
       );
     } catch (cause) {
@@ -93,7 +93,7 @@ export function createCorrectionRoutes() {
       return json(
         correctionReviewSchema.parse({
           ...state,
-          mutationToken: await issueMutationToken(guard.ready),
+          mutationToken: await issueMutationToken(guard.ready, "corrections"),
         }),
       );
     } catch (cause) {

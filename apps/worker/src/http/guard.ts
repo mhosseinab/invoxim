@@ -14,13 +14,15 @@ import {
 import type { TenantContext } from "@invoxim/core";
 import type { Context } from "hono";
 import { createInvocationDatabase } from "../invocation-database";
-
-// TODO(SEC-1): route workspace-token issue/verify through signToken/verifyToken
-// once the shared HMAC domain helper lands. The wire format must stay identical.
+import { QUERY_LIMIT } from "../job-configuration";
 
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 const RECENT_SESSION_MS = 3600000;
-/** 503 codes that describe operator configuration, not transient unavailability. */
+/**
+ * 503 codes that describe operator configuration, not transient unavailability.
+ * `source_unavailable` is deliberately absent: it also reports transient
+ * D1/provider failures while reading a review source, which stay retryable.
+ */
 const PERMANENT_503 = new Set([
   "auth_not_configured",
   "not_implemented",
@@ -29,7 +31,6 @@ const PERMANENT_503 = new Set([
   "fx_not_configured",
   "recurring_not_configured",
   "jobs_not_configured",
-  "source_unavailable",
 ]);
 
 export interface ApiErrorOptions {
@@ -107,26 +108,38 @@ export function mapFailure(
   return apiError(503, fallbackCode, options);
 }
 
-export interface RequireTenantContextOptions {
-  /**
-   * State-changing request. Defaults to methods other than GET/HEAD.
-   * When true, a valid workspace token is required.
-   */
-  mutation?: boolean;
+export type WorkspaceTokenPurpose =
+  | "corrections"
+  | "ai-settings"
+  | "lifecycle"
+  | "storage-settings"
+  | "fx-reporting"
+  | "recurring";
+
+interface TenantContextRules {
   /**
    * Require the one-hour recent-session rule (NaN-safe).
    * Defaults to the resolved `mutation` value.
    */
   recent?: boolean;
-  /** Workspace-token purpose checked when `mutation` is true. */
-  purpose?:
-    | "corrections"
-    | "ai-settings"
-    | "lifecycle"
-    | "storage-settings"
-    | "fx-reporting"
-    | "recurring";
 }
+
+/**
+ * A read-only guard (`mutation: false`) needs no token purpose. Every guard
+ * that can resolve to a mutation (explicitly, or by defaulting to methods
+ * other than GET/HEAD) must name the workspace-token purpose it verifies.
+ */
+export type RequireTenantContextOptions =
+  | (TenantContextRules & { mutation: false; purpose?: never })
+  | (TenantContextRules & {
+      /**
+       * State-changing request. Defaults to methods other than GET/HEAD.
+       * When true, a valid workspace token for `purpose` is required.
+       */
+      mutation?: boolean;
+      /** Workspace-token purpose checked when the request is a mutation. */
+      purpose: WorkspaceTokenPurpose;
+    });
 
 export type RequireOriginResult =
   | { response: Response }
@@ -193,7 +206,7 @@ export type RequireTenantContextResult =
  */
 export async function requireTenantContext<B extends AuthBindings>(
   c: Context<{ Bindings: B }>,
-  options: RequireTenantContextOptions = {},
+  options: RequireTenantContextOptions,
 ): Promise<RequireTenantContextResult> {
   const request = c.req.raw;
   const bindings = (c.env ?? {}) as AuthBindings;
@@ -204,7 +217,10 @@ export async function requireTenantContext<B extends AuthBindings>(
   const safe = SAFE_METHODS.has(method);
   const mutation = options.mutation ?? !safe;
   const recent = options.recent ?? mutation;
-  const database = createInvocationDatabase(bindings.DB as D1Database, 40);
+  const database = createInvocationDatabase(
+    bindings.DB as D1Database,
+    QUERY_LIMIT,
+  );
   const current = await createProfileService(
     database.db,
     createLoginAuth(database.db, login),
@@ -223,17 +239,21 @@ export async function requireTenantContext<B extends AuthBindings>(
     userId: current.tenant.userId,
     sessionId: current.session.id,
   };
-  if (
-    mutation &&
-    !(await verifyWorkspaceMutationToken(
-      request.headers.get("X-Workspace-Token") ?? "",
-      identity,
-      login.secret,
-      Date.now,
-      options.purpose ?? "corrections",
-    ))
-  )
-    return { response: apiError(403, "workspace_changed_or_expired") };
+  if (mutation) {
+    // Fail closed: a mutation without a named purpose accepts no token.
+    const purpose = options.purpose;
+    if (
+      !purpose ||
+      !(await verifyWorkspaceMutationToken(
+        request.headers.get("X-Workspace-Token") ?? "",
+        identity,
+        login.secret,
+        Date.now,
+        purpose,
+      ))
+    )
+      return { response: apiError(403, "workspace_changed_or_expired") };
+  }
   return {
     db: database.db,
     login,
@@ -255,7 +275,7 @@ export async function requireTenantContext<B extends AuthBindings>(
 /** Issue a workspace mutation token for a validated tenant context. */
 export async function issueMutationToken(
   context: Pick<TenantRequestContext, "identity" | "secret">,
-  purpose: NonNullable<RequireTenantContextOptions["purpose"]> = "corrections",
+  purpose: WorkspaceTokenPurpose,
 ) {
   return issueWorkspaceMutationToken(
     context.identity,
