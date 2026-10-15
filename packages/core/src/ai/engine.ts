@@ -63,8 +63,10 @@ export async function settleReservedAttempt(
   await store.settle(attempt, {
     state: known ? "known" : "uncertain",
     usage: validUsage ? usage : null,
+    // A provider-requested floor (rate limit, or a classifier's rejected
+    // operator credential) becomes the shared durable cooldown.
     ...(response.status === "failed" &&
-    response.reason === "rate-limit" &&
+    (response.reason === "rate-limit" || response.reason === "invalid-key") &&
     response.retryAfterMs !== undefined &&
     Number.isSafeInteger(response.retryAfterMs) &&
     response.retryAfterMs >= 0

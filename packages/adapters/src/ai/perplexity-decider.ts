@@ -48,7 +48,7 @@ const failed = (reason: DecisionFailure["reason"]): DecisionFailure => ({
   usage: null,
 });
 /**
- * A 429 is rejected before any decision is computed, so it settles as
+ * 401/403/429 are rejected before any decision is computed, so they settle as
  * zero reported usage (releasing the reservation) instead of an uncertain
  * possibly-billed attempt. 5xx, timeouts and unreadable bodies stay uncertain.
  */
@@ -58,9 +58,17 @@ const NOT_PROCESSED = {
   other: 0,
   source: "reported",
 } as const;
+/** A rejected operator key is retried at most this often across all tenants. */
+export const PERPLEXITY_INVALID_KEY_COOLDOWN_MS = 15 * 60 * 1000;
 function statusFailure(response: Response): DecisionFailure | null {
   const { status } = response;
-  if (status === 401 || status === 403) return failed("invalid-key");
+  if (status === 401 || status === 403)
+    return {
+      status: "failed",
+      reason: "invalid-key",
+      usage: NOT_PROCESSED,
+      retryAfterMs: PERPLEXITY_INVALID_KEY_COOLDOWN_MS,
+    };
   if (status === 429)
     return {
       status: "failed",

@@ -218,11 +218,16 @@ it("AI-CLASSIFIER-PROVIDER status codes map to typed failures without reading or
           },
         }),
     );
-    expect(await classifier().classify(parts, config)).toEqual({
-      status: "failed",
-      reason,
-      usage: null,
-    });
+    expect(await classifier().classify(parts, config)).toEqual(
+      reason === "invalid-key"
+        ? {
+            status: "failed",
+            reason,
+            usage: { input: 0, output: 0, other: 0, source: "reported" },
+            retryAfterMs: 15 * 60 * 1000,
+          }
+        : { status: "failed", reason, usage: null },
+    );
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   }

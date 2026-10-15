@@ -541,3 +541,37 @@ it("AI-CLASSIFIER-PROVIDER repeated 429 stays bounded: after the retry cap the d
   ).not.toBe("pending");
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
+
+it("AI-CLASSIFIER-PROVIDER rejected operator key pauses processing without a per-document outcome or further calls", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  const fetch = perplexityFetch(() => new Response("", { status: 401 }));
+  const { pipeline, extract } = service({ perplexityApiKey: KEY });
+  const before = await db
+    .prepare(
+      "SELECT processing_status FROM source_messages WHERE user_id=? AND id='s'",
+    )
+    .bind(tenant.userId)
+    .first("processing_status");
+  expect(await pipeline.run(lease)).toEqual({
+    kind: "paused",
+    code: "handler-unavailable",
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(extract).not.toHaveBeenCalled();
+  const state = await classificationState();
+  expect(state.extraction).toEqual([{ result_json: null }]);
+  expect(state.reserved).toEqual({ units: 0, micros: 0 });
+  expect(
+    await db
+      .prepare(
+        "SELECT processing_status FROM source_messages WHERE user_id=? AND id='s'",
+      )
+      .bind(tenant.userId)
+      .first("processing_status"),
+  ).toBe(before);
+  // The next document or lease does not call Perplexity with the rejected key.
+  const again = await pipeline.run(lease);
+  expect(again.kind).toBe("paused");
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+});

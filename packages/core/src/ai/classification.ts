@@ -42,7 +42,7 @@ export type EmailClassification =
  */
 export type DeferredClassification = {
   readonly status: "deferred";
-  readonly reason: "rate-limit";
+  readonly reason: "rate-limit" | "invalid-key";
 };
 export interface EmailClassifier {
   classify(
@@ -148,6 +148,9 @@ export function createClassificationEngine(dependencies: {
         }
         const { response } = reserved;
         if (response.status === "failed") {
+          // Operator credential rejected: never a per-document outcome.
+          if (response.reason === "invalid-key")
+            return { status: "deferred", reason: "invalid-key" };
           // Rate limit: retry after Retry-After, bounded by maxAttempts.
           if (response.reason === "rate-limit" && !final)
             return { status: "deferred", reason: "rate-limit" };
