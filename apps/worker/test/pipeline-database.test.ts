@@ -1585,3 +1585,24 @@ it("CORE-6 OQ-B pipeline adversarial: a resolved review on the earlier document 
   });
   expect(await ingest(current)).toBe("paid");
 });
+it("CORE-6 OQ-C pipeline: cash from a connection with a pending deletion is excluded before cleanup marks the purchase", async () => {
+  const current = await seedEarlierPayment({
+    storedState: "unknown",
+    cashMinor: 600,
+    connection: "c-old",
+  });
+  // 6.00 from the deleting connection is unsupported; 4.00 new of 10.00.
+  expect(await ingest(current)).toBe("partially_paid");
+});
+it("CORE-6 OQ-C pipeline adversarial: a pending deletion of another tenant's connection does not exclude cash", async () => {
+  await db
+    .prepare(
+      "INSERT INTO lifecycle_deletions(user_id,scope,target_id,request_id,deleted_at,journal_ack) VALUES('pipeline-b','connection','c','oq-c-other-tenant',0,1)",
+    )
+    .run();
+  const current = await seedEarlierPayment({
+    storedState: "unknown",
+    cashMinor: 600,
+  });
+  expect(await ingest(current)).toBe("paid");
+});

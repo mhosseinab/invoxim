@@ -36,7 +36,10 @@ export interface ReviewRow {
   deletion_pending: number;
 }
 /** Deletion-pending EXISTS for a row's owning connection (C8). */
-function deletionPendingSql(userRef: string, documentRef: string): string {
+export function deletionPendingSql(
+  userRef: string,
+  documentRef: string,
+): string {
   return `EXISTS(SELECT 1 FROM lifecycle_deletions ld JOIN source_messages s ON s.user_id=ld.user_id AND s.connection_id=ld.target_id JOIN documents d ON d.user_id=s.user_id AND d.source_message_id=s.id WHERE ld.user_id=${userRef} AND ld.scope='connection' AND d.id=${documentRef})`;
 }
 const reviewDeletionPendingSql = deletionPendingSql(

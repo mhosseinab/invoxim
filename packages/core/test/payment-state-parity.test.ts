@@ -262,6 +262,7 @@ function runPlan(scenario: Scenario): PaymentState {
       documentId: entry.documentId,
       evidenceCode: entry.evidenceCode,
       accepted: entry.accepted,
+      connectionDeletionPending: scenario.connectionDeletionPending ?? false,
     },
   }));
   // Drop the synthetic trigger event: plan receives it from the trigger input.
@@ -462,7 +463,7 @@ const scenarios: Scenario[] = [
     expected: "unknown",
   },
   {
-    name: "cash from a connection pending deletion is unsupported in corrections; planner has no deletion input",
+    name: "cash from a connection pending deletion is unsupported on every path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -478,13 +479,12 @@ const scenarios: Scenario[] = [
       },
     ],
     connectionDeletionPending: true,
-    expectAgreement: false,
-    // OPEN OQ-C: plan.ts has no deletion-pending input; the snapshot only rejects
-    // purchases already marked for lifecycle recompute/delete, which happens in a
-    // later cleanup stage than the lifecycle_deletions insert.
-    openQuestion:
-      "OQ-C: confirm ingestion must treat cash from a connection with a pending lifecycle deletion as unsupported; needs a deletion-pending fact in LedgerSnapshot (PIPE lane).",
-    correctionsExpected: "unknown",
+    // OQ-C (owner decision 2026-10-15): ingestion excludes cash from a
+    // connection with a pending deletion. The snapshot only rejects purchases
+    // already marked for lifecycle recompute/delete, which happens in a later
+    // cleanup stage than the lifecycle_deletions insert.
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
     name: "already-paid purchase with zero remaining supported cash recomputes to unknown on every path",
@@ -498,10 +498,9 @@ const scenarios: Scenario[] = [
 ];
 
 describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
-  it("scenario catalogue covers agreement and divergence", () => {
+  it("scenario catalogue: OQ-A/B/C are decided, so every scenario agrees", () => {
     expect(scenarios.length).toBeGreaterThan(0);
-    expect(scenarios.some((scenario) => scenario.expectAgreement)).toBe(true);
-    expect(scenarios.some((scenario) => !scenario.expectAgreement)).toBe(true);
+    expect(scenarios.every((scenario) => scenario.expectAgreement)).toBe(true);
   });
 
   for (const scenario of scenarios) {
@@ -619,8 +618,8 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
 /**
  * CORE-6 shares derivation after evidence selection; eligibility (S1) and the
  * recompute's cash rule (C1) are now shared too. OQ-A (recompute like
- * corrections) and OQ-B (review facts in LedgerSnapshot) are decided and
- * implemented. Remaining open scenario: OQ-C (deletion-pending fact).
+ * corrections), OQ-B (review facts) and OQ-C (deletion-pending fact) are
+ * decided and implemented; no open scenario remains.
  */
 it("CORE-6 intended rule: all three paths agree when settlement evidence agrees", () => {
   for (const scenario of scenarios.filter((item) => item.expectAgreement)) {

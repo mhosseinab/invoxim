@@ -370,10 +370,12 @@ function cashEvent(
       purchase?.recordStatus !== "merged",
     version: 1,
     // `accepted` is settled once all reviews are planned (acceptPlannedCash).
+    // The leased connection is live: a deletion disconnects it atomically.
     cashProof: {
       documentId: input.identity.documentId,
       evidenceCode: observationEvidenceCode(record),
       accepted: true,
+      connectionDeletionPending: false,
     },
   });
 }
@@ -462,7 +464,10 @@ function cashFact(event: LedgerEvent): CorrectionEventFact {
     eventDate: event.eventDate,
     origin: event.origin ?? "source",
     eligible: event.eligible,
-    accepted: event.cashProof.accepted,
+    // Like corrections/data.ts events(): a pending connection deletion
+    // unaccepts the source observation (OQ-C).
+    accepted:
+      event.cashProof.accepted && !event.cashProof.connectionDeletionPending,
     evidenceCode: event.cashProof.evidenceCode,
   };
 }

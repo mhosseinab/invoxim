@@ -22,6 +22,7 @@ import {
   creditProofSql,
   parseCreditProofRows,
 } from "../corrections/allocation";
+import { deletionPendingSql } from "../corrections/data";
 import {
   checkedResult,
   fingerprintSchema,
@@ -80,16 +81,23 @@ const cashProofSchema = z.strictObject({
   documentId: identifier,
   evidenceCode: z.string().max(40).nullable(),
   accepted: z.union([z.literal(0), z.literal(1)]),
+  connectionDeletionPending: z.union([z.literal(0), z.literal(1)]),
 });
 /** Corrections events() facts: no observation means no source proof. */
 function cashProof(encoded: string | null): LedgerCashProof {
   if (encoded === null)
-    return { documentId: null, evidenceCode: null, accepted: false };
+    return {
+      documentId: null,
+      evidenceCode: null,
+      accepted: false,
+      connectionDeletionPending: false,
+    };
   const proof = cashProofSchema.parse(safeJson(encoded));
   return {
     documentId: proof.documentId,
     evidenceCode: proof.evidenceCode,
     accepted: proof.accepted === 1,
+    connectionDeletionPending: proof.connectionDeletionPending === 1,
   };
 }
 function originalEventValues(
@@ -315,7 +323,7 @@ export async function loadLedgerSnapshot(
           SELECT id FROM ledger_entries WHERE user_id=? AND purchase_id IN (SELECT value FROM json_each(?))
           UNION SELECT id FROM ledger_entries WHERE user_id=? AND observation_id IN (SELECT value FROM json_each(?))
           UNION SELECT id FROM ledger_entries WHERE user_id=? AND business_event_key IN (SELECT value FROM json_each(?))
-        ) SELECT id,business_event_key,purchase_id,observation_id,kind,amount_minor,currency,event_date,date_basis,eligible,version,origin,(SELECT json_group_object(field,json(original_value_json)) FROM field_overrides fo WHERE fo.user_id=ledger_entries.user_id AND fo.entity_kind='entry' AND fo.entity_id=ledger_entries.id) AS original_values_json,(SELECT json_object('documentId',o.document_id,'evidenceCode',o.evidence_code,'accepted',o.review_state='accepted') FROM observations o WHERE o.user_id=ledger_entries.user_id AND o.id=ledger_entries.observation_id) AS proof_json FROM ledger_entries WHERE user_id=? AND id IN (SELECT id FROM related) AND ${guard.sql} ORDER BY id LIMIT 1001`,
+        ) SELECT id,business_event_key,purchase_id,observation_id,kind,amount_minor,currency,event_date,date_basis,eligible,version,origin,(SELECT json_group_object(field,json(original_value_json)) FROM field_overrides fo WHERE fo.user_id=ledger_entries.user_id AND fo.entity_kind='entry' AND fo.entity_id=ledger_entries.id) AS original_values_json,(SELECT json_object('documentId',o.document_id,'evidenceCode',o.evidence_code,'accepted',o.review_state='accepted','connectionDeletionPending',${deletionPendingSql("o.user_id", "o.document_id")}) FROM observations o WHERE o.user_id=ledger_entries.user_id AND o.id=ledger_entries.observation_id) AS proof_json FROM ledger_entries WHERE user_id=? AND id IN (SELECT id FROM related) AND ${guard.sql} ORDER BY id LIMIT 1001`,
     )
     .bind(
       lease.context.userId,

@@ -87,6 +87,8 @@ export interface LedgerCashProof {
   readonly evidenceCode: string | null;
   /** observations.review_state = 'accepted'. */
   readonly accepted: boolean;
+  /** OQ-C: the source message's connection has a pending lifecycle deletion. */
+  readonly connectionDeletionPending: boolean;
 }
 export const LEDGER_REVIEW_REASONS = [
   "extraction-review",
