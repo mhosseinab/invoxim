@@ -8,6 +8,7 @@ import {
   OriginalReadError,
 } from "@invoxim/core";
 import { z } from "zod";
+import { parseRetryAfter } from "../http";
 
 type UnsupportedCode = Extract<
   TransientOriginalResult,
@@ -218,16 +219,9 @@ export function createOriginalMailReader(
         if (response.status === 401 || response.status === 403)
           throw new OriginalReadError("AUTH_REQUIRED");
         if (response.status === 429 || response.status === 503) {
-          const value = response.headers.get("retry-after");
-          const delay =
-            value && /^[0-9]+$/.test(value)
-              ? Number(value) * 1000
-              : value
-                ? Date.parse(value) - Date.now()
-                : 30000;
           throw new OriginalReadError(
             "RATE_LIMITED",
-            Number.isFinite(delay) ? Math.max(1000, delay) : 86400001,
+            parseRetryAfter(response.headers.get("retry-after")) ?? 30000,
           );
         }
         if (response.status !== 200) throw new OriginalReadError("UNAVAILABLE");
