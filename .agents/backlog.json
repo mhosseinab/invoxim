@@ -1849,7 +1849,7 @@
       "id": "AI-CLASSIFIER-PROVIDER-01",
       "title": "Provider-agnostic receipt classification: keep Clef, add Perplexity pplx-decider behind the same port",
       "milestone": "M1",
-      "status": "in_progress",
+      "status": "review",
       "dependsOn": [
         "AI-CLASSIFICATION-IMPROVEMENTS-03"
       ],
@@ -1863,7 +1863,12 @@
       ],
       "localProgressEvidence": [],
       "completionEvidence": [],
-      "blockedBy": []
+      "blockedBy": [
+        "No live Perplexity Decisions API call: PERPLEXITY_API_KEY not available to the implementer; request acceptance, echoed model, usage, latency and 429 behaviour are proven only against mocked fetch.",
+        "pplx-decider calibration unverified: 0.1/0.9 thresholds were tuned on Clef; clef-eval evaluates Clef only.",
+        "Operator must set Wrangler secret PERPLEXITY_API_KEY before deploying; every existing processing consent requires renewed Review/Start.",
+        "No independent review recorded yet."
+      ]
     }
   ]
 }
