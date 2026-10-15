@@ -509,6 +509,148 @@ it("unblock caps: more than 4 recomputable purchases is the documented TOO_LARGE
   ).toEqual({ review: "open", purchases: 5, eligible: 0 });
 });
 
+/**
+ * One document whose segment i is the evidence observation of purchase
+ * `${prefix}-${i}` (spec i), with an optional eligible payment entry, plus
+ * an open document-scoped review `${prefix}-r` on it.
+ */
+async function evidenceDocument(
+  user: string,
+  prefix: string,
+  specs: readonly {
+    record: Record<string, string | null>;
+    reviewState?: "accepted" | "needs_review";
+    entryMinor?: number;
+  }[],
+) {
+  await db
+    .prepare(
+      "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES(?,?,'mail',?,0,1)",
+    )
+    .bind(`${prefix}-msg`, user, `${prefix}-msg`)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES(?,?,?,'body',?,'text/plain',10)",
+    )
+    .bind(`${prefix}-doc`, user, `${prefix}-msg`, `hash-${prefix}`)
+    .run();
+  for (const [index, spec] of specs.entries()) {
+    const id = `${prefix}-${index}`;
+    await purchase(user, id);
+    await db
+      .prepare(
+        "INSERT INTO observations(id,user_id,document_id,segment_index,extraction_fingerprint,extraction_version,evidence_code,normalized_fields,structured_fields,review_state) VALUES(?,?,?,?,'v1',1,'explicitly-paid','{\"schemaVersion\":1}',?,?)",
+      )
+      .bind(
+        `${id}-obs`,
+        user,
+        `${prefix}-doc`,
+        index,
+        JSON.stringify({
+          schemaVersion: 1,
+          documentType: "receipt",
+          record: {
+            currency: "EUR",
+            total: "100.00",
+            paymentEvidence: "explicitly-paid",
+            paymentMethodHint: "card",
+            paymentAmount: "100.00",
+            storeCreditAmount: null,
+            ...spec.record,
+          },
+        }),
+        spec.reviewState ?? "accepted",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO purchase_evidence(user_id,purchase_id,observation_id,relationship) VALUES(?,?,?,'document')",
+      )
+      .bind(user, id, `${id}-obs`)
+      .run();
+    if (spec.entryMinor !== undefined)
+      await db
+        .prepare(
+          "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible,origin) VALUES(?,?,?,?,?,'payment',?,'EUR','2026-01-10','explicit-event-date',1,'source')",
+        )
+        .bind(
+          `${id}-entry`,
+          user,
+          id,
+          `${id}-obs`,
+          `key-${id}`,
+          spec.entryMinor,
+        )
+        .run();
+  }
+  await review(user, `${prefix}-r`, {
+    purchaseId: null,
+    documentId: `${prefix}-doc`,
+    reason: "extraction-review",
+  });
+}
+async function versions(user: string, prefix: string) {
+  return (
+    await db
+      .prepare(
+        "SELECT id,version FROM purchases WHERE user_id=? AND id LIKE ? ORDER BY id",
+      )
+      .bind(user, `${prefix}-%`)
+      .all<{ id: string; version: number }>()
+  ).results.map((row) => row.version);
+}
+
+it("unblock credit link follows creditProofSql: five evidence-linked card-only purchases resolve without TOO_LARGE and keep their versions", async () => {
+  const session = await owner("unblock-card-only");
+  const user = session.tenant.userId;
+  await evidenceDocument(
+    user,
+    "card",
+    Array.from({ length: 5 }, () => ({ record: {} })),
+  );
+  const result = await completeRecord(session, "card-r", "card-resolve");
+  expect(result.reviewStatus).toBe("resolved");
+  expect(await versions(user, "card")).toEqual([1, 1, 1, 1, 1]);
+});
+
+it("unblock credit link adversarial: credit from a connection pending deletion or without paid evidence is not a link", async () => {
+  const session = await owner("unblock-credit-filters");
+  const user = session.tenant.userId;
+  await evidenceDocument(user, "cf", [
+    { record: { storeCreditAmount: "40.00", paymentAmount: "60.00" } },
+    {
+      record: {
+        storeCreditAmount: "40.00",
+        paymentEvidence: "unknown",
+      },
+    },
+  ]);
+  // Only the first is a credit link and is recomputed (40 of 100 credit).
+  await completeRecord(session, "cf-r", "cf-resolve");
+  expect(await versions(user, "cf")).toEqual([2, 1]);
+  expect(await state(user, "cf-0")).toBe("partially_paid");
+  // A pending deletion of the source connection removes the credit link.
+  const other = await owner("unblock-credit-deleting");
+  const otherUser = other.tenant.userId;
+  await evidenceDocument(otherUser, "cd", [
+    { record: { storeCreditAmount: "40.00", paymentAmount: "60.00" } },
+  ]);
+  // The evidence comes from a second mailbox being deleted; the review sits
+  // on a live document and names that observation, so it stays available.
+  for (const sql of [
+    "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state) VALUES('mail-del',?1,'mailbox','gmail','subject-del','del@example.invalid','disconnected')",
+    "UPDATE source_messages SET connection_id='mail-del' WHERE user_id=?1 AND id='cd-msg'",
+    "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES('cd-live-msg',?1,'mail','cd-live-msg',0,1)",
+    "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES('cd-live-doc',?1,'cd-live-msg','body','hash-cd-live','text/plain',10)",
+    "UPDATE review_items SET document_id='cd-live-doc',observation_id='cd-0-obs' WHERE user_id=?1 AND id='cd-r'",
+    "INSERT INTO lifecycle_deletions(user_id,scope,target_id,request_id,deleted_at,journal_ack) VALUES(?1,'connection','mail-del','cd-deletion',0,1)",
+  ])
+    await db.prepare(sql).bind(otherUser).run();
+  await completeRecord(other, "cd-r", "cd-resolve");
+  expect(await versions(otherUser, "cd")).toEqual([1]);
+});
+
 /** A purchase without total, 60.00 supported cash, and a total question on another document. */
 async function missingTotal(user: string, prefix: string, missing: string[]) {
   await purchase(user, prefix, { total: null });

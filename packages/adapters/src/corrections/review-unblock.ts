@@ -124,11 +124,13 @@ export async function planReviewUnblock(
   if (!closing && forced === null) return none;
   const link = closing ? resolved : null;
   const closed = closing ? resolved.id : undefined;
-  // `credit` marks an accepted explicitly-paid evidence observation the
-  // review blocks (creditProofSql), so credit-only purchases are recomputed.
+  // `credit` marks an evidence observation the review blocks that
+  // creditProofSql would otherwise count (accepted, explicitly paid, with a
+  // credit amount, source connection not pending deletion), so credit-only
+  // purchases are recomputed and card-only evidence is not a link.
   const linked = await db
     .prepare(
-      `SELECT ${purchaseColumns},MAX(linked.credit) AS credit FROM (SELECT l.purchase_id AS id,0 AS credit FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) UNION ALL SELECT pe.purchase_id,1 FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id WHERE pe.user_id=? AND (o.id=? OR (? IS NULL AND o.document_id=?)) AND o.review_state='accepted' AND o.evidence_code='explicitly-paid' UNION ALL SELECT ?,0 WHERE ? IS NOT NULL) linked JOIN purchases p ON p.user_id=? AND p.id=linked.id WHERE p.record_status IN('active','excluded') AND p.lifecycle_delete_connection_id IS NULL AND p.lifecycle_recompute_connection_id IS NULL AND p.id IS NOT ? GROUP BY p.id ORDER BY p.id LIMIT ?`,
+      `SELECT ${purchaseColumns},MAX(linked.credit) AS credit FROM (SELECT l.purchase_id AS id,0 AS credit FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) UNION ALL SELECT pe.purchase_id,1 FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id JOIN documents d ON d.user_id=o.user_id AND d.id=o.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id WHERE pe.user_id=? AND (o.id=? OR (? IS NULL AND o.document_id=?)) AND o.review_state='accepted' AND o.evidence_code='explicitly-paid' AND json_extract(o.structured_fields,'$.record.paymentEvidence')='explicitly-paid' AND (CASE WHEN json_extract(o.structured_fields,'$.record.paymentMethodHint')='store-credit' THEN COALESCE(json_extract(o.structured_fields,'$.record.storeCreditAmount'),json_extract(o.structured_fields,'$.record.paymentAmount')) ELSE json_extract(o.structured_fields,'$.record.storeCreditAmount') END) IS NOT NULL AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions ld WHERE ld.user_id=s.user_id AND ld.scope='connection' AND ld.target_id=s.connection_id) UNION ALL SELECT ?,0 WHERE ? IS NOT NULL) linked JOIN purchases p ON p.user_id=? AND p.id=linked.id WHERE p.record_status IN('active','excluded') AND p.lifecycle_delete_connection_id IS NULL AND p.lifecycle_recompute_connection_id IS NULL AND p.id IS NOT ? GROUP BY p.id ORDER BY p.id LIMIT ?`,
     )
     .bind(
       user,
