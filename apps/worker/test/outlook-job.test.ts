@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import type { JobLease, JobPolicy } from "@invoxim/core";
+import type { JobLease, JobOutcome, JobPolicy } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
 import folderExclusionsMigration from "../../../packages/adapters/migrations/0004_outlook_folder_exclusions.sql?raw";
@@ -2024,6 +2024,58 @@ it("INT-5/O5 a persistent Outlook statement shortfall exhausts the job at the re
   ).toBe(0);
 });
 
+async function claimContinuation(lease: JobLease): Promise<JobLease> {
+  const continuation = await env.DB.prepare(
+    "SELECT id FROM jobs WHERE user_id=? AND sync_state_id=? AND status='ready' AND id<>?",
+  )
+    .bind(lease.context.userId, lease.syncStateId, lease.jobId)
+    .first<string>("id");
+  if (!continuation) throw new Error("Outlook continuation job missing");
+  await env.DB.prepare("UPDATE jobs SET dispatch_at=0 WHERE user_id=? AND id=?")
+    .bind(lease.context.userId, continuation)
+    .run();
+  const next = await createJobStore(env.DB, { policy }).claim(continuation);
+  if (!next) throw new Error("Outlook continuation lease unavailable");
+  return next;
+}
+async function runOnce(
+  lease: JobLease,
+  graph: OutlookGraphDiscoveryPort,
+): Promise<JobOutcome> {
+  const meter = createInvocationDatabase(env.DB, 40);
+  const outcome = await createOutlookJobRunner(meter.db, {
+    open: async () => graph,
+    remainingStatements: meter.remainingStatements,
+  }).run(lease, {
+    signal: new AbortController().signal,
+    checkpoint: async () => true,
+  });
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+  return outcome;
+}
+function rateLimitedInventory(delayMs: number) {
+  return provider(async () => {
+    throw new DiscoveryError("RATE_LIMITED", delayMs);
+  });
+}
+function rateLimitedFolder(delayMs: number): OutlookGraphDiscoveryPort {
+  return {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    deltaFolder: async () => {
+      throw new DiscoveryError("RATE_LIMITED", delayMs);
+    },
+  };
+}
+function continuationKey(lease: JobLease) {
+  return env.DB.prepare(
+    "SELECT dedupe_key FROM jobs WHERE user_id=? AND sync_state_id=? AND status='ready' AND id<>?",
+  )
+    .bind(lease.context.userId, lease.syncStateId, lease.jobId)
+    .first<string>("dedupe_key");
+}
+
 it("INT-5/G2 a revision-0 consent with no active AI selection cannot start Outlook discovery (pinned stricter guard)", async () => {
   const lease = await claimed("g2-revision-zero");
   await seedLiveFolder(lease, "folder-g2-revision-zero", "inbox-folder");
@@ -2066,4 +2118,144 @@ it("INT-5/G2 a revision-0 consent with no active AI selection cannot start Outlo
       .bind(lease.context.userId)
       .first("n"),
   ).toBe(0);
+});
+
+it("INT-5/G4 parity: an inventory rate limit after a successful page restarts the rate chain at depth 1", async () => {
+  let lease = await claimed("g4-parity-inventory-chain", "recent");
+  await seedPendingInventory(
+    lease,
+    "https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=g4-parity-1",
+  );
+  expect(await runOnce(lease, rateLimitedInventory(60_000))).toEqual({
+    kind: "completed",
+  });
+  expect(await continuationKey(lease)).toBe(`outlook:rate:1:${lease.jobId}`);
+  lease = await claimContinuation(lease);
+  expect(
+    await runOnce(
+      lease,
+      provider(async () => ({
+        folders: [],
+        nextLink:
+          "https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=g4-parity-2",
+      })),
+    ),
+  ).toEqual({ kind: "completed" });
+  expect(await continuationKey(lease)).toBe(`outlook:inventory:${lease.jobId}`);
+  lease = await claimContinuation(lease);
+  expect(await runOnce(lease, rateLimitedInventory(60_000))).toEqual({
+    kind: "completed",
+  });
+  expect(await continuationKey(lease)).toBe(`outlook:rate:1:${lease.jobId}`);
+});
+
+it("INT-5/G4 parity: a folder rate limit after a successful page records one consecutive failure", async () => {
+  let lease = await claimed("g4-parity-folder-chain");
+  const folderId = "inbox-folder";
+  const stateId = "folder-g4-parity-chain";
+  await seedLiveFolder(
+    lease,
+    stateId,
+    folderId,
+    `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=g4-parity`,
+  );
+  const failures: number[] = [];
+  const record = async () => {
+    failures.push(
+      (await env.DB.prepare(
+        "SELECT consecutive_failures FROM sync_states WHERE user_id=? AND id=?",
+      )
+        .bind(lease.context.userId, stateId)
+        .first<number>("consecutive_failures")) ?? -1,
+    );
+    // The saved retry time has passed before the next delivery.
+    await env.DB.prepare(
+      "UPDATE sync_states SET retry_at=CASE WHEN retry_at IS NULL THEN NULL ELSE 1 END WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .run();
+  };
+  expect(await runOnce(lease, rateLimitedFolder(60_000))).toEqual({
+    kind: "completed",
+  });
+  await record();
+  lease = await claimContinuation(lease);
+  expect(
+    await runOnce(lease, {
+      ...rateLimitedFolder(60_000),
+      deltaFolder: async () => ({
+        ids: [],
+        folderRemovedIds: [],
+        nextLink: `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$skiptoken=g4-parity-next`,
+      }),
+    }),
+  ).toEqual({ kind: "completed" });
+  await record();
+  lease = await claimContinuation(lease);
+  expect(await runOnce(lease, rateLimitedFolder(60_000))).toEqual({
+    kind: "completed",
+  });
+  await record();
+  expect(failures).toEqual([1, 0, 1]);
+});
+
+it("INT-5/G4 parity: an over-day Retry-After pauses Outlook with Gmail's consecutive_failures (reset to 0)", async () => {
+  // Folder level: one counted deferral, then an over-day Retry-After.
+  let lease = await claimed("g4-parity-folder-long");
+  const folderId = "inbox-folder";
+  const stateId = "folder-g4-parity-long";
+  const prior = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=g4-parity-long`;
+  await seedLiveFolder(lease, stateId, folderId, prior);
+  expect(await runOnce(lease, rateLimitedFolder(60_000))).toEqual({
+    kind: "completed",
+  });
+  await env.DB.prepare(
+    "UPDATE sync_states SET retry_at=1 WHERE user_id=? AND id=?",
+  )
+    .bind(lease.context.userId, stateId)
+    .run();
+  lease = await claimContinuation(lease);
+  expect(await runOnce(lease, rateLimitedFolder(25 * 60 * 60 * 1000))).toEqual({
+    kind: "completed",
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,consecutive_failures,retry_at,history_cursor FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first(),
+  ).toEqual({
+    stage: "paused_rate",
+    consecutive_failures: 0,
+    retry_at: null,
+    history_cursor: prior,
+  });
+
+  // Inventory level: the rate chain lives in the dedupe key; the mailbox
+  // state's consecutive_failures is never written and no retry is queued.
+  let inventory = await claimed("g4-parity-inventory-long", "recent");
+  await seedPendingInventory(
+    inventory,
+    "https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=g4-parity-long",
+  );
+  expect(await runOnce(inventory, rateLimitedInventory(60_000))).toEqual({
+    kind: "completed",
+  });
+  inventory = await claimContinuation(inventory);
+  expect(
+    await runOnce(inventory, rateLimitedInventory(25 * 60 * 60 * 1000)),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,consecutive_failures,retry_at,(SELECT outcome_code FROM jobs WHERE user_id=?1 AND id=?3) AS outcome,(SELECT COUNT(*) FROM jobs WHERE user_id=?1 AND status='ready') AS ready FROM sync_states WHERE user_id=?1 AND id=?2",
+    )
+      .bind(inventory.context.userId, inventory.syncStateId, inventory.jobId)
+      .first(),
+  ).toEqual({
+    stage: "paused_rate",
+    consecutive_failures: 0,
+    retry_at: null,
+    outcome: "rate_paused",
+    ready: 0,
+  });
 });

@@ -1722,3 +1722,64 @@ it("INT-5/O5 Gmail rate-paused slice returns paused/budget without provider acce
     code: "budget",
   });
 });
+
+function gmailFailures(tenant: TenantContext) {
+  return db
+    .prepare(
+      "SELECT stage,consecutive_failures,retry_at FROM sync_states WHERE user_id=? AND slice_key='recent'",
+    )
+    .bind(tenant.userId)
+    .first<{
+      stage: string;
+      consecutive_failures: number;
+      retry_at: number | null;
+    }>();
+}
+function rateLimitedPages(delayMs: number) {
+  const provider = pageProvider();
+  provider.list = async () => {
+    throw new DiscoveryError("RATE_LIMITED", delayMs);
+  };
+  return provider;
+}
+it("INT-5/G4 parity: a Gmail rate limit after a successful page records one consecutive failure", async () => {
+  const tenant = await owner("g4-parity-gmail-chain");
+  await service().beginAcceptedImport(tenant, accepted(tenant));
+  const failures: number[] = [];
+  expect((await pageTurn(tenant, rateLimitedPages(60_000))).outcome).toEqual({
+    kind: "completed",
+  });
+  failures.push((await gmailFailures(tenant))?.consecutive_failures ?? -1);
+  const ok = pageProvider();
+  ok.list = async () => ({ ids: [], nextPageToken: "g4-parity-gmail-next" });
+  expect((await pageTurn(tenant, ok, { at: now + 60_000 })).outcome).toEqual({
+    kind: "completed",
+  });
+  failures.push((await gmailFailures(tenant))?.consecutive_failures ?? -1);
+  expect(
+    (await pageTurn(tenant, rateLimitedPages(60_000), { at: now + 60_000 }))
+      .outcome,
+  ).toEqual({ kind: "completed" });
+  failures.push((await gmailFailures(tenant))?.consecutive_failures ?? -1);
+  expect(failures).toEqual([1, 0, 1]);
+});
+it("INT-5/G4 parity: a Gmail over-day Retry-After pauses with consecutive_failures reset to 0", async () => {
+  const tenant = await owner("g4-parity-gmail-long");
+  await service().beginAcceptedImport(tenant, accepted(tenant));
+  expect((await pageTurn(tenant, rateLimitedPages(60_000))).outcome).toEqual({
+    kind: "completed",
+  });
+  expect((await gmailFailures(tenant))?.consecutive_failures).toBe(1);
+  expect(
+    (
+      await pageTurn(tenant, rateLimitedPages(25 * 60 * 60 * 1000), {
+        at: now + 60_000,
+      })
+    ).outcome,
+  ).toEqual({ kind: "completed" });
+  expect(await gmailFailures(tenant)).toEqual({
+    stage: "paused_rate",
+    consecutive_failures: 0,
+    retry_at: null,
+  });
+});

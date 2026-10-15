@@ -117,6 +117,9 @@ export async function deferFolderRate(
       : countFailure
         ? now + decision.delayMs
         : folder.retry_at;
+  // G4 parity with Gmail (pages.ts deferRate): an over-day Retry-After pause
+  // records no retry time and resets the count; a failure-cap pause keeps it.
+  const failures = "delayMs" in decision ? decision.failures : 0;
   const nonce = crypto.randomUUID();
   const leaseGuard = deltaLeaseGuard(lease, now);
   const marker =
@@ -137,7 +140,7 @@ export async function deferFolderRate(
       .bind(
         paused ? "paused_rate" : folder.stage,
         retryAt,
-        decision.failures,
+        failures,
         nonce,
         lease.context.userId,
         folder.id,
