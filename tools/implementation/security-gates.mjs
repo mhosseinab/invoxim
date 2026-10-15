@@ -46,6 +46,7 @@ const ignored = new Set([
   ".wrangler",
   ".worktrees",
   "dist",
+  ".production",
   "coverage",
   "playwright-report",
   "test-results",

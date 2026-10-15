@@ -87,6 +87,18 @@ test("generated dependencies skipped, evidence and untracked implementation reta
     await writeFile(path.join(root, "implementation.ts"), token);
     assert.equal((await scanSecrets(root)).findings.length, 1);
   }));
+test("generated .production build graphs are skipped like dist, so a large local build cannot fail the scan", async () =>
+  temporary(async (root) => {
+    await mkdir(path.join(root, "apps", "worker", ".production"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "apps", "worker", ".production", "worker.json"),
+      "x".repeat(2 * 1024 * 1024 + 1),
+    );
+    await writeFile(path.join(root, "implementation.ts"), token);
+    assert.equal((await scanSecrets(root)).findings.length, 1);
+  }));
 test("other agents' .claude/worktrees checkouts are skipped; the rest of .claude is scanned", async () =>
   temporary(async (root) => {
     await mkdir(path.join(root, ".claude", "worktrees", "agent-a"), {
