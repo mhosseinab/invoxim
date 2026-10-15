@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "model": "@cf/cloudflare/clef",
+  "version": "document-classification-v4",
+  "maxInputBytes": 24000,
+  "timeoutMs": 30000,
+  "negativeThreshold": 0.1,
+  "positiveThreshold": 0.9,
+  "categoryThreshold": 0.5,
+  "pricing": {
+    "version": "cloudflare-clef-20261013",
+    "approved": true,
+    "currency": "USD",
+    "source": "https://developers.cloudflare.com/workers-ai/models/clef/",
+    "checkedAt": "2026-10-13T19:50:00Z",
+    "inputUsdMicrosPerMillion": "240000",
+    "outputUsdMicrosPerMillion": "0",
+    "otherUsdMicrosPerMillion": "0"
+  },
+  "uncertainAction": "extract"
+}

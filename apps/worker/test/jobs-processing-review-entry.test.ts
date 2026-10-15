@@ -59,6 +59,7 @@ function bindings(flag: (typeof extraction)[number]) {
     AI_HOSTED_KEY: "synthetic-hosted-key-never-production",
     AI_CLASSIFICATION_JSON: JSON.stringify(classification),
     AI: { run: model },
+    PERPLEXITY_API_KEY: "synthetic-perplexity-key-not-real",
     ...(flag === undefined ? {} : { EXTRACTION_ENABLED: flag }),
   };
 }

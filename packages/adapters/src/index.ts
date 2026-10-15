@@ -2,6 +2,8 @@
 // Explicit re-exports only — names consumed outside this package.
 // Internal helpers stay package-internal and are not leaked here.
 
+export type { ClassificationTransportSources } from "./ai/classification-transport";
+export { createClassificationTransport } from "./ai/classification-transport";
 export { createReceiptClassifierFactory } from "./ai/classifier-factory";
 export type { ClefBinding } from "./ai/clef";
 export { CLEF_RECEIPT_POLICY_VERSION } from "./ai/clef-protocol";

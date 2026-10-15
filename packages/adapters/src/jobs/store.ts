@@ -6,7 +6,7 @@ import type {
   NewJob,
   TenantContext,
 } from "@invoxim/core";
-import type { ReceiptClassificationConfiguration } from "../ai/clef";
+import type { ReceiptClassificationConfiguration } from "../ai/classification-config";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
 import {
   connectionConsentLiveSql,

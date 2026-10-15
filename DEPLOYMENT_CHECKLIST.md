@@ -127,6 +127,15 @@ Production background configuration was deployed on 2026-10-13 from verified `04
 
 Start error/fence repair released from frozen `6eebd6c` after full `pnpm verify` passed (1,368 native integration tests/109 files and 84 browser tests). API `963f4705-029b-4014-8360-1f5c2eafe323` is independently verified at 100%; Pages `f5566f14` deployed. Queue, cron, AI caps, secret storage and provider selection are unchanged. No remote migration applied. Google 403 prevents Start's history-anchor capture; classified operator API-enablement or permission-reconnection remediation still requires an owner-assisted live retry. Keep the successful authenticated import/model-quality gate open. See the evidence record `onboarding-gmail-start-repair-20261013.md` (kept outside git; the historical copy is in the commit history before fe99887).
 
+## Perplexity pplx-decider classification rollout (AI-CLASSIFIER-PROVIDER-01)
+
+`config/ai.classification.production.json` now selects `perplexity-decider` / `pplx-decider-v1.1-27b` (owner decision 2026-10-15, including acceptance of Perplexity as a processing destination whose Decisions API docs publish no retention terms). Not deployed by this change.
+
+- Before deploying, set the secret: `pnpm --filter @invoxim/worker exec wrangler secret put PERPLEXITY_API_KEY`. Without it AI configuration is unavailable and mailbox processing/onboarding Start are not ready (fail closed; no fallback to Clef).
+- Deploy Worker and frontend together. The provider, model, tariff and processor notice change the reviewed processing digest: every existing processing consent needs renewed Review/Start that names Perplexity before background processing resumes.
+- Run a separately recorded live synthetic smoke (request accepted, echoed model, usage, latency, 429 behavior) under an explicit cost cap; no live call has been made yet. Thresholds (0.1/0.9) were tuned on Clef and pplx-decider calibration is unverified; the `clef-eval` tool does not yet evaluate Perplexity.
+- Rollback: restore `config/ai.classification.clef.json` content into the production file (requires renewed Review/Start again); the `AI` binding remains configured.
+
 ## Clef classification rollout
 
 - Deploy the verified Worker and frontend together when approved; classifier settings are bundled from `config/ai.classification.production.json`, and Wrangler supplies the `AI` binding. Financial extraction remains Abacus/BYOK.
@@ -137,7 +146,7 @@ Start error/fence repair released from frozen `6eebd6c` after full `pnpm verify`
 
 ## Outlook local connector checkpoint — 2026-10-14
 
-The Worker now composes Outlook discovery, transient content fetch, mandatory Clef classification and selected financial extraction. Later hourly cycles preserve folder delta cursors, including newly added nested folders. On-demand review metadata and local disconnect are supported. This supersedes older notes describing Outlook as adapter-only; it does not establish deployed or live acceptance.
+The Worker now composes Outlook discovery, transient content fetch, mandatory receipt classification (Clef at the time of this checkpoint) and selected financial extraction. Later hourly cycles preserve folder delta cursors, including newly added nested folders. On-demand review metadata and local disconnect are supported. This supersedes older notes describing Outlook as adapter-only; it does not establish deployed or live acceptance.
 
 Before enabling `OUTLOOK_ENABLED` and `OUTLOOK_DISCOVERY_ENABLED`, configure the Microsoft app registration, callback and Wrangler secrets described in `apps/worker/CONFIGURATION.md`. Record personal and work-account authorization, tenant/admin-policy refusal, token rotation/revocation, moved/deleted folders and expired-delta recovery smoke tests. Verify queue bindings and invocation limits. Keep existing migration history; no schema change is introduced by this connector completion. No deployment, remote migration or paid model call was performed for this checkpoint.
 

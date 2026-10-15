@@ -4,14 +4,12 @@ import {
 } from "@invoxim/contracts";
 import type { OnboardingRepository, OnboardingSession } from "@invoxim/core";
 import { OnboardingError } from "@invoxim/core";
+import { classificationProvider } from "../ai/classification-config";
 import type { AiConfiguration } from "../ai/configuration";
 import { hashJsonValue } from "../hash";
 import { activeProfileSql } from "../pipeline/repository-guards";
 import { readActiveOnboardingRun } from "./active-run";
-import {
-  LOCAL_PARSER_POLICY,
-  RECEIPT_CLASSIFIER_NOTICE,
-} from "./configuration";
+import { LOCAL_PARSER_POLICY, receiptClassifierNotice } from "./configuration";
 import {
   canStartImport,
   createOnboardingReads,
@@ -155,12 +153,14 @@ export function createOnboardingRepository(
         ...(options.ai?.classification?.enabled
           ? {
               classification: {
-                providerId: "cloudflare-clef",
+                providerId: classificationProvider(options.ai.classification),
                 model: options.ai.classification.model,
                 mode: "hosted",
                 policyVersion: 1,
-                notices: [RECEIPT_CLASSIFIER_NOTICE],
-                noticeRefs: [RECEIPT_CLASSIFIER_NOTICE.id],
+                notices: [receiptClassifierNotice(options.ai.classification)],
+                noticeRefs: [
+                  receiptClassifierNotice(options.ai.classification).id,
+                ],
                 ready: true,
               },
             }

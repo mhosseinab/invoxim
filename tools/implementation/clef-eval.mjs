@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import classificationConfiguration from "../../config/ai.classification.production.json" with { type: "json" };
+// Clef-only evaluation: the versioned Clef configuration, not the production
+// selection (production uses perplexity-decider; its evaluation is a follow-up).
+import classificationConfiguration from "../../config/ai.classification.clef.json" with { type: "json" };
 import {
   buildDecisionRequest,
   RECEIPT_DECISION_POLICY_VERSION as CLEF_RECEIPT_POLICY_VERSION,

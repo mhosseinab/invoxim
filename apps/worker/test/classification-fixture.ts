@@ -1,6 +1,11 @@
-import classification from "../../../config/ai.classification.production.json";
+import classification from "../../../config/ai.classification.clef.json";
 
-/** Synthetic local classifier: never invokes the remote Workers AI binding. */
+/**
+ * Synthetic local Clef classifier: never invokes the remote Workers AI binding.
+ * Uses the versioned Clef configuration so Clef-path regressions keep their
+ * destination identity; production now selects Perplexity (covered by
+ * perplexity-pipeline and classification-provider-configuration tests).
+ */
 export const syntheticClassificationBindings = {
   AI_CLASSIFICATION_ENABLED: "true",
   AI_CLASSIFICATION_JSON: JSON.stringify(classification),

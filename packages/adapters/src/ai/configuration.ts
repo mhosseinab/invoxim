@@ -8,8 +8,9 @@ import { z } from "zod";
 import type { AuthBindings } from "../auth/configuration";
 import { hashJsonValue } from "../hash";
 import { createCredentialCipher } from "../security/cipher";
+import { receiptClassificationConfigurationSchema } from "./classification-config";
+import { createClassificationTransport } from "./classification-transport";
 import type { ClefBinding } from "./clef";
-import { receiptClassificationConfigurationSchema } from "./clef";
 import { aiPricingSchema } from "./pricing";
 import type { AiTracingBindings } from "./tracing";
 import { langsmithConfiguration } from "./tracing";
@@ -25,6 +26,8 @@ export interface AiBindings extends AuthBindings, AiTracingBindings {
   AI_CLASSIFICATION_JSON?: string;
   AI_CLASSIFICATION_ENABLED?: string;
   AI?: ClefBinding | undefined;
+  /** Wrangler secret for the perplexity-decider classification provider. */
+  PERPLEXITY_API_KEY?: string | undefined;
 }
 const resourceLimit = z.number().int().min(1).max(9000000000000);
 const monetaryLimit = z
@@ -175,8 +178,10 @@ export function aiConfiguration(bindings: AiBindings) {
         : undefined;
     if (
       !classification?.enabled ||
-      !bindings.AI ||
-      typeof bindings.AI.run !== "function"
+      !createClassificationTransport(classification, {
+        binding: bindings.AI,
+        perplexityApiKey: bindings.PERPLEXITY_API_KEY,
+      })
     )
       return null;
     const tracing = langsmithConfiguration(bindings);

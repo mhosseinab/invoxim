@@ -1,7 +1,10 @@
 import { DOCUMENT_LIMITS } from "@invoxim/core";
 import { z } from "zod";
-import type { ReceiptClassificationConfiguration } from "../ai/clef";
-import { receiptClassificationConfigurationSchema } from "../ai/clef";
+import type { ReceiptClassificationConfiguration } from "../ai/classification-config";
+import {
+  classificationProvider,
+  receiptClassificationConfigurationSchema,
+} from "../ai/classification-config";
 import type { AiDestination, AiModel } from "../ai/configuration";
 import {
   aiNoticeSchema,
@@ -59,14 +62,20 @@ export async function selectedOnboardingConfigurationDigest(input: {
       input.destination,
       input.model,
     ),
-    ...(input.classification?.enabled
-      ? {
-          classification: input.classification,
-          classificationNotice: RECEIPT_CLASSIFIER_NOTICE,
-        }
-      : {}),
+    ...classificationDigestInputs(input.classification),
     parser: LOCAL_PARSER_POLICY,
   });
+}
+/** The reviewed classifier configuration and its own processor notice, or nothing when disabled. */
+export function classificationDigestInputs(
+  classification: ReceiptClassificationConfiguration | undefined,
+): Pick<ConfigDigestInputs, "classification" | "classificationNotice"> {
+  return classification?.enabled
+    ? {
+        classification,
+        classificationNotice: receiptClassifierNotice(classification),
+      }
+    : {};
 }
 export const RECEIPT_CLASSIFIER_NOTICE = Object.freeze({
   id: "cloudflare-clef-v4",
@@ -78,3 +87,24 @@ export const RECEIPT_CLASSIFIER_NOTICE = Object.freeze({
   privacyUrl:
     "https://developers.cloudflare.com/workers-ai/platform/data-usage/",
 });
+/**
+ * Perplexity Decisions API notice. Its documentation (checked 2026-10-15)
+ * publishes no data-retention or training terms, so none are claimed here.
+ */
+export const PERPLEXITY_DECIDER_CLASSIFIER_NOTICE = Object.freeze({
+  id: "perplexity-decider-v1",
+  displayName: "Perplexity Decisions API — pplx-decider email classification",
+  dataUseSummary:
+    "Each readable document, including locally converted PDF text, is sent to Perplexity to identify financial document type and category. An attachment does not qualify its covering email. Plausible uncertain documents may be verified by your selected financial provider.",
+  retentionSummary:
+    "This app does not store email text or model transcripts. Perplexity's Decisions API documentation does not publish data-retention or model-training terms, so this app makes no retention or no-training claim for Perplexity.",
+  privacyUrl: "https://docs.perplexity.ai/docs/decisions/quickstart",
+});
+/** The disclosed processor notice for the configured classification provider. */
+export function receiptClassifierNotice(
+  classification: ReceiptClassificationConfiguration,
+) {
+  return classificationProvider(classification) === "perplexity-decider"
+    ? PERPLEXITY_DECIDER_CLASSIFIER_NOTICE
+    : RECEIPT_CLASSIFIER_NOTICE;
+}

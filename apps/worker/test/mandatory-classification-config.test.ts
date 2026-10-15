@@ -22,7 +22,9 @@ const bindings: AiBindings = {
     keys: { 1: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
   }),
   AI_CLASSIFICATION_JSON: JSON.stringify(classification),
+  // Production selects perplexity-decider; the Clef binding must stay unused.
   AI: { run },
+  PERPLEXITY_API_KEY: "synthetic-perplexity-key-not-real",
 };
 it("enabled receipt processing requires configured enabled classification and its binding", () => {
   expect(aiConfiguration(bindings)?.classification).toEqual(classification);
@@ -37,7 +39,8 @@ it.each([
     }),
   },
   { AI_CLASSIFICATION_ENABLED: "false" },
-  { AI: undefined },
+  { PERPLEXITY_API_KEY: undefined },
+  { PERPLEXITY_API_KEY: " " },
   { AI_CLASSIFICATION_JSON: "invalid-json" },
   {
     AI_CLASSIFICATION_JSON: JSON.stringify({
@@ -88,6 +91,7 @@ it("production pipeline refuses missing or disabled classification before readin
       content: { open },
       ai,
       classificationBinding: bindings.AI,
+      perplexityApiKey: bindings.PERPLEXITY_API_KEY,
       remainingStatements: () => 40,
     });
     expect(

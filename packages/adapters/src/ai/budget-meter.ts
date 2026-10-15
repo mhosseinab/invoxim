@@ -27,7 +27,7 @@ import type {
   Settlement,
   Sql,
 } from "./budget-types";
-import { CLEF_DESTINATION_ID, CLEF_MODEL_ID } from "./clef-protocol";
+import { isClassificationDestination } from "./classification-config";
 
 export type Meter = {
   checkpoint(
@@ -129,8 +129,10 @@ export function createMeter(
       !(options.classificationAuthorization
         ? input.config.promptVersion === EMAIL_CLASSIFICATION_VERSION &&
           input.config.mode === "hosted" &&
-          input.config.destinationId === CLEF_DESTINATION_ID &&
-          input.config.modelId === CLEF_MODEL_ID &&
+          isClassificationDestination(
+            input.config.destinationId,
+            input.config.modelId,
+          ) &&
           options.classificationAuthorization.config.settingsRevision ===
             input.config.settingsRevision &&
           options.classificationAuthorization.config.consentId ===

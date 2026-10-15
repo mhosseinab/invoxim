@@ -5,6 +5,7 @@ import type {
 } from "@invoxim/adapters";
 import {
   createAiProviderFactory,
+  createClassificationTransport,
   createLocalPdfTextExtractor,
   createPipelineRepository,
   createPipelineService,
@@ -20,12 +21,22 @@ export function createPipelineRuntime(options: {
   content: TransientContentFactory;
   ai: AiConfiguration;
   classificationBinding?: ClefBinding | undefined;
+  /** Wrangler secret used only when the configured provider is perplexity-decider. */
+  perplexityApiKey?: string | undefined;
   remainingStatements: () => number;
 }): JobHandler {
   // Not a readiness rule: mailboxProcessingConfiguration decides what is
   // runnable. This is the fail-closed boundary that keeps extraction from
-  // reading mailbox content without a mandatory classification binding.
-  if (!options.ai.classification?.enabled || !options.classificationBinding) {
+  // reading mailbox content without the configured classification transport.
+  const transportSources = {
+    binding: options.classificationBinding,
+    perplexityApiKey: options.perplexityApiKey,
+  };
+  const classification = options.ai.classification;
+  if (
+    !classification?.enabled ||
+    !createClassificationTransport(classification, transportSources)
+  ) {
     return {
       async run() {
         return { kind: "paused", code: "handler-unavailable" };
@@ -55,15 +66,11 @@ export function createPipelineRuntime(options: {
         });
       },
     },
-    ...(options.ai.classification && options.classificationBinding
-      ? {
-          classification: createReceiptClassifierFactory(
-            options.db,
-            options.ai.classification,
-            { binding: options.classificationBinding },
-          ),
-        }
-      : {}),
+    classification: createReceiptClassifierFactory(
+      options.db,
+      classification,
+      transportSources,
+    ),
     budget: options.ai.budget,
     remainingStatements: options.remainingStatements,
   });

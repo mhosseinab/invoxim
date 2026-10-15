@@ -29,6 +29,7 @@ Before any deployment to an existing D1 database, preserve its migration ledger 
 
 - Operator-funded default inference is Abacus RouteLLM `gpt-6-luna`, with user BYOK retained. Production settings are the server preset `config/ai.abacus.production.json` imported into the Worker bundle; the reusable secret name is `AI_HOSTED_KEY`. User selections and encrypted BYOK credentials remain in D1 `ai_settings`. Preparation example: `config/ai.abacus.example.json`. Cloudflare AI is an inactive alternative. Approved application caps are $1/day and $10/month. Do not put credential values in chat or evidence.
 - Deployment and enablement facts for that AI default, Gmail background configuration, Clef classification and Outlook are recorded only in `DEPLOYMENT_CHECKLIST.md`.
+- Receipt classification is provider-selectable by `config/ai.classification.production.json`; on 2026-10-15 the owner selected Perplexity Decisions API `pplx-decider-v1.1-27b` (accepting that its docs publish no retention terms) and kept Clef available. The operator must set the Wrangler secret `PERPLEXITY_API_KEY` before deploying; without it processing stays unavailable.
 
 ## Implementation status pointers
 

@@ -5,14 +5,14 @@ import {
 import { hashJsonValue } from "../hash";
 import type { PipelineClassificationFactory } from "../pipeline/types";
 import type { AiPriceSnapshot } from "./budget";
+import type { ReceiptClassificationConfiguration } from "./classification-config";
 import {
-  CLEF_DESTINATION_ID,
-  CLEF_RECEIPT_POLICY_VERSION,
-  type ClefBinding,
-  createClefEmailClassifier,
-  type ReceiptClassificationConfiguration,
-} from "./clef";
+  type ClassificationTransportSources,
+  createClassificationTransport,
+} from "./classification-transport";
 import { buildFingerprintTuple } from "./configuration";
+import { createDecisionEmailClassifier } from "./decision-classifier";
+import { RECEIPT_DECISION_POLICY_VERSION } from "./decision-protocol";
 import { AiSettingsError } from "./settings";
 
 /** Classification fingerprint recipe (A1). Must stay byte-identical to budget.ts verification. */
@@ -34,17 +34,23 @@ export async function computeClassificationFingerprint(input: {
   );
 }
 
-/** One explicitly disclosed hosted decision processor, independent of financial BYOK routing. */
+/**
+ * One explicitly disclosed hosted decision processor, independent of financial
+ * BYOK routing. The configured provider selects its own transport; a missing
+ * credential fails closed instead of using another provider.
+ */
 export function createReceiptClassifierFactory(
   db: D1Database,
   configuration: ReceiptClassificationConfiguration,
-  options: { binding: ClefBinding },
+  options: ClassificationTransportSources,
 ): PipelineClassificationFactory {
   return {
     async open(lease, work, _parts, selected) {
       const authorityPrice = selected.pricing.get(selected.config.fingerprint);
+      const transport = createClassificationTransport(configuration, options);
       if (
         !configuration.enabled ||
+        !transport ||
         !authorityPrice?.acceptedConfigurationDigest
       )
         throw new AiSettingsError("CONFLICT");
@@ -59,7 +65,7 @@ export function createReceiptClassifierFactory(
       if (!document) throw new AiSettingsError("CONFLICT");
       const configurationDigest = await hashJsonValue({
         classification: configuration,
-        classifierPolicyVersion: CLEF_RECEIPT_POLICY_VERSION,
+        classifierPolicyVersion: RECEIPT_DECISION_POLICY_VERSION,
         sourceDocuments: [
           {
             partKey: document.partKey,
@@ -76,7 +82,7 @@ export function createReceiptClassifierFactory(
         policyVersion: authorityPrice.policyVersion,
       });
       const config: ApprovedAiConfig = {
-        destinationId: CLEF_DESTINATION_ID,
+        destinationId: transport.destinationId,
         modelId: configuration.model,
         mode: "hosted",
         settingsRevision: work.settingsRevision,
@@ -102,7 +108,7 @@ export function createReceiptClassifierFactory(
       return {
         config,
         uncertainAction: configuration.uncertainAction ?? "review",
-        classifier: createClefEmailClassifier(options.binding, configuration),
+        classifier: createDecisionEmailClassifier(transport, configuration),
         pricing: new Map([[fingerprint, price]]),
         authorization: { config: selected.config, price: authorityPrice },
       };

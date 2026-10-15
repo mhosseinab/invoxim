@@ -1,9 +1,14 @@
 import { env } from "cloudflare:workers";
 import { createLoginAuth, type LoginConfiguration } from "@invoxim/adapters";
-import { aiSettingsResponseSchema } from "@invoxim/contracts";
+import {
+  aiSettingsResponseSchema,
+  onboardingDisclosureSchema,
+} from "@invoxim/contracts";
 import { beforeAll, expect, it, vi } from "vitest";
 import runtimeText from "../../../config/ai.abacus.production.json?raw";
+import productionClassification from "../../../config/ai.classification.production.json";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
+import { PERPLEXITY_DECIDER_CLASSIFIER_NOTICE } from "../../../packages/adapters/src/onboarding/configuration";
 import { createAiRoutes } from "../src/ai-routes";
 import worker from "../src/index";
 import {
@@ -295,6 +300,48 @@ it("AI-03/ONBOARD-04 approved Abacus runtime variables make both read endpoints 
   }
 });
 
+it("AI-CLASSIFIER-PROVIDER disclosure names the configured Perplexity classifier and its notice without calling it", async () => {
+  const preset = JSON.parse(runtimeText);
+  const configured = {
+    ...bindings,
+    ...preset.variables,
+    AI_REGISTRY_JSON: JSON.stringify(preset.registry),
+    AI_BUDGET_JSON: JSON.stringify(preset.budget),
+    AI_HOSTED_KEY: "synthetic-abacus-hosted-key",
+    AI_CLASSIFICATION_JSON: JSON.stringify(productionClassification),
+    PERPLEXITY_API_KEY: "synthetic-perplexity-key-not-real",
+    CREDENTIAL_KEYRING: JSON.stringify({
+      activeVersion: 1,
+      keys: { 1: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+    }),
+  };
+  const transport = vi
+    .spyOn(globalThis, "fetch")
+    .mockRejectedValue(new Error("Unexpected external request"));
+  try {
+    const response = await app.request(
+      `${configuration.origin}/api/processing-disclosure?connectionId=synthetic-owned-mailbox&timezone=Europe/Vienna`,
+      { headers: { Cookie: cookie } },
+      configured,
+    );
+    expect(response.status).toBe(200);
+    const disclosure = onboardingDisclosureSchema.parse(await response.json());
+    expect(disclosure.classification).toEqual({
+      providerId: "perplexity-decider",
+      model: "pplx-decider-v1.1-27b",
+      mode: "hosted",
+      policyVersion: 1,
+      notices: [PERPLEXITY_DECIDER_CLASSIFIER_NOTICE],
+      noticeRefs: [PERPLEXITY_DECIDER_CLASSIFIER_NOTICE.id],
+      ready: true,
+    });
+    expect(JSON.stringify(disclosure)).not.toMatch(/Clef|cloudflare-clef/);
+    expect(transport).not.toHaveBeenCalled();
+  } finally {
+    transport.mockRestore();
+  }
+});
+
 it("AI-03 Worker loads the server-side preset with Wrangler secrets and the AI binding, without copied AI variables", async () => {
   const base = { ...bindings };
   delete base.AI_ENABLED;
@@ -306,6 +353,8 @@ it("AI-03 Worker loads the server-side preset with Wrangler secrets and the AI b
       },
     },
     AI_HOSTED_KEY: "synthetic-abacus-hosted-key",
+    // The bundled classification config selects perplexity-decider.
+    PERPLEXITY_API_KEY: "synthetic-perplexity-key-not-real",
     CREDENTIAL_KEYRING: JSON.stringify({
       activeVersion: 1,
       keys: { 1: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
@@ -334,4 +383,14 @@ it("AI-03 Worker loads the server-side preset with Wrangler secrets and the AI b
     missingKey,
   );
   expect(unavailable.status).toBe(503);
+  // AI-CLASSIFIER-PROVIDER: the AI binding cannot stand in for the missing
+  // Perplexity secret; the bundled classifier is unavailable and fails closed.
+  const missingClassifierKey = { ...configured };
+  Reflect.deleteProperty(missingClassifierKey, "PERPLEXITY_API_KEY");
+  const noClassifier = await worker.request(
+    `${configuration.origin}/api/ai/settings`,
+    { headers: { Cookie: cookie } },
+    missingClassifierKey,
+  );
+  expect(noClassifier.status).toBe(503);
 });

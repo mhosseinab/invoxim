@@ -31,11 +31,12 @@ export interface MailboxRuntimeBindings
 export function mailboxProcessingConfiguration(
   bindings: MailboxRuntimeBindings,
 ) {
+  // A non-null AI configuration already requires the configured
+  // classification provider's own transport credential (no fallback).
   const ai = aiConfiguration(bindings);
   const jobs = jobConfiguration(bindings);
   const ready =
     !!ai?.classification?.enabled &&
-    !!bindings.AI &&
     !!jobs &&
     jobs.queryLimit === QUERY_LIMIT &&
     bindings.EXTRACTION_ENABLED === "true";
@@ -92,6 +93,7 @@ export function createMailboxRuntime(options: {
           content,
           ai,
           classificationBinding: bindings.AI,
+          perplexityApiKey: bindings.PERPLEXITY_API_KEY,
           remainingStatements,
         })
       : null;
