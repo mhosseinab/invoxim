@@ -23,6 +23,10 @@ export interface CorrectionSettlement {
   readonly balanced: boolean;
   readonly sourceProof: boolean;
 }
+/**
+ * Supported = ledger-eligible (not excluded/merged, matching plan.ts) and
+ * restorable. Rule 04: proven cash on an ineligible entry never raises payment state.
+ */
 export function settlementEvents(
   entries: readonly CorrectionEventFact[],
   reviews: readonly CorrectionReviewFact[],
@@ -32,7 +36,7 @@ export function settlementEvents(
     amountMinor: entry.amountMinor,
     currency: entry.currency,
     origin: entry.origin,
-    supported: restorationEligibility(entry, reviews),
+    supported: entry.eligible && restorationEligibility(entry, reviews),
   }));
 }
 export function evaluateCorrectionSettlement(

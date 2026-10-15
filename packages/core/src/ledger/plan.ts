@@ -477,7 +477,8 @@ function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
           totalMinor: BigInt(totalMinor),
           settledMinor: paid,
           // Ingestion retains earlier document settlement evidence. Corrections
-          // recompute from current cash/credit; changing this needs a product decision.
+          // recompute from current cash/credit; changing this needs a product
+          // decision (OQ-A in test/payment-state-parity.test.ts).
           fullSettlement:
             fullSettlement ||
             (purchase.paymentState === "paid" && !correctedSettlement),

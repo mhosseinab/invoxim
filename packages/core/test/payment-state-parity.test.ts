@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { PersistedAiRecord } from "../src/ai/types";
 import {
   type CorrectionSettlement,
-  type CorrectionSettlementEvent,
   evaluateCorrectionSettlement,
   settlementEvents,
 } from "../src/corrections/settlement";
@@ -28,12 +27,12 @@ import type {
  *   A. projectPaymentStates (core/ledger/plan.ts) — counts eligible payment events
  *   B. evaluateCorrectionSettlement + settlementEvents (core/corrections/settlement.ts)
  *      — counts supported events (hasCashProof && restorationEligibility)
- *   C. the supportedCash SQL CASE in adapters lifecycle/connection-recompute.ts:14
- *      — counts its own "supported" flag, then feeds evaluateCorrectionSettlement
+ *   C. the lifecycle recompute in adapters lifecycle/connection-recompute.ts
+ *      — formerly its own supportedCash SQL CASE (C1); now projects facts and
+ *      feeds settlementEvents + evaluateCorrectionSettlement
  *
  * This suite runs identical purchases/entries/reviews through all three and
- * records whether they agree. Test-only: no production code changes (CORE-6 is
- * the fix card and is out of scope here).
+ * records whether they agree. Open scenarios name the owner question.
  */
 
 type PaymentState = "unknown" | "unpaid" | "partially_paid" | "paid";
@@ -78,6 +77,19 @@ interface Scenario {
    * evidence that CORE-6 (derivePaymentState) is required.
    */
   expectAgreement: boolean;
+  /**
+   * Conservative state under rule 04 (excluded, pending, ambiguous or unproven
+   * cash never raises payment state). Every path must equal it when
+   * `expectAgreement` is true.
+   */
+  expected?: PaymentState;
+  /**
+   * For scenarios left open: the state both corrections-side paths
+   * (settlement.ts and the lifecycle recompute) must already agree on.
+   */
+  correctionsExpected?: PaymentState;
+  /** Required when `expectAgreement` is false: the owner question keeping it open. */
+  openQuestion?: string;
 }
 
 const triggerEntry = (currency: string): CashFact => ({
@@ -92,9 +104,14 @@ const triggerEntry = (currency: string): CashFact => ({
   documentId: "doc-trigger",
 });
 
+/**
+ * The corrections loader (adapters corrections/data.ts events()) sets
+ * accepted = review_state accepted AND no pending deletion of the source connection.
+ */
 function toCorrectionEventFact(
   entry: CashFact,
   index: number,
+  connectionDeletionPending = false,
 ): CorrectionEventFact {
   return {
     id: `entry-${index}`,
@@ -106,7 +123,7 @@ function toCorrectionEventFact(
     eventDate: "2026-01-01",
     origin: entry.origin,
     eligible: entry.eligible,
-    accepted: entry.accepted,
+    accepted: entry.accepted && !connectionDeletionPending,
     evidenceCode: entry.evidenceCode,
   };
 }
@@ -125,49 +142,33 @@ function toReviewFact(review: ReviewFact): CorrectionReviewFact {
 }
 
 /**
- * TypeScript transcription of the supportedCash CASE in
- * packages/adapters/src/lifecycle/connection-recompute.ts:14.
- * Kept byte-faithful to the SQL NULL semantics (NULL = NULL is not true).
- * A worker/adapters SQL case re-checks this transcription against D1.
+ * Model of the lifecycle recompute in
+ * packages/adapters/src/lifecycle/connection-recompute.ts: SQL projects each
+ * entry's facts with `accepted` = review_state accepted AND no pending
+ * connection deletion, then core settlementEvents decides support.
+ * apps/worker/test/payment-state-recompute-parity.test.ts runs the real SQL on D1.
  */
+function sqlProjectedFact(
+  entry: CashFact,
+  index: number,
+  connectionDeletionPending: boolean,
+): CorrectionEventFact {
+  return {
+    ...toCorrectionEventFact(entry, index),
+    accepted: entry.accepted && !connectionDeletionPending,
+  };
+}
+
 function sqlSupportedCash(
   entry: CashFact,
   reviews: readonly ReviewFact[],
   connectionDeletionPending: boolean,
 ): boolean {
-  if (entry.origin === "user-confirmed") return true;
-  if (!entry.accepted) return false;
-  const expected =
-    entry.kind === "payment" ? "explicitly-paid" : "completed-refund";
-  if (
-    entry.evidenceCode !== "manual-confirmation" &&
-    entry.evidenceCode !== expected
-  )
-    return false;
-  if (connectionDeletionPending) return false;
-  for (const review of reviews) {
-    if (
-      review.status !== "open" ||
-      review.blockingScope !== "financial" ||
-      review.reason === "payment-allocation-review"
-    )
-      continue;
-    if (
-      review.observationId !== null &&
-      review.observationId === entry.observationId
-    )
-      return false;
-    if (
-      review.observationId === null &&
-      review.documentId !== null &&
-      entry.documentId !== null &&
-      review.documentId === entry.documentId &&
-      review.reason !== "refund-exceeds-payment" &&
-      review.reason !== "refund-currency-mismatch"
-    )
-      return false;
-  }
-  return true;
+  const [event] = settlementEvents(
+    [sqlProjectedFact(entry, 0, connectionDeletionPending)],
+    reviews.map(toReviewFact),
+  );
+  return event?.supported ?? false;
 }
 
 function scenarioEntries(scenario: Scenario): CashFact[] {
@@ -178,7 +179,13 @@ function scenarioEntries(scenario: Scenario): CashFact[] {
 }
 
 function runTsSettlement(scenario: Scenario): CorrectionSettlement {
-  const facts = scenarioEntries(scenario).map(toCorrectionEventFact);
+  const facts = scenarioEntries(scenario).map((entry, index) =>
+    toCorrectionEventFact(
+      entry,
+      index,
+      scenario.connectionDeletionPending ?? false,
+    ),
+  );
   const reviews = (scenario.reviews ?? []).map(toReviewFact);
   return evaluateCorrectionSettlement(
     {
@@ -192,18 +199,15 @@ function runTsSettlement(scenario: Scenario): CorrectionSettlement {
 }
 
 function runSqlSettlement(scenario: Scenario): CorrectionSettlement {
-  const events: CorrectionSettlementEvent[] = scenarioEntries(scenario).map(
-    (entry) => ({
-      kind: entry.kind,
-      amountMinor: entry.amountMinor,
-      currency: entry.currency,
-      origin: entry.origin,
-      supported: sqlSupportedCash(
+  const events = settlementEvents(
+    scenarioEntries(scenario).map((entry, index) =>
+      sqlProjectedFact(
         entry,
-        scenario.reviews ?? [],
+        index,
         scenario.connectionDeletionPending ?? false,
       ),
-    }),
+    ),
+    (scenario.reviews ?? []).map(toReviewFact),
   );
   return evaluateCorrectionSettlement(
     {
@@ -324,6 +328,7 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: true,
+    expected: "paid",
   },
   {
     name: "partial supported payment is partially_paid",
@@ -342,15 +347,19 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: true,
+    expected: "partially_paid",
   },
   {
     name: "zero supported cash keeps unpaid when the purchase was unpaid",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unpaid" },
     entries: [],
     expectAgreement: true,
+    expected: "unpaid",
   },
   {
-    name: "eligible=false events are excluded by plan but counted by settlement/SQL when proven",
+    // Rule 04: cash of an excluded/merged purchase (ledger_entries.eligible=0)
+    // never raises payment state, however well proven.
+    name: "eligible=false cash never raises payment state on any path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -365,7 +374,8 @@ const scenarios: Scenario[] = [
         documentId: null,
       },
     ],
-    expectAgreement: false,
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
     name: "user-confirmed refund is short-circuited by SQL but blocked in TS by refund-exceeds-payment",
@@ -387,7 +397,7 @@ const scenarios: Scenario[] = [
       {
         id: "review-refund",
         observationId: null,
-        documentId: null,
+        documentId: "doc-unrelated",
         reason: "refund-exceeds-payment",
         blockingScope: "financial",
         status: "open",
@@ -395,9 +405,18 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: false,
+    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
+    // 'paid' when current cash is zero because it cannot re-read the earlier
+    // document evidence; corrections/lifecycle recompute from current evidence
+    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
+    // ingestion downgrades purchases paid by earlier evidence whenever a later
+    // document for the same purchase arrives.
+    openQuestion:
+      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
+    correctionsExpected: "unknown",
   },
   {
-    name: "source cash blocked by a no-observation fallback review in TS but not in SQL",
+    name: "open review on the entry document blocks source cash in corrections; planner has no review input",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -416,7 +435,7 @@ const scenarios: Scenario[] = [
       {
         id: "review-2",
         observationId: null,
-        documentId: null,
+        documentId: "doc-2",
         reason: "unknown-payment",
         blockingScope: "financial",
         status: "open",
@@ -424,9 +443,17 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: false,
+    // OPEN OQ-B: plan.ts receives no review facts (LedgerSnapshot has none), so
+    // it cannot honour an open financial review on the entry's document.
+    // Supplying them needs pipeline/ledger-snapshot.ts, outside this write-set.
+    // (A review with neither observation nor document is unreachable: the
+    // review_items CHECK requires document_id unless payment-allocation-review.)
+    openQuestion:
+      "OQ-B: should ingestion honour open financial reviews on the entry's observation/document that block that cash in corrections? Needs review facts in LedgerSnapshot (PIPE lane).",
+    correctionsExpected: "unknown",
   },
   {
-    name: "connection deletion pending unsupports SQL cash but not the TS rule",
+    name: "cash from a connection pending deletion is unsupported in corrections; planner has no deletion input",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -443,12 +470,27 @@ const scenarios: Scenario[] = [
     ],
     connectionDeletionPending: true,
     expectAgreement: false,
+    // OPEN OQ-C: plan.ts has no deletion-pending input; the snapshot only rejects
+    // purchases already marked for lifecycle recompute/delete, which happens in a
+    // later cleanup stage than the lifecycle_deletions insert.
+    openQuestion:
+      "OQ-C: confirm ingestion must treat cash from a connection with a pending lifecycle deletion as unsupported; needs a deletion-pending fact in LedgerSnapshot (PIPE lane).",
+    correctionsExpected: "unknown",
   },
   {
     name: "already-paid purchase with zero remaining cash stays paid in plan but unknown in settlement",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "paid" },
     entries: [],
     expectAgreement: false,
+    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
+    // 'paid' when current cash is zero because it cannot re-read the earlier
+    // document evidence; corrections/lifecycle recompute from current evidence
+    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
+    // ingestion downgrades purchases paid by earlier evidence whenever a later
+    // document for the same purchase arrives.
+    openQuestion:
+      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
+    correctionsExpected: "unknown",
   },
 ];
 
@@ -466,15 +508,31 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       const sql = runSqlSettlement(scenario).paymentState;
       const states = { plan, settlement, sql };
       if (scenario.expectAgreement) {
-        expect(states).toEqual({ plan, settlement: plan, sql: plan });
+        const expected = scenario.expected;
+        expect(expected, "agreement scenarios name their state").toBeDefined();
+        expect(states).toEqual({
+          plan: expected,
+          settlement: expected,
+          sql: expected,
+        });
       } else {
-        // CORE-1 fork: identical facts, at least two rules disagree → CORE-6 required.
+        expect(
+          scenario.openQuestion,
+          "open scenarios name the owner question",
+        ).toBeTruthy();
+        if (scenario.correctionsExpected)
+          expect({ settlement, sql }).toEqual({
+            settlement: scenario.correctionsExpected,
+            sql: scenario.correctionsExpected,
+          });
+        // Still open: identical facts, at least two rules disagree. Flip the
+        // scenario to expectAgreement once the owner answers openQuestion.
         expect(new Set(Object.values(states)).size).toBeGreaterThan(1);
       }
     });
   }
 
-  it("CORE-1 supported-flag parity: SQL transcription vs hasCashProof/restorationEligibility", () => {
+  it("CORE-1 supported-flag parity: recompute projection vs hasCashProof/restorationEligibility", () => {
     const shared: CashFact = {
       kind: "payment",
       amountMinor: "100",
@@ -487,8 +545,12 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       documentId: "doc-x",
     };
     const clean: ReviewFact[] = [];
-    const tsSupportedFlag = (entry: CashFact, reviews: ReviewFact[]) => {
-      const fact = toCorrectionEventFact(entry, 0);
+    const tsSupportedFlag = (
+      entry: CashFact,
+      reviews: ReviewFact[],
+      connectionDeletionPending = false,
+    ) => {
+      const fact = toCorrectionEventFact(entry, 0, connectionDeletionPending);
       return (
         hasCashProof(fact) &&
         restorationEligibility(fact, reviews.map(toReviewFact))
@@ -498,13 +560,13 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
     expect(sqlSupportedCash(shared, clean, false)).toBe(
       tsSupportedFlag(shared, clean),
     );
-    // user-confirmed short-circuit: SQL true even with a blocking refund-exceeds review
-    // (user-confirmed entries carry observation_id NULL per schema; TS still blocks refunds).
+    // A purchase-level refund allocation review blocks a user-confirmed refund
+    // on both paths (formerly short-circuited by the SQL user-confirmed branch).
     const refundBlockReview: ReviewFact[] = [
       {
         id: "r",
         observationId: null,
-        documentId: null,
+        documentId: "doc-unrelated",
         reason: "refund-exceeds-payment",
         blockingScope: "financial",
         status: "open",
@@ -520,34 +582,42 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       documentId: null,
     };
     expect(sqlSupportedCash(confirmedRefund, refundBlockReview, false)).toBe(
-      true,
+      false,
     );
     expect(tsSupportedFlag(confirmedRefund, refundBlockReview)).toBe(false);
-    // Connection deletion only exists in the SQL rule.
+    // Pending connection deletion unsupports source cash on both paths
+    // (corrections/data.ts folds it into `accepted`, like the recompute SQL).
     expect(sqlSupportedCash(shared, clean, true)).toBe(false);
-    expect(tsSupportedFlag(shared, clean)).toBe(true);
-    // Fallback review reasons without observation/document ids block only the TS rule.
+    expect(tsSupportedFlag(shared, clean, true)).toBe(false);
+    // A document-matched review without observation blocks source cash on both paths.
     const fallbackReview: ReviewFact[] = [
       {
         id: "r2",
         observationId: null,
-        documentId: null,
+        documentId: "doc-x",
         reason: "unknown-payment",
         blockingScope: "financial",
         status: "open",
         purchaseId: "p",
       },
     ];
-    expect(sqlSupportedCash(shared, fallbackReview, false)).toBe(true);
+    expect(sqlSupportedCash(shared, fallbackReview, false)).toBe(false);
     expect(tsSupportedFlag(shared, fallbackReview)).toBe(false);
+    // A review on another document of the purchase blocks neither path.
+    const otherDocument = fallbackReview.map((review) => ({
+      ...review,
+      documentId: "doc-other",
+    }));
+    expect(sqlSupportedCash(shared, otherDocument, false)).toBe(true);
+    expect(tsSupportedFlag(shared, otherDocument)).toBe(true);
   });
 });
 
 /**
- * CORE-6 shares derivation after evidence selection. The divergence scenarios
- * above remain policy boundaries: eligibility vs restoration, fallback reviews,
- * connection deletion, and retained paid document evidence. Resolving those
- * requires richer planner inputs/product decisions outside this card's write-set.
+ * CORE-6 shares derivation after evidence selection; eligibility (S1) and the
+ * recompute's cash rule (C1) are now shared too. Remaining open scenarios:
+ * OQ-A retained paid evidence (product decision), OQ-B/OQ-C planner inputs
+ * (review and deletion-pending facts need pipeline/ledger-snapshot.ts).
  */
 it("CORE-6 intended rule: all three paths agree when settlement evidence agrees", () => {
   for (const scenario of scenarios.filter((item) => item.expectAgreement)) {
