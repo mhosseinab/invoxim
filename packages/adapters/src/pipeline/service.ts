@@ -367,6 +367,7 @@ export function createPipelineService(
               policy: options.budget,
               pricing: classifier.pricing,
               authorization: classifier.authorization,
+              destination: classifier.destination,
             }),
           }).classify(
             lease.context,

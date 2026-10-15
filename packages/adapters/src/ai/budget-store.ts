@@ -147,7 +147,13 @@ export function createClassificationUsageStore(
   return createUsageStore<EmailClassification>({
     db,
     owner: { kind: "extraction", lease: options.lease },
-    options: { ...options, classificationAuthorization: options.authorization },
+    options: {
+      ...options,
+      classificationAuthorization: {
+        ...options.authorization,
+        destination: options.destination,
+      },
+    },
     validate: validateEmailClassification,
     wrap: budgetOperation,
   });

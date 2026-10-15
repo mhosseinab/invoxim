@@ -725,3 +725,53 @@ it("AI-CLASSIFIER-PROVIDER consent accepted under Clef is refused after switchin
   expect(run).not.toHaveBeenCalled();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it("AI-CLASSIFIER-PROVIDER classification meter pins the configured provider, not just any allowlisted one", async () => {
+  const { createClassificationUsageStore } =
+    await import("../../../packages/adapters/src/ai/budget");
+  const repository = createPipelineRepository(db, {
+    processingDigest: async () => "f".repeat(64),
+  });
+  const work = await repository.load(lease);
+  if (!work) throw new Error("fixture work missing");
+  const selected = {
+    config,
+    extractor: { extract: vi.fn() },
+    pricing: new Map([[config.fingerprint, price]]),
+  };
+  const clef = await createReceiptClassifierFactory(db, clefClassification, {
+    binding: { run: vi.fn() },
+  }).open(lease, work, [], selected);
+  const identity = {
+    documentId: "d",
+    contentHash: work.documents[0]?.contentHash ?? "",
+    extractionVersion: "email-classification-v1",
+  };
+  const store = (destination: { destinationId: string; modelId: string }) =>
+    createClassificationUsageStore(db, {
+      lease,
+      policy,
+      pricing: clef.pricing,
+      authorization: clef.authorization,
+      destination,
+    });
+  // Positive control: the configured Clef destination admits its own attempt.
+  expect(
+    await store({
+      destinationId: "cloudflare-clef",
+      modelId: "@cf/cloudflare/clef",
+    }).checkpoint({ tenant, identity, config: clef.config }),
+  ).toEqual({ status: "ready" });
+  // An allowlisted but unconfigured destination/model is refused.
+  for (const destination of [
+    { destinationId: "perplexity-decider", modelId: "pplx-decider-v1.1-27b" },
+    { destinationId: "cloudflare-clef", modelId: "pplx-decider-v1.1-27b" },
+  ])
+    expect(
+      await store(destination).checkpoint({
+        tenant,
+        identity,
+        config: clef.config,
+      }),
+    ).toEqual({ status: "stale" });
+});

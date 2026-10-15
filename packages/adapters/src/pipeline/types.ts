@@ -37,6 +37,8 @@ export interface PipelineClassificationFactory {
     uncertainAction?: "review" | "extract";
     pricing: ReadonlyMap<string, AiPriceSnapshot>;
     authorization: { config: ApprovedAiConfig; price: AiPriceSnapshot };
+    /** The configured classification provider; the meter admits only this pair. */
+    destination: { destinationId: string; modelId: string };
   }>;
 }
 export interface PipelineInferenceFactory {

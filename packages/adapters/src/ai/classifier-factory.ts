@@ -113,6 +113,10 @@ export function createReceiptClassifierFactory(
         classifier: createDecisionEmailClassifier(transport, configuration),
         pricing: new Map([[fingerprint, price]]),
         authorization: { config: selected.config, price: authorityPrice },
+        destination: {
+          destinationId: transport.destinationId,
+          modelId: configuration.model,
+        },
       };
     },
   };

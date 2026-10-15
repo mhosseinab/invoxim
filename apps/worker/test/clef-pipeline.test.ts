@@ -949,6 +949,7 @@ it("CLEF-01 classifier authorization cannot substitute consent, revision, mode o
       policy,
       pricing: classifier.pricing,
       authorization: mutation.authorization,
+      destination: classifier.destination,
     });
     expect(
       await store.checkpoint({ tenant, identity, config: mutation.config }),
@@ -981,6 +982,7 @@ it("AI-7 classification store input lacking identity cannot bypass the attemptId
     policy,
     pricing: classifier.pricing,
     authorization: classifier.authorization,
+    destination: classifier.destination,
   });
   type Attempt = Parameters<typeof store.reserve>[0];
   const forged = { tenant, config: classifier.config } as unknown as Attempt;

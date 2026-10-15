@@ -129,6 +129,11 @@ export function createMeter(
       !(options.classificationAuthorization
         ? input.config.promptVersion === EMAIL_CLASSIFICATION_VERSION &&
           input.config.mode === "hosted" &&
+          // The configured provider, and it must be a code-owned pair.
+          input.config.destinationId ===
+            options.classificationAuthorization.destination.destinationId &&
+          input.config.modelId ===
+            options.classificationAuthorization.destination.modelId &&
           isClassificationDestination(
             input.config.destinationId,
             input.config.modelId,

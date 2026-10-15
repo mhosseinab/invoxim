@@ -82,6 +82,11 @@ export interface ClassificationBudgetOptions extends AiBudgetOptions {
     readonly config: ApprovedAiConfig;
     readonly price: AiPriceSnapshot;
   };
+  /** The configured classification provider and model (from configuration). */
+  readonly destination: {
+    readonly destinationId: string;
+    readonly modelId: string;
+  };
 }
 export type Settlement = {
   state: "known" | "uncertain" | "not-sent";
@@ -112,5 +117,6 @@ export type MeterOptions = {
   classificationAuthorization?: {
     config: ApprovedAiConfig;
     price: AiPriceSnapshot;
+    destination: { destinationId: string; modelId: string };
   };
 };
