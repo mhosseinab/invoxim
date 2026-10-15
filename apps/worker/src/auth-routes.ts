@@ -19,13 +19,14 @@ import {
   requireTenantContext,
 } from "./http/guard";
 import { createInvocationDatabase } from "./invocation-database";
+import { QUERY_LIMIT } from "./job-configuration";
 export function createAuthRoutes() {
   const app = new Hono<{ Bindings: AuthBindings }>();
   async function service(bindings: AuthBindings) {
     const configuration = loginConfiguration(bindings);
     if (!configuration || !bindings.DB) return null;
     try {
-      const db = createInvocationDatabase(bindings.DB, 40).db;
+      const db = createInvocationDatabase(bindings.DB, QUERY_LIMIT).db;
       const auth = createLoginAuth(db, configuration);
       return {
         auth,

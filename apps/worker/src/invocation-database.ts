@@ -1,9 +1,11 @@
+import { QUERY_LIMIT } from "./job-configuration";
+
 /** One concrete D1 execution budget shared by all repositories in a Worker invocation. */
 export function createInvocationDatabase(
   nativeDatabase: D1Database,
   limit: number,
 ) {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 40)
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > QUERY_LIMIT)
     throw new Error("INVALID_DATABASE_QUERY_LIMIT");
   let executed = 0;
   const originals = new WeakMap<D1PreparedStatement, D1PreparedStatement>();

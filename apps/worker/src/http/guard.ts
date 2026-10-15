@@ -14,6 +14,7 @@ import {
 import type { TenantContext } from "@invoxim/core";
 import type { Context } from "hono";
 import { createInvocationDatabase } from "../invocation-database";
+import { QUERY_LIMIT } from "../job-configuration";
 
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 const RECENT_SESSION_MS = 3600000;
@@ -216,7 +217,10 @@ export async function requireTenantContext<B extends AuthBindings>(
   const safe = SAFE_METHODS.has(method);
   const mutation = options.mutation ?? !safe;
   const recent = options.recent ?? mutation;
-  const database = createInvocationDatabase(bindings.DB as D1Database, 40);
+  const database = createInvocationDatabase(
+    bindings.DB as D1Database,
+    QUERY_LIMIT,
+  );
   const current = await createProfileService(
     database.db,
     createLoginAuth(database.db, login),
