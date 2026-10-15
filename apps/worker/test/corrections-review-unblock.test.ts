@@ -291,3 +291,91 @@ it("unblock credit: a credit-only purchase linked through its evidence is recomp
   expect(await version(user, "credit-only")).toBe(2);
   expect(await recomputed(user, "credit-only")).toBe("paid");
 });
+
+/**
+ * Holds every batch until `count` commands reached their commit, so both
+ * plans are built from the same pre-commit state.
+ */
+function commitBarrier(count: number): D1Database {
+  const waiting: (() => void)[] = [];
+  return {
+    prepare: (sql: string) => db.prepare(sql),
+    batch: async (statements: D1PreparedStatement[]) => {
+      await new Promise<void>((release) => {
+        waiting.push(release);
+        if (waiting.length === count) for (const go of waiting) go();
+      });
+      return db.batch(statements);
+    },
+  } as unknown as D1Database;
+}
+
+it("unblock concurrency: two resolutions of reviews that both block E fence X, so a retry re-enables E", async () => {
+  const session = await owner("unblock-concurrent");
+  const user = session.tenant.userId;
+  await purchase(user, "x");
+  await source(
+    user,
+    "x",
+    "x-src",
+    { total: "100.00", paymentAmount: "100.00" },
+    10000,
+  );
+  // Re-include left E ineligible while both reviews were open. X is linked
+  // to the reviews only through E (no credit evidence row).
+  await db
+    .prepare("UPDATE ledger_entries SET eligible=0 WHERE user_id=?")
+    .bind(user)
+    .run();
+  await db
+    .prepare("DELETE FROM purchase_evidence WHERE user_id=?")
+    .bind(user)
+    .run();
+  for (const id of ["x-r1", "x-r2"])
+    await review(user, id, {
+      purchaseId: null,
+      documentId: "x-src-doc",
+      reason: "extraction-review",
+    });
+  const barrier = commitBarrier(2);
+  const resolve = (reviewId: string, database: D1Database) =>
+    createCorrectionStore(database).execute(
+      session,
+      {
+        kind: "review-resolve",
+        reviewId,
+        request: {
+          version: 1,
+          action: "complete-record",
+          record: {
+            merchant: "Synthetic completed",
+            documentDate: "2026-01-11",
+            currency: "EUR",
+            totalMinor: "500",
+            category: "other",
+          },
+        },
+      },
+      `${reviewId}-resolve`,
+    );
+  const outcomes = await Promise.allSettled([
+    resolve("x-r1", barrier),
+    resolve("x-r2", barrier),
+  ]);
+  const rejected = outcomes.flatMap((outcome, index) =>
+    outcome.status === "rejected" ? [{ index, reason: outcome.reason }] : [],
+  );
+  expect(rejected).toHaveLength(1);
+  expect(rejected[0]?.reason).toMatchObject({ code: "CONFLICT" });
+  // The client retries the rejected command with the same key.
+  const retry = rejected[0]?.index === 0 ? "x-r1" : "x-r2";
+  await resolve(retry, db);
+  expect(
+    await db
+      .prepare(
+        "SELECT (SELECT eligible FROM ledger_entries WHERE user_id=? AND id='x-src-entry') AS eligible,(SELECT payment_state FROM purchases WHERE user_id=? AND id='x') AS state,(SELECT group_concat(status) FROM review_items WHERE user_id=? AND id IN('x-r1','x-r2')) AS reviews",
+      )
+      .bind(user, user, user)
+      .first(),
+  ).toEqual({ eligible: 1, state: "paid", reviews: "resolved,resolved" });
+});

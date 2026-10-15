@@ -2,6 +2,7 @@ import type { CorrectionEventFact } from "@invoxim/core";
 import {
   CorrectionError,
   evaluateCorrectionSettlement,
+  hasCashProof,
   restorationEligibility,
   settlementEvents,
   validateRefundAllocation,
@@ -132,16 +133,18 @@ export async function planReviewUnblock(
       continue;
     const entries = await events(db, user, id),
       warnings = await reviews(db, user, id);
-    const all = warnings.map(reviewFact);
     const remainingRows = warnings.filter((item) => item.id !== resolved.id);
     const remaining = remainingRows.map(reviewFact);
-    // Only purchases whose cash or credit support this resolution changes.
+    // Every purchase with cash or credit the resolved review blocks is
+    // recomputed and fenced, even when another open review still blocks it:
+    // a concurrent resolution of that other review then conflicts instead of
+    // both skipping the purchase and leaving its cash ineligible.
+    const resolvedFact = reviewFact(resolved);
     if (
       credit !== 1 &&
       !entries.some(
         (entry) =>
-          !restorationEligibility(entry, all) &&
-          restorationEligibility(entry, remaining),
+          hasCashProof(entry) && !restorationEligibility(entry, [resolvedFact]),
       )
     )
       continue;
