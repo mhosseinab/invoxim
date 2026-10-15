@@ -466,7 +466,8 @@ it("unblock caps: 5 linked purchases with 4 recomputable resolve a 7-field compl
       eligible: 1,
       remainder: 1,
     })),
-    { id: "cap-4", state: "paid", version: 1, eligible: 0, remainder: 0 },
+    // Excluded: not recomputed or counted, only version-fenced (restore race).
+    { id: "cap-4", state: "paid", version: 2, eligible: 0, remainder: 0 },
   ]);
 });
 
@@ -506,6 +507,165 @@ it("unblock caps: more than 4 recomputable purchases is the documented TOO_LARGE
       .bind(user, user, user)
       .first(),
   ).toEqual({ review: "open", purchases: 5, eligible: 0 });
+});
+
+/**
+ * One document whose segment i is the evidence observation of purchase
+ * `${prefix}-${i}` (spec i), with an optional eligible payment entry, plus
+ * an open document-scoped review `${prefix}-r` on it.
+ */
+async function evidenceDocument(
+  user: string,
+  prefix: string,
+  specs: readonly {
+    record: Record<string, string | null>;
+    reviewState?: "accepted" | "needs_review";
+    entryMinor?: number;
+  }[],
+) {
+  await db
+    .prepare(
+      "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES(?,?,'mail',?,0,1)",
+    )
+    .bind(`${prefix}-msg`, user, `${prefix}-msg`)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES(?,?,?,'body',?,'text/plain',10)",
+    )
+    .bind(`${prefix}-doc`, user, `${prefix}-msg`, `hash-${prefix}`)
+    .run();
+  for (const [index, spec] of specs.entries()) {
+    const id = `${prefix}-${index}`;
+    await purchase(user, id);
+    await db
+      .prepare(
+        "INSERT INTO observations(id,user_id,document_id,segment_index,extraction_fingerprint,extraction_version,evidence_code,normalized_fields,structured_fields,review_state) VALUES(?,?,?,?,'v1',1,'explicitly-paid','{\"schemaVersion\":1}',?,?)",
+      )
+      .bind(
+        `${id}-obs`,
+        user,
+        `${prefix}-doc`,
+        index,
+        JSON.stringify({
+          schemaVersion: 1,
+          documentType: "receipt",
+          record: {
+            currency: "EUR",
+            total: "100.00",
+            paymentEvidence: "explicitly-paid",
+            paymentMethodHint: "card",
+            paymentAmount: "100.00",
+            storeCreditAmount: null,
+            ...spec.record,
+          },
+        }),
+        spec.reviewState ?? "accepted",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO purchase_evidence(user_id,purchase_id,observation_id,relationship) VALUES(?,?,?,'document')",
+      )
+      .bind(user, id, `${id}-obs`)
+      .run();
+    if (spec.entryMinor !== undefined)
+      await db
+        .prepare(
+          "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible,origin) VALUES(?,?,?,?,?,'payment',?,'EUR','2026-01-10','explicit-event-date',1,'source')",
+        )
+        .bind(
+          `${id}-entry`,
+          user,
+          id,
+          `${id}-obs`,
+          `key-${id}`,
+          spec.entryMinor,
+        )
+        .run();
+  }
+  await review(user, `${prefix}-r`, {
+    purchaseId: null,
+    documentId: `${prefix}-doc`,
+    reason: "extraction-review",
+  });
+}
+async function versions(user: string, prefix: string) {
+  return (
+    await db
+      .prepare(
+        "SELECT id,version FROM purchases WHERE user_id=? AND id LIKE ? ORDER BY id",
+      )
+      .bind(user, `${prefix}-%`)
+      .all<{ id: string; version: number }>()
+  ).results.map((row) => row.version);
+}
+
+it("unblock credit link follows creditProofSql: five evidence-linked card-only purchases resolve without TOO_LARGE and keep their versions", async () => {
+  const session = await owner("unblock-card-only");
+  const user = session.tenant.userId;
+  await evidenceDocument(
+    user,
+    "card",
+    Array.from({ length: 5 }, () => ({ record: {} })),
+  );
+  const result = await completeRecord(session, "card-r", "card-resolve");
+  expect(result.reviewStatus).toBe("resolved");
+  expect(await versions(user, "card")).toEqual([1, 1, 1, 1, 1]);
+});
+
+it("unblock credit link adversarial: credit from a connection pending deletion or without paid evidence is not a link", async () => {
+  const session = await owner("unblock-credit-filters");
+  const user = session.tenant.userId;
+  await evidenceDocument(user, "cf", [
+    { record: { storeCreditAmount: "40.00", paymentAmount: "60.00" } },
+    {
+      record: {
+        storeCreditAmount: "40.00",
+        paymentEvidence: "unknown",
+      },
+    },
+  ]);
+  // Only the first is a credit link and is recomputed (40 of 100 credit).
+  await completeRecord(session, "cf-r", "cf-resolve");
+  expect(await versions(user, "cf")).toEqual([2, 1]);
+  expect(await state(user, "cf-0")).toBe("partially_paid");
+  // A pending deletion of the source connection removes the credit link.
+  const other = await owner("unblock-credit-deleting");
+  const otherUser = other.tenant.userId;
+  await evidenceDocument(otherUser, "cd", [
+    { record: { storeCreditAmount: "40.00", paymentAmount: "60.00" } },
+  ]);
+  // The evidence comes from a second mailbox being deleted; the review sits
+  // on a live document and names that observation, so it stays available.
+  for (const sql of [
+    "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state) VALUES('mail-del',?1,'mailbox','gmail','subject-del','del@example.invalid','disconnected')",
+    "UPDATE source_messages SET connection_id='mail-del' WHERE user_id=?1 AND id='cd-msg'",
+    "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES('cd-live-msg',?1,'mail','cd-live-msg',0,1)",
+    "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES('cd-live-doc',?1,'cd-live-msg','body','hash-cd-live','text/plain',10)",
+    "UPDATE review_items SET document_id='cd-live-doc',observation_id='cd-0-obs' WHERE user_id=?1 AND id='cd-r'",
+    "INSERT INTO lifecycle_deletions(user_id,scope,target_id,request_id,deleted_at,journal_ack) VALUES(?1,'connection','mail-del','cd-deletion',0,1)",
+  ])
+    await db.prepare(sql).bind(otherUser).run();
+  await completeRecord(other, "cd-r", "cd-resolve");
+  expect(await versions(otherUser, "cd")).toEqual([1]);
+});
+
+it("unblock caps: an included, linked purchase the review does not block is neither counted nor bumped", async () => {
+  const session = await owner("unblock-not-blocked");
+  const user = session.tenant.userId;
+  // Four purchases whose cash the review blocks, and a fifth linked through
+  // the same document whose entry has no cash proof (observation still
+  // needs review), so the review does not block it.
+  await evidenceDocument(user, "nb", [
+    ...Array.from({ length: 4 }, () => ({ record: {}, entryMinor: 10000 })),
+    { record: {}, entryMinor: 10000, reviewState: "needs_review" as const },
+  ]);
+  const result = await completeRecord(session, "nb-r", "nb-resolve");
+  expect(result.reviewStatus).toBe("resolved");
+  expect(await versions(user, "nb")).toEqual([2, 2, 2, 2, 1]);
+  expect(await state(user, "nb-0")).toBe("paid");
+  expect(await state(user, "nb-4")).toBe("unknown");
 });
 
 /** A purchase without total, 60.00 supported cash, and a total question on another document. */
@@ -584,3 +744,138 @@ it("correct-missing-fields adversarial: a merchant-only correction with nothing 
   await correctMissing(session, "mm", { merchant: "Synthetic fixed" });
   expect(await state(user, "mm")).toBe("unknown");
 });
+
+/**
+ * Two databases for two concurrent commands: both build their plans, then
+ * `first` commits before `second`, whichever reaches its batch first.
+ */
+function orderedCommits() {
+  let arrivals = 0;
+  let bothArrived: () => void = () => {};
+  const both = new Promise<void>((release) => {
+    bothArrived = release;
+  });
+  let firstCommitted: () => void = () => {};
+  const committed = new Promise<void>((release) => {
+    firstCommitted = release;
+  });
+  const wrap = (after: Promise<void> | null, finish: () => void) =>
+    ({
+      prepare: (sql: string) => db.prepare(sql),
+      batch: async (statements: D1PreparedStatement[]) => {
+        arrivals += 1;
+        if (arrivals === 2) bothArrived();
+        await both;
+        if (after) await after;
+        try {
+          return await db.batch(statements);
+        } finally {
+          finish();
+        }
+      },
+    }) as unknown as D1Database;
+  return {
+    first: wrap(null, firstCommitted),
+    second: wrap(committed, () => {}),
+  };
+}
+
+it.each(["restore", "resolve"] as const)(
+  "restore vs resolve race (%s commits first): exactly one CONFLICT, and after the retry E is eligible",
+  async (winner) => {
+    const session = await owner(`race-${winner}`);
+    const user = session.tenant.userId;
+    await purchase(user, "rx");
+    await source(
+      user,
+      "rx",
+      "rx-src",
+      { total: "100.00", paymentAmount: "100.00" },
+      10000,
+    );
+    // X was paid by E, then excluded (E ineligible); R now blocks E.
+    await db
+      .prepare(
+        "UPDATE purchases SET payment_state='paid',record_status='excluded',version=2 WHERE user_id=? AND id='rx'",
+      )
+      .bind(user)
+      .run();
+    await db
+      .prepare("UPDATE ledger_entries SET eligible=0 WHERE user_id=?")
+      .bind(user)
+      .run();
+    await review(user, "rx-r", {
+      purchaseId: null,
+      documentId: "rx-src-doc",
+      reason: "extraction-review",
+    });
+    const restore = (database: D1Database) =>
+      createCorrectionStore(database).execute(
+        session,
+        { kind: "restore", purchaseId: "rx", request: { version: 2 } },
+        "rx-restore",
+      );
+    const resolve = (database: D1Database) =>
+      createCorrectionStore(database).execute(
+        session,
+        {
+          kind: "review-resolve",
+          reviewId: "rx-r",
+          request: {
+            version: 1,
+            action: "complete-record",
+            record: {
+              merchant: "Synthetic completed",
+              documentDate: "2026-01-11",
+              currency: "EUR",
+              totalMinor: "500",
+              category: "other",
+            },
+          },
+        },
+        "rx-resolve",
+      );
+    const gate = orderedCommits();
+    const [restored, resolved] = await Promise.allSettled([
+      restore(winner === "restore" ? gate.first : gate.second),
+      resolve(winner === "resolve" ? gate.first : gate.second),
+    ]);
+    const loser = winner === "restore" ? resolved : restored;
+    expect({
+      restore: restored.status,
+      resolve: resolved.status,
+    }).toEqual(
+      winner === "restore"
+        ? { restore: "fulfilled", resolve: "rejected" }
+        : { restore: "rejected", resolve: "fulfilled" },
+    );
+    expect(loser.status === "rejected" ? loser.reason : null).toMatchObject({
+      code: "CONFLICT",
+    });
+    // The client reloads and retries the rejected command.
+    if (winner === "restore") await resolve(db);
+    else
+      await createCorrectionStore(db).execute(
+        session,
+        {
+          kind: "restore",
+          purchaseId: "rx",
+          request: { version: await version(user, "rx") },
+        },
+        "rx-restore-retry",
+      );
+    expect(
+      await db
+        .prepare(
+          "SELECT p.record_status AS status,p.payment_state AS state,(SELECT eligible FROM ledger_entries l WHERE l.user_id=p.user_id AND l.id='rx-src-entry') AS eligible,(SELECT status FROM review_items r WHERE r.user_id=p.user_id AND r.id='rx-r') AS review FROM purchases p WHERE p.user_id=? AND p.id='rx'",
+        )
+        .bind(user)
+        .first(),
+    ).toEqual({
+      status: "active",
+      state: "paid",
+      eligible: 1,
+      review: "resolved",
+    });
+  },
+);
