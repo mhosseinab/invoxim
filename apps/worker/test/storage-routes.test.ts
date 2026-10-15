@@ -190,6 +190,23 @@ it("storage settings issue a private session-bound token without claiming a work
   expect(value.mutationToken).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
   expect(JSON.stringify(value)).not.toContain("synthetic-drive-secret");
 });
+it("WRK-2 public driveArchive capability matches the archiving the storage settings actually offer", async () => {
+  const f = await fixture("storage-route-public-config");
+  const view = await settings(f);
+  const response = await worker.request(
+    new Request(`${f.login.origin}/api/public-config`),
+    undefined,
+    f.bindings,
+  );
+  expect(response.status).toBe(200);
+  const config = (await response.json()) as {
+    features: { driveArchive: boolean };
+  };
+  // Drive authorization is configured, but the archive path is not wired.
+  expect(view.authorizationAvailable).toBe(true);
+  expect(config.features.driveArchive).toBe(view.archivingAvailable);
+  expect(config.features.driveArchive).toBe(false);
+});
 it("actual storage start creates only storage-purpose state and never reads mail or schedules work", async () => {
   const f = await fixture("storage-route-start");
   const fetch = vi

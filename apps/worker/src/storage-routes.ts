@@ -27,6 +27,13 @@ import {
   requireTenantContext,
 } from "./http/guard";
 
+/**
+ * Whether the worker can archive originals to Drive. Drive authorization may
+ * be configured, but the archive path (T18) is not wired into this worker, so
+ * storage settings and public config both report `false` from this one value.
+ */
+export const DRIVE_ARCHIVING_AVAILABLE = false as const;
+
 const statuses = {
   UNAUTHENTICATED: 401,
   RECENT_AUTH_REQUIRED: 403,
@@ -84,7 +91,7 @@ export function createStorageRoutes() {
       return json(
         storageSettingsResponseSchema.parse({
           authorizationAvailable: context.configuration !== null,
-          archivingAvailable: false,
+          archivingAvailable: DRIVE_ARCHIVING_AVAILABLE,
           ...connections,
           settings,
           mutationToken: await issueMutationToken(context, "storage-settings"),
