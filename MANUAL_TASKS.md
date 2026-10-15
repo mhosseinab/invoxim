@@ -23,7 +23,7 @@ Updated 14 October 2026. This list distinguishes operator inputs from implementa
 
 Local development: `pnpm run dev` starts Vite and the local Worker. Current defaults disable live auth/AI/mail/discovery/jobs. The frontend example is synthetic. Follow `DEPLOYMENT_CHECKLIST.md` before enabling any real environment.
 
-Before any deployment to an existing D1 database, preserve its migration ledger and approved backup and follow `evidence/implementation/baseline-transition-checklist.md`. The consolidated `0001_initial.sql` baseline is for empty databases; consolidation does not authorize resetting or automatically replaying it against existing data.
+Before any deployment to an existing D1 database, preserve its migration ledger and approved backup and follow `docs/runbooks/baseline-transition-checklist.md`. The consolidated `0001_initial.sql` baseline is for empty databases; consolidation does not authorize resetting or automatically replaying it against existing data.
 
 ## Owner decisions already recorded
 

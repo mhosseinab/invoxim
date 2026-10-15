@@ -4,7 +4,7 @@ T02 established `@invoxim/web` (React/Vite and a thin Pages Function) and `@invo
 
 Run `pnpm install --frozen-lockfile --ignore-scripts`, then `pnpm verify`. Dependency lifecycle scripts are disabled by workspace policy. Both app builds are local: Vite and Pages Functions compilation, and Wrangler `deploy --dry-run`. No remote resource identifiers or secrets are configured.
 
-Persistence uses native D1 and the existing shared invocation meter; authentication uses its Drizzle adapter. The single active migration is `packages/adapters/migrations/0001_initial.sql`; historical migrations are compatibility fixtures. The baseline preserves application constraints, indexes and required scheduler seeds. Existing databases require the documented non-destructive transition in `evidence/implementation/baseline-transition-checklist.md`.
+Persistence uses native D1 and the existing shared invocation meter; authentication uses its Drizzle adapter. The single active migration is `packages/adapters/migrations/0001_initial.sql`; historical migrations are compatibility fixtures. The baseline preserves application constraints, indexes and required scheduler seeds. Existing databases require the documented non-destructive transition in `docs/runbooks/baseline-transition-checklist.md`.
 
 Workspace policy disables lifecycle scripts and explicitly denies the reviewed esbuild/workerd versions. Unreviewed dependency builds still fail the strict build policy. No Prisma generation step or custom Prisma driver remains in the application.
 

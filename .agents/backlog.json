@@ -1455,13 +1455,13 @@
       "localProgressEvidence": [
         "evidence/implementation/native-d1-baseline-restoration.md",
         "evidence/implementation/native-d1-restoration-independent-review.md",
-        "evidence/implementation/baseline-transition-checklist.md",
+        "docs/runbooks/baseline-transition-checklist.md",
         "evidence/implementation/t18-drive-folders-security-review.md"
       ],
       "completionEvidence": [
         "evidence/implementation/native-d1-restoration-final-certificate.md",
         "evidence/implementation/native-d1-restoration-independent-review.md",
-        "evidence/implementation/baseline-transition-checklist.md",
+        "docs/runbooks/baseline-transition-checklist.md",
         "evidence/implementation/native-d1-restoration-final/provenance.json"
       ]
     },
