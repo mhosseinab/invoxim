@@ -78,6 +78,19 @@ interface Scenario {
    * evidence that CORE-6 (derivePaymentState) is required.
    */
   expectAgreement: boolean;
+  /**
+   * Conservative state under rule 04 (excluded, pending, ambiguous or unproven
+   * cash never raises payment state). Every path must equal it when
+   * `expectAgreement` is true.
+   */
+  expected?: PaymentState;
+  /**
+   * For scenarios left open: the state both corrections-side paths
+   * (settlement.ts and the lifecycle recompute) must already agree on.
+   */
+  correctionsExpected?: PaymentState;
+  /** Required when `expectAgreement` is false: the owner question keeping it open. */
+  openQuestion?: string;
 }
 
 const triggerEntry = (currency: string): CashFact => ({
@@ -135,6 +148,7 @@ function sqlSupportedCash(
   reviews: readonly ReviewFact[],
   connectionDeletionPending: boolean,
 ): boolean {
+  if (!entry.eligible) return false;
   if (entry.origin === "user-confirmed") return true;
   if (!entry.accepted) return false;
   const expected =
@@ -324,6 +338,7 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: true,
+    expected: "paid",
   },
   {
     name: "partial supported payment is partially_paid",
@@ -342,15 +357,19 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: true,
+    expected: "partially_paid",
   },
   {
     name: "zero supported cash keeps unpaid when the purchase was unpaid",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unpaid" },
     entries: [],
     expectAgreement: true,
+    expected: "unpaid",
   },
   {
-    name: "eligible=false events are excluded by plan but counted by settlement/SQL when proven",
+    // Rule 04: cash of an excluded/merged purchase (ledger_entries.eligible=0)
+    // never raises payment state, however well proven.
+    name: "eligible=false cash never raises payment state on any path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -365,7 +384,8 @@ const scenarios: Scenario[] = [
         documentId: null,
       },
     ],
-    expectAgreement: false,
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
     name: "user-confirmed refund is short-circuited by SQL but blocked in TS by refund-exceeds-payment",
@@ -395,6 +415,15 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: false,
+    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
+    // 'paid' when current cash is zero because it cannot re-read the earlier
+    // document evidence; corrections/lifecycle recompute from current evidence
+    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
+    // ingestion downgrades purchases paid by earlier evidence whenever a later
+    // document for the same purchase arrives.
+    openQuestion:
+      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
+    correctionsExpected: "unknown",
   },
   {
     name: "source cash blocked by a no-observation fallback review in TS but not in SQL",
@@ -424,6 +453,11 @@ const scenarios: Scenario[] = [
       },
     ],
     expectAgreement: false,
+    // OPEN OQ-B: plan.ts receives no review facts (LedgerSnapshot has none), so
+    // it cannot honour an open purchase-level financial review. Supplying them
+    // needs pipeline/ledger-snapshot.ts, outside this card's write-set.
+    openQuestion:
+      "OQ-B: should ingestion honour open purchase-level financial reviews (observation/document NULL) that block cash in corrections? Needs review facts in LedgerSnapshot (PIPE lane).",
   },
   {
     name: "connection deletion pending unsupports SQL cash but not the TS rule",
@@ -443,12 +477,26 @@ const scenarios: Scenario[] = [
     ],
     connectionDeletionPending: true,
     expectAgreement: false,
+    // OPEN OQ-C: plan.ts has no deletion-pending input; the snapshot only rejects
+    // purchases already marked for lifecycle recompute/delete, which happens in a
+    // later cleanup stage than the lifecycle_deletions insert.
+    openQuestion:
+      "OQ-C: confirm ingestion must treat cash from a connection with a pending lifecycle deletion as unsupported; needs a deletion-pending fact in LedgerSnapshot (PIPE lane).",
   },
   {
     name: "already-paid purchase with zero remaining cash stays paid in plan but unknown in settlement",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "paid" },
     entries: [],
     expectAgreement: false,
+    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
+    // 'paid' when current cash is zero because it cannot re-read the earlier
+    // document evidence; corrections/lifecycle recompute from current evidence
+    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
+    // ingestion downgrades purchases paid by earlier evidence whenever a later
+    // document for the same purchase arrives.
+    openQuestion:
+      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
+    correctionsExpected: "unknown",
   },
 ];
 
@@ -466,9 +514,25 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       const sql = runSqlSettlement(scenario).paymentState;
       const states = { plan, settlement, sql };
       if (scenario.expectAgreement) {
-        expect(states).toEqual({ plan, settlement: plan, sql: plan });
+        const expected = scenario.expected;
+        expect(expected, "agreement scenarios name their state").toBeDefined();
+        expect(states).toEqual({
+          plan: expected,
+          settlement: expected,
+          sql: expected,
+        });
       } else {
-        // CORE-1 fork: identical facts, at least two rules disagree → CORE-6 required.
+        expect(
+          scenario.openQuestion,
+          "open scenarios name the owner question",
+        ).toBeTruthy();
+        if (scenario.correctionsExpected)
+          expect({ settlement, sql }).toEqual({
+            settlement: scenario.correctionsExpected,
+            sql: scenario.correctionsExpected,
+          });
+        // Still open: identical facts, at least two rules disagree. Flip the
+        // scenario to expectAgreement once the owner answers openQuestion.
         expect(new Set(Object.values(states)).size).toBeGreaterThan(1);
       }
     });
