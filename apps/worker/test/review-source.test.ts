@@ -356,6 +356,21 @@ it("accepts unrelated full-message headers beyond the old metadata-only count wi
   expect(JSON.stringify(result)).not.toContain("PRIVATE UNUSED HEADER");
 });
 
+function gmailError(status: number, reason: string) {
+  return Response.json(
+    {
+      error: {
+        code: status,
+        message: "PRIVATE PROVIDER TEXT",
+        errors: [
+          { domain: "usageLimits", reason, message: "PRIVATE PROVIDER TEXT" },
+        ],
+        status: "PERMISSION_DENIED",
+      },
+    },
+    { status },
+  );
+}
 it.each([
   [
     "provider 404",
@@ -364,13 +379,68 @@ it.each([
   ],
   [
     "provider 401",
-    "source_unreadable",
+    "source_reauthorization_required",
     async () => new Response(null, { status: 401 }),
   ],
   [
-    "provider 403",
-    "source_unreadable",
+    "provider 403 without a reason",
+    "source_reauthorization_required",
     async () => new Response(null, { status: 403 }),
+  ],
+  [
+    "provider 403 insufficientPermissions",
+    "source_reauthorization_required",
+    async () => gmailError(403, "insufficientPermissions"),
+  ],
+  [
+    "provider 403 userRateLimitExceeded",
+    "source_unavailable",
+    async () => gmailError(403, "userRateLimitExceeded"),
+  ],
+  [
+    "provider 403 rateLimitExceeded",
+    "source_unavailable",
+    async () => gmailError(403, "rateLimitExceeded"),
+  ],
+  [
+    "provider 403 dailyLimitExceeded",
+    "source_unavailable",
+    async () => gmailError(403, "dailyLimitExceeded"),
+  ],
+  [
+    "provider 403 domainPolicy (reconnecting cannot help)",
+    "source_unreadable",
+    async () => gmailError(403, "domainPolicy"),
+  ],
+  [
+    "provider 403 rate-limit reason beyond the bounded error read",
+    "source_reauthorization_required",
+    async () =>
+      Response.json(
+        {
+          pad: "x".repeat(8192),
+          error: { errors: [{ reason: "userRateLimitExceeded" }] },
+        },
+        { status: 403 },
+      ),
+  ],
+  [
+    "provider 403 whose error body stream fails",
+    "source_unavailable",
+    async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            controller.error(new TypeError("synthetic stream failure"));
+          },
+        }),
+        { status: 403 },
+      ),
+  ],
+  [
+    "provider 403 with a non-JSON body",
+    "source_reauthorization_required",
+    async () => new Response("rateLimitExceeded", { status: 403 }),
   ],
   [
     "body over the 64 KiB cap",
@@ -414,7 +484,14 @@ it.each([
         "synthetic@example.invalid",
         fetcher,
       ),
-    ).rejects.toMatchObject({ code });
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        "code" in error &&
+        error.code === code &&
+        error.message === code &&
+        !JSON.stringify(error).includes("PRIVATE PROVIDER TEXT"),
+    );
   },
 );
 

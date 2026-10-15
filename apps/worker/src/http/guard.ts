@@ -22,9 +22,10 @@ const RECENT_SESSION_MS = 3600000;
  * 503 codes that describe operator configuration, not transient unavailability.
  * `source_unavailable` is deliberately absent: it also reports transient
  * D1/provider failures while reading a review source, which stay retryable.
- * `source_not_configured` (provider not configured) and `source_unreadable`
- * (a provider answer a retry cannot change) are the permanent review-source
- * conditions.
+ * `source_not_configured` (provider not configured), `source_unreadable`
+ * (a provider answer a retry cannot change) and
+ * `source_reauthorization_required` (the mailbox must be reconnected) are the
+ * permanent review-source conditions.
  */
 const PERMANENT_503 = new Set([
   "auth_not_configured",
@@ -36,6 +37,7 @@ const PERMANENT_503 = new Set([
   "jobs_not_configured",
   "source_not_configured",
   "source_unreadable",
+  "source_reauthorization_required",
 ]);
 
 export interface ApiErrorOptions {

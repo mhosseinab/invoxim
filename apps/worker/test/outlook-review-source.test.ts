@@ -326,7 +326,7 @@ it.each([
       count: "source_unreadable",
       "wrong-id": "source_unreadable",
       missing: "source_unreadable",
-      revoked: "source_unreadable",
+      revoked: "source_reauthorization_required",
       throttled: "source_unavailable",
     }[failure];
     await expect(

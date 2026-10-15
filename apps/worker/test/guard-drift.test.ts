@@ -99,6 +99,7 @@ it("G3 503 configuration failures are not retryable", async () => {
 it.each([
   ["source_not_configured", false],
   ["source_unreadable", false],
+  ["source_reauthorization_required", false],
   ["source_unavailable", true],
   ["source_changed", true],
 ] as const)(
