@@ -9,8 +9,11 @@ import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import baseline from "../../../packages/adapters/migrations/0001_initial.sql?raw";
 import { aiConfiguration } from "../../../packages/adapters/src/ai/configuration";
 import { createAiProviderFactory } from "../../../packages/adapters/src/ai/provider-factory";
+import { createDiscoveryService } from "../../../packages/adapters/src/discovery/service";
 import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { gmailConfiguration } from "../../../packages/adapters/src/mailbox/configuration";
+import { createOnboardingReads } from "../../../packages/adapters/src/onboarding/read";
+import { readOnboardingView } from "../../../packages/adapters/src/onboarding/view";
 import { createGmailContentFactory } from "../../../packages/adapters/src/pipeline/gmail-factory";
 import { createPipelineRepository } from "../../../packages/adapters/src/pipeline/repository";
 import { createPipelineService } from "../../../packages/adapters/src/pipeline/service";
@@ -885,6 +888,95 @@ it.each(["application/zip", "image/gif"] as const)(
     ).toBe(1);
   },
 );
+// PIPE-1 pin (owner decision: keep the current flow). Through the real
+// pipeline service, an unsupported ZIP sibling of a valid receipt is visited,
+// rewritten to needs_review/unsupported_type and given one operational
+// document-review item, so both import-progress surfaces report exactly as
+// many review sources as there are open review items.
+it("PIPE-1 receipt with an unsupported ZIP sibling reports a progress review count equal to its open review items", async () => {
+  const name = await seed("qa-pipe1-zip");
+  await db
+    .prepare(
+      "INSERT INTO import_runs(id,user_id,connection_id,consent_id,connection_generation,frozen_start,frozen_cutoff,timezone,request_fingerprint,stage,started_at) VALUES(?,?,?,?,1,'2025-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z','UTC',?,'discovering',0)",
+    )
+    .bind(`run-${name}`, name, `c-${name}`, `pc-${name}`, `fp-${name}`)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO discovery_run_sources(user_id,import_run_id,source_message_id,candidate_kind) VALUES(?,?,?,'matched')",
+    )
+    .bind(name, `run-${name}`, `s-${name}`)
+    .run();
+  network(false, undefined, "synthetic-hosted-key", {
+    unsupported: "application/zip",
+  });
+  await drive(name);
+
+  expect(await count(name, "ledger_entries")).toBe(1);
+  expect(
+    await db
+      .prepare(
+        "SELECT mime,parse_state,parse_code FROM documents WHERE user_id=? AND part_key='doc-1'",
+      )
+      .bind(name)
+      .first(),
+  ).toEqual({
+    mime: "application/zip",
+    parse_state: "needs_review",
+    parse_code: "unsupported_type",
+  });
+  const openReviews = (
+    await db
+      .prepare(
+        "SELECT r.reason,r.blocking_scope,d.part_key FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id WHERE r.user_id=? AND r.status='open'",
+      )
+      .bind(name)
+      .all()
+  ).results;
+  expect(openReviews).toEqual([
+    {
+      reason: "document-review",
+      blocking_scope: "operational",
+      part_key: "doc-1",
+    },
+  ]);
+  expect(
+    await db
+      .prepare("SELECT processing_status FROM source_messages WHERE user_id=?")
+      .bind(name)
+      .first("processing_status"),
+  ).toBe("review");
+
+  const tenant = { userId: name, authority: "job" } as TenantContext;
+  const discovery = createDiscoveryService(db, {
+    providers: {
+      async open() {
+        throw new Error("synthetic progress read must not open a provider");
+      },
+    },
+    readiness: {
+      async allow() {
+        return true;
+      },
+    },
+    remainingStatements: () => 40,
+  });
+  const progress = await discovery.progress(tenant, `run-${name}`);
+  expect(progress.counts.review).toBe(openReviews.length);
+  const view = await readOnboardingView(
+    db,
+    createOnboardingReads(db, null, Date.now),
+    {
+      tenant: { userId: name, authority: "session" } as TenantContext,
+      sessionId: `session-${name}`,
+      loginEmail: `${name}@example.invalid`,
+    },
+    { ready: false, mailboxLimit: 1, connectionId: `c-${name}` },
+  );
+  expect(view.progress?.importRunId).toBe(`run-${name}`);
+  expect(view.progress?.reviewSources).toBe(openReviews.length);
+  expect(view.progress?.reviewItemCount).toBe(openReviews.length);
+});
 it("T12 live optimistic conflict retries from the cached extraction without another provider call", async () => {
   const name = await seed("qa-version-race"),
     calls = network(false);
