@@ -807,3 +807,51 @@ it("AI-05: shared hosted cooldown blocks a different trusted tenant and survives
   ).toBe(now + 120000);
   expect(guarded.executedStatements()).toBeLessThanOrEqual(40);
 });
+it("AI-7: extraction store input lacking identity cannot bypass the attemptId check to reserve, authorize, settle or complete", async () => {
+  const usage = store("one", { ...policy, dailyDocuments: 2 });
+  type Attempt = Parameters<typeof usage.reserve>[0];
+  // A runtime caller that drops `identity` (and so any attemptId claim) must
+  // not fall through to the synthetic-probe path under a job-lease owner.
+  const forged = { tenant, config } as unknown as Attempt;
+  const forgedWithClaim = {
+    tenant,
+    config,
+    attemptNumber: 1,
+    attemptId: "f".repeat(64),
+  } as unknown as Attempt;
+  for (const input of [forged, forgedWithClaim]) {
+    expect(await usage.reserve(input)).toBe("budget");
+    expect(await usage.authorize(input)).toBe(false);
+    await usage.settle(input, {
+      state: "known",
+      usage: { input: 1, output: 1, other: 0, source: "reported" },
+    });
+    expect(
+      await usage.complete(input, { status: "needs-review", reason: "schema" }),
+    ).toBe(false);
+  }
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS count FROM usage_events")
+      .first("count"),
+  ).toBe(0);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS count FROM usage_buckets")
+      .first("count"),
+  ).toBe(0);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS count FROM ai_extractions")
+      .first("count"),
+  ).toBe(0);
+  // Positive control: the same store and funding reserve a correctly claimed attempt.
+  const valid = await attempt();
+  expect(await usage.reserve(valid)).toBe("reserved");
+  expect(await usage.authorize(valid)).toBe(true);
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS count FROM usage_events")
+      .first("count"),
+  ).toBe(1);
+});
