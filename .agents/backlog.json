@@ -1844,6 +1844,26 @@
       "blockedBy": [
         "Full pnpm verify remains failed: initial Drive UNAVAILABLE; rerun7failures across PDF headroom, Drive and Outlook. Controlled focused29test rerun passed without code changes; initiating stall unresolved. Browser113/114: unchanged CAD correction view unavailable. Build/publication guard passed. No rollout or live model accuracy claim."
       ]
+    },
+    {
+      "id": "AI-CLASSIFIER-PROVIDER-01",
+      "title": "Provider-agnostic receipt classification: keep Clef, add Perplexity pplx-decider behind the same port",
+      "milestone": "M1",
+      "status": "in_progress",
+      "dependsOn": [
+        "AI-CLASSIFICATION-IMPROVEMENTS-03"
+      ],
+      "ownerRole": "ai",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Split the Clef decision protocol into a provider-neutral protocol plus Workers AI and Perplexity Decisions API transports selected by the versioned classification config provider; fixed endpoint, bounded response, typed failures, PERPLEXITY_API_KEY secret readiness without fallback, per-provider destination identity, digest and disclosure; production config selects pplx-decider (owner decision 2026-10-15). No live call or calibration claim.",
+      "acceptanceCaseIds": [
+        "AI-CLASSIFIER-PROVIDER",
+        "CLEF-DOCUMENT-ROUTING",
+        "AI-CACHE-AUTHORITY"
+      ],
+      "localProgressEvidence": [],
+      "completionEvidence": [],
+      "blockedBy": []
     }
   ]
 }

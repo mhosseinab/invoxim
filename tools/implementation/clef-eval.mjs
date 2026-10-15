@@ -5,11 +5,17 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import classificationConfiguration from "../../config/ai.classification.production.json" with { type: "json" };
 import {
-  buildClefRequest,
-  CLEF_RECEIPT_POLICY_VERSION,
-  parseClefResponse,
-  routeClefDocument,
-} from "../../packages/adapters/src/ai/clef-protocol.ts";
+  buildDecisionRequest,
+  RECEIPT_DECISION_POLICY_VERSION as CLEF_RECEIPT_POLICY_VERSION,
+  parseDecisionResponse,
+  routeDecisionDocument as routeClefDocument,
+} from "../../packages/adapters/src/ai/decision-protocol.ts";
+
+// Same Clef identity as packages/adapters/src/ai/clef-protocol.ts; the
+// provider-neutral protocol module is self-contained so Node can load it.
+const buildClefRequest = (parts) => buildDecisionRequest(parts, "clef");
+const parseClefResponse = (raw) =>
+  parseDecisionResponse(raw, ["clef", "@cf/cloudflare/clef"]);
 
 const MAX_REQUEST_BYTES = 8192;
 const MAX_RESPONSE_BYTES = 16384;
