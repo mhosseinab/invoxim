@@ -15,10 +15,12 @@ import { loadOutlookReviewMetadata } from "./outlook-review-metadata";
 /**
  * `source_unavailable` is transient (network, deadline, provider 429/5xx,
  * Gmail 403 rate limits) and stays retryable. `source_reauthorization_required`
- * is a rejected mailbox authorization (Gmail 401/auth 403, Outlook
- * AUTH_REQUIRED) that reconnecting the mailbox fixes; a retry does not.
- * `source_unreadable` is a provider answer neither a retry nor a reconnect can
- * change (message gone, admin policy, response over the cap or off-schema).
+ * is a rejected mailbox authorization (Gmail 401, Gmail 403 `authError` /
+ * `insufficientPermissions`, Outlook AUTH_REQUIRED) that reconnecting the
+ * mailbox fixes; a retry does not. `source_unreadable` is a provider answer
+ * neither a retry nor a reconnect is known to change (message gone, admin
+ * policy, operator API configuration, an unknown or unreadable 403 reason, a
+ * response over the cap or off-schema).
  */
 export class ReviewSourceError extends Error {
   constructor(
@@ -62,8 +64,16 @@ const GMAIL_RATE_LIMIT_REASONS = new Set([
   "userRateLimitExceeded",
   "dailyLimitExceeded",
 ]);
-/** A Workspace admin policy blocks API access; reconnecting the mailbox cannot change it. */
-const GMAIL_POLICY_REASONS = new Set(["domainPolicy"]);
+/**
+ * Gmail 403 reasons a mailbox reconnect fixes: the grant is invalid or lacks a
+ * scope. Every other 403 reason (`domainPolicy` admin policy,
+ * `accessNotConfigured` operator API setup, `forbidden`, unknown or missing)
+ * is not shown to be fixable by the user, so it is reported unreadable.
+ */
+const GMAIL_REAUTHORIZATION_REASONS = new Set([
+  "authError",
+  "insufficientPermissions",
+]);
 const GMAIL_ERROR_BODY_LIMIT = 4096;
 const gmailErrorSchema = z.object({
   error: z.object({
@@ -131,9 +141,9 @@ async function gmailFailureCode(
     if (reasons === null) return "source_unavailable";
     if (reasons.some((reason) => GMAIL_RATE_LIMIT_REASONS.has(reason)))
       return "source_unavailable";
-    if (reasons.some((reason) => GMAIL_POLICY_REASONS.has(reason)))
-      return "source_unreadable";
-    return "source_reauthorization_required";
+    if (reasons.some((reason) => GMAIL_REAUTHORIZATION_REASONS.has(reason)))
+      return "source_reauthorization_required";
+    return "source_unreadable";
   }
   return [404, 410].includes(response.status)
     ? "source_unreadable"
