@@ -11,6 +11,13 @@ import {
 } from "./outlook-transport";
 import { rateDecision } from "./rate-decision";
 import { initialSourceJobAbsentSql, initialSourceJobSql } from "./source-jobs";
+import {
+  completeStagedJob,
+  settledOutcome,
+  stageAndSettle,
+  stageContinuation,
+  stageGuard,
+} from "./stage-and-settle";
 
 interface ParentState {
   id: string;
@@ -167,6 +174,10 @@ export function createOutlookDeltaRunner(
       parent.discovery_version + 1,
       nonce,
     ];
+    const staged = stageGuard(
+      { sql: marker, values: markerValues },
+      leaseGuard,
+    );
     const continuationKey = `outlook:page:${lease.jobId}`;
     const continuePage = Boolean(missing || restart || older);
     const nextStage = paused
@@ -249,24 +260,13 @@ export function createOutlookDeltaRunner(
       );
     if (continuePage)
       statements.push(
-        db
-          .prepare(
-            `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${marker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-          )
-          .bind(
-            crypto.randomUUID(),
-            lease.context.userId,
-            lease.connectionId,
-            lease.consentId,
-            lease.generation,
-            older?.id ?? lease.syncStateId,
-            older ? "discover" : lease.type,
-            continuationKey,
-            now,
-            older ? 2 : parent.slice_key === "older" ? 2 : 0,
-            ...markerValues,
-            ...leaseGuard.values,
-          ),
+        stageContinuation(db, lease, staged, {
+          syncStateId: older?.id ?? lease.syncStateId,
+          type: older ? "discover" : lease.type,
+          dedupeKey: continuationKey,
+          dispatchAt: now,
+          priority: older ? 2 : parent.slice_key === "older" ? 2 : 0,
+        }),
       );
     if (parent.import_run_id && !missing && !restart && !paused)
       statements.push(
@@ -286,28 +286,12 @@ export function createOutlookDeltaRunner(
           ),
       );
     statements.push(
-      db
-        .prepare(
-          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${leaseGuard.sql}${continuePage ? " AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')" : ""}`,
-        )
-        .bind(
-          lease.context.userId,
-          lease.jobId,
-          ...markerValues,
-          ...leaseGuard.values,
-          ...(continuePage ? [lease.context.userId, continuationKey] : []),
-        ),
+      completeStagedJob(db, lease, staged, {
+        outcome: "discovery_staged",
+        ...(continuePage ? { continuationKey } : {}),
+      }),
     );
-    await db.batch(statements);
-    const settled = await db
-      .prepare(
-        "SELECT status FROM jobs WHERE user_id=? AND id=? AND status='completed'",
-      )
-      .bind(lease.context.userId, lease.jobId)
-      .first();
-    return settled
-      ? { kind: "completed" }
-      : { kind: "retry", code: "transient" };
+    return settledOutcome(await stageAndSettle(db, lease, statements, "read"));
   }
   async function resetExpired(
     lease: JobLease,
@@ -345,61 +329,43 @@ export function createOutlookDeltaRunner(
       folder.discovery_version + 1,
       nonce,
     ];
+    const staged = stageGuard(
+      { sql: marker, values: markerValues },
+      leaseGuard,
+    );
     const continuationKey = `outlook:page:${lease.jobId}`;
-    await db.batch([
-      db
-        .prepare(
-          `UPDATE sync_states SET discovery_version=discovery_version+1,page_token=NULL,history_cursor=NULL,stage='recovering',frozen_start=?,frozen_cutoff=?,history_reset_count=history_reset_count+1,pending_history_id=?,retry_at=NULL,consecutive_failures=0 WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${leaseGuard.sql}`,
-        )
-        .bind(
-          approved.frozen_start,
-          approved.frozen_cutoff,
-          nonce,
-          lease.context.userId,
-          folder.id,
-          lease.connectionId,
-          folder.discovery_version,
-          ...leaseGuard.values,
-        ),
-      db
-        .prepare(
-          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,0 WHERE ${marker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          lease.context.userId,
-          lease.connectionId,
-          lease.consentId,
-          lease.generation,
-          lease.syncStateId,
-          lease.type,
-          continuationKey,
-          now,
-          ...markerValues,
-          ...leaseGuard.values,
-        ),
-      db
-        .prepare(
-          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${leaseGuard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
-        )
-        .bind(
-          lease.context.userId,
-          lease.jobId,
-          ...markerValues,
-          ...leaseGuard.values,
-          lease.context.userId,
-          continuationKey,
-        ),
-    ]);
-    const settled = await db
-      .prepare(
-        "SELECT status FROM jobs WHERE user_id=? AND id=? AND status='completed'",
-      )
-      .bind(lease.context.userId, lease.jobId)
-      .first();
-    return settled
-      ? { kind: "completed" }
-      : { kind: "retry", code: "transient" };
+    return settledOutcome(
+      await stageAndSettle(
+        db,
+        lease,
+        [
+          db
+            .prepare(
+              `UPDATE sync_states SET discovery_version=discovery_version+1,page_token=NULL,history_cursor=NULL,stage='recovering',frozen_start=?,frozen_cutoff=?,history_reset_count=history_reset_count+1,pending_history_id=?,retry_at=NULL,consecutive_failures=0 WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${leaseGuard.sql}`,
+            )
+            .bind(
+              approved.frozen_start,
+              approved.frozen_cutoff,
+              nonce,
+              lease.context.userId,
+              folder.id,
+              lease.connectionId,
+              folder.discovery_version,
+              ...leaseGuard.values,
+            ),
+          stageContinuation(db, lease, staged, {
+            dedupeKey: continuationKey,
+            dispatchAt: now,
+            priority: 0,
+          }),
+          completeStagedJob(db, lease, staged, {
+            outcome: "discovery_staged",
+            continuationKey,
+          }),
+        ],
+        "read",
+      ),
+    );
   }
   async function deferFolderRate(
     lease: JobLease,
@@ -435,6 +401,10 @@ export function createOutlookDeltaRunner(
       folder.discovery_version + 1,
       nonce,
     ];
+    const staged = stageGuard(
+      { sql: marker, values: markerValues },
+      leaseGuard,
+    );
     const continuationKey = `outlook:page:${lease.jobId}`;
     const statements: D1PreparedStatement[] = [
       db
@@ -455,48 +425,23 @@ export function createOutlookDeltaRunner(
     ];
     if (!paused)
       statements.push(
-        db
-          .prepare(
-            `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,0 WHERE ${marker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-          )
-          .bind(
-            crypto.randomUUID(),
-            lease.context.userId,
-            lease.connectionId,
-            lease.consentId,
-            lease.generation,
-            lease.syncStateId,
-            lease.type,
-            continuationKey,
-            retryAt,
-            ...markerValues,
-            ...leaseGuard.values,
-          ),
+        stageContinuation(db, lease, staged, {
+          dedupeKey: continuationKey,
+          dispatchAt: retryAt,
+          priority: 0,
+        }),
       );
     statements.push(
-      db
-        .prepare(
-          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code=? WHERE user_id=? AND id=? AND ${marker} AND ${leaseGuard.sql}${paused ? "" : " AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')"}`,
-        )
-        .bind(
-          paused ? "rate_paused" : "rate_deferred",
-          lease.context.userId,
-          lease.jobId,
-          ...markerValues,
-          ...leaseGuard.values,
-          ...(paused ? [] : [lease.context.userId, continuationKey]),
-        ),
+      completeStagedJob(
+        db,
+        lease,
+        staged,
+        paused
+          ? { outcome: "rate_paused" }
+          : { outcome: "rate_deferred", continuationKey },
+      ),
     );
-    await db.batch(statements);
-    const settled = await db
-      .prepare(
-        "SELECT status FROM jobs WHERE user_id=? AND id=? AND status='completed'",
-      )
-      .bind(lease.context.userId, lease.jobId)
-      .first();
-    return settled
-      ? { kind: "completed" }
-      : { kind: "retry", code: "transient" };
+    return settledOutcome(await stageAndSettle(db, lease, statements, "read"));
   }
   return {
     async run(
@@ -824,44 +769,24 @@ export function createOutlookDeltaRunner(
           );
       }
       const continuationKey = `outlook:page:${lease.jobId}`;
-      add(
-        `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-        [
-          crypto.randomUUID(),
-          lease.context.userId,
-          lease.connectionId,
-          lease.consentId,
-          lease.generation,
-          lease.syncStateId,
-          lease.type,
-          continuationKey,
-          now,
-          parent.slice_key === "older" ? 2 : 0,
-          ...childMarkerValues,
-          ...leaseGuard.values,
-        ],
+      const staged = stageGuard(
+        { sql: childMarker, values: childMarkerValues },
+        leaseGuard,
       );
-      add(
-        `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${childMarker} AND ${leaseGuard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
-        [
-          lease.context.userId,
-          lease.jobId,
-          ...childMarkerValues,
-          ...leaseGuard.values,
-          lease.context.userId,
+      statements.push(
+        stageContinuation(db, lease, staged, {
+          dedupeKey: continuationKey,
+          dispatchAt: now,
+          priority: parent.slice_key === "older" ? 2 : 0,
+        }),
+        completeStagedJob(db, lease, staged, {
+          outcome: "discovery_staged",
           continuationKey,
-        ],
+        }),
       );
-      await db.batch(statements);
-      const settled = await db
-        .prepare(
-          "SELECT status FROM jobs WHERE user_id=? AND id=? AND status='completed'",
-        )
-        .bind(lease.context.userId, lease.jobId)
-        .first();
-      return settled
-        ? { kind: "completed" }
-        : { kind: "retry", code: "transient" };
+      return settledOutcome(
+        await stageAndSettle(db, lease, statements, "read"),
+      );
     },
   };
 }

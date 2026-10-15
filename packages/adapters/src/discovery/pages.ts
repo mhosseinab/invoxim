@@ -14,6 +14,7 @@ import { activeProfileSql } from "../pipeline/repository-guards";
 import { rateDecision } from "./rate-decision";
 import type { DiscoveryServiceOptions } from "./service";
 import { initialSourceJobAbsentSql, initialSourceJobSql } from "./source-jobs";
+import { completeStagedJob, stageContinuation } from "./stage-and-settle";
 
 interface State {
   id: string;
@@ -517,20 +518,14 @@ export function createDiscoveryPages(
         );
     }
     if (continuePage)
-      add(
-        `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${check.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-        [
-          crypto.randomUUID(),
-          lease.context.userId,
-          lease.connectionId,
-          lease.consentId,
-          lease.generation,
-          state.id,
-          state.sync_kind === "incremental" ? "sync" : "discover",
-          `discover:${state.id}:${state.discovery_version + 1}`,
-          clock() + retryDelay,
-          state.slice_key === "older" ? 2 : 0,
-        ],
+      statements.push(
+        stageContinuation(db, lease, check, {
+          syncStateId: state.id,
+          type: state.sync_kind === "incremental" ? "sync" : "discover",
+          dedupeKey: `discover:${state.id}:${state.discovery_version + 1}`,
+          dispatchAt: clock() + retryDelay,
+          priority: state.slice_key === "older" ? 2 : 0,
+        }),
       );
     if (state.slice_key === "recent" && next.stage === "discovery_complete") {
       add(
@@ -597,10 +592,13 @@ export function createDiscoveryPages(
         ],
         state.discovery_version + 1,
       );
-    add(
-      `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${newer.sql}`,
-      [lease.context.userId, lease.jobId],
-      state.discovery_version + 1,
+    statements.push(
+      completeStagedJob(
+        db,
+        lease,
+        guard(lease, state, accepted, state.discovery_version + 1),
+        { outcome: "discovery_staged" },
+      ),
     );
     guards.charge(statements.length);
     await db.batch(statements);
