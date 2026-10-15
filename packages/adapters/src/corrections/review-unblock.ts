@@ -128,7 +128,7 @@ export async function planReviewUnblock(
   // review blocks (creditProofSql), so credit-only purchases are recomputed.
   const linked = await db
     .prepare(
-      `SELECT ${purchaseColumns},MAX(linked.credit) AS credit FROM (SELECT l.purchase_id AS id,0 AS credit FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) UNION ALL SELECT pe.purchase_id,1 FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id WHERE pe.user_id=? AND (o.id=? OR (? IS NULL AND o.document_id=?)) AND o.review_state='accepted' AND o.evidence_code='explicitly-paid' UNION ALL SELECT ?,0 WHERE ? IS NOT NULL) linked JOIN purchases p ON p.user_id=? AND p.id=linked.id WHERE p.record_status='active' AND p.lifecycle_delete_connection_id IS NULL AND p.lifecycle_recompute_connection_id IS NULL AND p.id IS NOT ? GROUP BY p.id ORDER BY p.id LIMIT ?`,
+      `SELECT ${purchaseColumns},MAX(linked.credit) AS credit FROM (SELECT l.purchase_id AS id,0 AS credit FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) UNION ALL SELECT pe.purchase_id,1 FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id WHERE pe.user_id=? AND (o.id=? OR (? IS NULL AND o.document_id=?)) AND o.review_state='accepted' AND o.evidence_code='explicitly-paid' UNION ALL SELECT ?,0 WHERE ? IS NOT NULL) linked JOIN purchases p ON p.user_id=? AND p.id=linked.id WHERE p.record_status IN('active','excluded') AND p.lifecycle_delete_connection_id IS NULL AND p.lifecycle_recompute_connection_id IS NULL AND p.id IS NOT ? GROUP BY p.id ORDER BY p.id LIMIT ?`,
     )
     .bind(
       user,
@@ -151,11 +151,31 @@ export async function planReviewUnblock(
     throw new CorrectionError("TOO_LARGE");
   const resolvedFact = reviewFact(resolved);
   const plans: UnblockPlan[] = [];
+  const fences: PurchaseRow[] = [];
   const checks: VersionCheck[] = [];
   for (const { credit, ...stored } of linked.results) {
     const owned = options.owned?.id === stored.id;
     const row = owned && options.owned ? options.owned : stored;
     const entries = await events(db, user, row.id);
+    // An excluded purchase is not recomputed, but if the resolved review
+    // blocks its cash it is version-fenced: a concurrent restore that read
+    // the review as open (and so left that cash ineligible) then conflicts,
+    // and a restore that already committed makes this resolution conflict.
+    if (stored.record_status === "excluded") {
+      if (
+        closing &&
+        !owned &&
+        entries.some(
+          (entry) =>
+            hasCashProof(entry) &&
+            !restorationEligibility(entry, [resolvedFact]),
+        )
+      ) {
+        checks.push(purchaseVersion(user, stored, stored.version));
+        fences.push(stored);
+      }
+      continue;
+    }
     // Every purchase with cash or credit the resolved review blocks is
     // recomputed and fenced, even when another open review still blocks it:
     // a concurrent resolution of that other review then conflicts instead of
@@ -199,11 +219,11 @@ export async function planReviewUnblock(
       allocations,
     });
   }
-  if (!plans.length) return none;
+  if (!plans.length && !fences.length) return none;
   return {
     checks,
     write(tx, clock) {
-      writeUnblock(tx, user, plans, clock);
+      writeUnblock(tx, user, plans, fences, clock);
     },
   };
 }
@@ -212,6 +232,7 @@ function writeUnblock(
   tx: ReturnType<typeof correctionTransaction>,
   user: string,
   plans: readonly UnblockPlan[],
+  fences: readonly PurchaseRow[],
   clock: () => number,
 ) {
   const entries = plans.flatMap((plan) =>
@@ -222,13 +243,14 @@ function writeUnblock(
       `UPDATE ledger_entries SET eligible=1 WHERE user_id=? AND eligible=0 AND EXISTS(SELECT 1 FROM json_each(?) e WHERE json_extract(e.value,'$.id')=ledger_entries.id AND json_extract(e.value,'$.purchaseId')=ledger_entries.purchase_id) AND ${tx.guard}`,
       [user, JSON.stringify(entries), ...tx.guardValues],
     );
-  const states = JSON.stringify(
-    plans.map((plan) => ({
+  const states = JSON.stringify([
+    ...plans.map((plan) => ({
       id: plan.row.id,
       state: plan.paymentState,
       bump: plan.owned ? 0 : 1,
     })),
-  );
+    ...fences.map((row) => ({ id: row.id, state: row.payment_state, bump: 1 })),
+  ]);
   tx.add(
     `UPDATE purchases SET payment_state=(SELECT json_extract(e.value,'$.state') FROM json_each(?) e WHERE json_extract(e.value,'$.id')=purchases.id),version=version+(SELECT json_extract(e.value,'$.bump') FROM json_each(?) e WHERE json_extract(e.value,'$.id')=purchases.id) WHERE user_id=? AND id IN(SELECT json_extract(value,'$.id') FROM json_each(?)) AND ${tx.guard}`,
     [states, states, user, states, ...tx.guardValues],
@@ -283,8 +305,9 @@ function writeUnblock(
       after: JSON.stringify({ status: allocation.status }),
     })),
   ];
-  tx.add(
-    `INSERT INTO correction_audit(id,user_id,entity_kind,entity_id,action,before_json,after_json,created_at) SELECT json_extract(value,'$.id'),?,json_extract(value,'$.kind'),json_extract(value,'$.entity'),json_extract(value,'$.action'),json_extract(value,'$.before'),json_extract(value,'$.after'),? FROM json_each(?) WHERE ${tx.guard}`,
-    [user, clock(), JSON.stringify(audits), ...tx.guardValues],
-  );
+  if (audits.length)
+    tx.add(
+      `INSERT INTO correction_audit(id,user_id,entity_kind,entity_id,action,before_json,after_json,created_at) SELECT json_extract(value,'$.id'),?,json_extract(value,'$.kind'),json_extract(value,'$.entity'),json_extract(value,'$.action'),json_extract(value,'$.before'),json_extract(value,'$.after'),? FROM json_each(?) WHERE ${tx.guard}`,
+      [user, clock(), JSON.stringify(audits), ...tx.guardValues],
+    );
 }

@@ -466,7 +466,8 @@ it("unblock caps: 5 linked purchases with 4 recomputable resolve a 7-field compl
       eligible: 1,
       remainder: 1,
     })),
-    { id: "cap-4", state: "paid", version: 1, eligible: 0, remainder: 0 },
+    // Excluded: not recomputed or counted, only version-fenced (restore race).
+    { id: "cap-4", state: "paid", version: 2, eligible: 0, remainder: 0 },
   ]);
 });
 
@@ -584,3 +585,138 @@ it("correct-missing-fields adversarial: a merchant-only correction with nothing 
   await correctMissing(session, "mm", { merchant: "Synthetic fixed" });
   expect(await state(user, "mm")).toBe("unknown");
 });
+
+/**
+ * Two databases for two concurrent commands: both build their plans, then
+ * `first` commits before `second`, whichever reaches its batch first.
+ */
+function orderedCommits() {
+  let arrivals = 0;
+  let bothArrived: () => void = () => {};
+  const both = new Promise<void>((release) => {
+    bothArrived = release;
+  });
+  let firstCommitted: () => void = () => {};
+  const committed = new Promise<void>((release) => {
+    firstCommitted = release;
+  });
+  const wrap = (after: Promise<void> | null, finish: () => void) =>
+    ({
+      prepare: (sql: string) => db.prepare(sql),
+      batch: async (statements: D1PreparedStatement[]) => {
+        arrivals += 1;
+        if (arrivals === 2) bothArrived();
+        await both;
+        if (after) await after;
+        try {
+          return await db.batch(statements);
+        } finally {
+          finish();
+        }
+      },
+    }) as unknown as D1Database;
+  return {
+    first: wrap(null, firstCommitted),
+    second: wrap(committed, () => {}),
+  };
+}
+
+it.each(["restore", "resolve"] as const)(
+  "restore vs resolve race (%s commits first): exactly one CONFLICT, and after the retry E is eligible",
+  async (winner) => {
+    const session = await owner(`race-${winner}`);
+    const user = session.tenant.userId;
+    await purchase(user, "rx");
+    await source(
+      user,
+      "rx",
+      "rx-src",
+      { total: "100.00", paymentAmount: "100.00" },
+      10000,
+    );
+    // X was paid by E, then excluded (E ineligible); R now blocks E.
+    await db
+      .prepare(
+        "UPDATE purchases SET payment_state='paid',record_status='excluded',version=2 WHERE user_id=? AND id='rx'",
+      )
+      .bind(user)
+      .run();
+    await db
+      .prepare("UPDATE ledger_entries SET eligible=0 WHERE user_id=?")
+      .bind(user)
+      .run();
+    await review(user, "rx-r", {
+      purchaseId: null,
+      documentId: "rx-src-doc",
+      reason: "extraction-review",
+    });
+    const restore = (database: D1Database) =>
+      createCorrectionStore(database).execute(
+        session,
+        { kind: "restore", purchaseId: "rx", request: { version: 2 } },
+        "rx-restore",
+      );
+    const resolve = (database: D1Database) =>
+      createCorrectionStore(database).execute(
+        session,
+        {
+          kind: "review-resolve",
+          reviewId: "rx-r",
+          request: {
+            version: 1,
+            action: "complete-record",
+            record: {
+              merchant: "Synthetic completed",
+              documentDate: "2026-01-11",
+              currency: "EUR",
+              totalMinor: "500",
+              category: "other",
+            },
+          },
+        },
+        "rx-resolve",
+      );
+    const gate = orderedCommits();
+    const [restored, resolved] = await Promise.allSettled([
+      restore(winner === "restore" ? gate.first : gate.second),
+      resolve(winner === "resolve" ? gate.first : gate.second),
+    ]);
+    const loser = winner === "restore" ? resolved : restored;
+    expect({
+      restore: restored.status,
+      resolve: resolved.status,
+    }).toEqual(
+      winner === "restore"
+        ? { restore: "fulfilled", resolve: "rejected" }
+        : { restore: "rejected", resolve: "fulfilled" },
+    );
+    expect(loser.status === "rejected" ? loser.reason : null).toMatchObject({
+      code: "CONFLICT",
+    });
+    // The client reloads and retries the rejected command.
+    if (winner === "restore") await resolve(db);
+    else
+      await createCorrectionStore(db).execute(
+        session,
+        {
+          kind: "restore",
+          purchaseId: "rx",
+          request: { version: await version(user, "rx") },
+        },
+        "rx-restore-retry",
+      );
+    expect(
+      await db
+        .prepare(
+          "SELECT p.record_status AS status,p.payment_state AS state,(SELECT eligible FROM ledger_entries l WHERE l.user_id=p.user_id AND l.id='rx-src-entry') AS eligible,(SELECT status FROM review_items r WHERE r.user_id=p.user_id AND r.id='rx-r') AS review FROM purchases p WHERE p.user_id=? AND p.id='rx'",
+        )
+        .bind(user)
+        .first(),
+    ).toEqual({
+      status: "active",
+      state: "paid",
+      eligible: 1,
+      review: "resolved",
+    });
+  },
+);
