@@ -195,3 +195,123 @@ it("reviewer P2 purchase view lists superset reviews without offering their acti
       .first(),
   ).toEqual({ entries: 1, commands: 0, statuses: "open,open,open" });
 });
+
+async function states(user: string) {
+  return (
+    await db
+      .prepare(
+        "SELECT id,payment_state,record_status FROM purchases WHERE user_id=? ORDER BY id",
+      )
+      .bind(user)
+      .all()
+  ).results;
+}
+async function version(user: string, id: string) {
+  const value = await db
+    .prepare("SELECT version FROM purchases WHERE user_id=? AND id=?")
+    .bind(user, id)
+    .first<number>("version");
+  if (!value) throw new Error("missing synthetic purchase version");
+  return value;
+}
+
+it("reviewer P2 unmerge keeps OQ-B: cash blocked by an observation- or document-linked review stays excluded", async () => {
+  const session = await owner("superset-unmerge");
+  const user = session.tenant.userId;
+  await purchase(user, "um-target");
+  await purchase(user, "um-source");
+  await sourcePayment(user, "um-source", "um-cash", 10000);
+  await sourcePayment(user, "um-target", "um-target-cash", 10000);
+  // Owned by neither purchase: linked only through the source cash document
+  // and the target cash observation.
+  await review(user, "um-r-document", {
+    purchaseId: null,
+    documentId: "um-cash-doc",
+    reason: "extraction-review",
+  });
+  await review(user, "um-r-observation", {
+    purchaseId: null,
+    documentId: "um-target-cash-doc",
+    observationId: "um-target-cash-obs",
+    reason: "event-conflict",
+  });
+  const store = createCorrectionStore(db);
+  const merged = await store.execute(
+    session,
+    {
+      kind: "merge",
+      request: {
+        target: { id: "um-target", version: 1 },
+        source: { id: "um-source", version: 1 },
+      },
+    },
+    "superset-merge",
+  );
+  if (!merged.mergeId || !merged.version) throw new Error("missing merge");
+  expect(await states(user)).toEqual([
+    { id: "um-source", payment_state: "unknown", record_status: "merged" },
+    { id: "um-target", payment_state: "unknown", record_status: "active" },
+  ]);
+  await store.execute(
+    session,
+    {
+      kind: "unmerge",
+      purchaseId: "um-target",
+      request: {
+        mergeId: merged.mergeId,
+        version: merged.version,
+        sourceVersion: await version(user, "um-source"),
+      },
+    },
+    "superset-unmerge",
+  );
+  expect(await states(user)).toEqual([
+    { id: "um-source", payment_state: "unknown", record_status: "active" },
+    { id: "um-target", payment_state: "unknown", record_status: "active" },
+  ]);
+});
+
+it("reviewer P2 unmerge adversarial: a superset review on the other side's cash does not block this side", async () => {
+  const session = await owner("superset-unmerge-other");
+  const user = session.tenant.userId;
+  await purchase(user, "uo-target");
+  await purchase(user, "uo-source");
+  await sourcePayment(user, "uo-source", "uo-cash", 10000);
+  await sourcePayment(user, "uo-target", "uo-target-cash", 10000);
+  // Linked to the source cash document only; target cash stays supported.
+  await review(user, "uo-r-document", {
+    purchaseId: null,
+    documentId: "uo-cash-doc",
+    reason: "extraction-review",
+  });
+  const store = createCorrectionStore(db);
+  const merged = await store.execute(
+    session,
+    {
+      kind: "merge",
+      request: {
+        target: { id: "uo-target", version: 1 },
+        source: { id: "uo-source", version: 1 },
+      },
+    },
+    "superset-merge-other",
+  );
+  if (!merged.mergeId || !merged.version) throw new Error("missing merge");
+  await store.execute(
+    session,
+    {
+      kind: "unmerge",
+      purchaseId: "uo-target",
+      request: {
+        mergeId: merged.mergeId,
+        version: merged.version,
+        sourceVersion: await version(user, "uo-source"),
+      },
+    },
+    "superset-unmerge-other",
+  );
+  expect(await states(user)).toEqual([
+    { id: "uo-source", payment_state: "unknown", record_status: "active" },
+    { id: "uo-target", payment_state: "paid", record_status: "active" },
+  ]);
+});
