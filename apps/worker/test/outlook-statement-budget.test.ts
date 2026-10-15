@@ -94,7 +94,10 @@ async function claimed(
       `j-${name}`,
     )
     .run();
-  const lease = await createJobStore(env.DB, { policy }).claim(`j-${name}`);
+  const lease = await createJobStore(env.DB, {
+    policy,
+    processingReview: null,
+  }).claim(`j-${name}`);
   if (!lease) throw new Error("Synthetic Outlook lease unavailable");
   return lease;
 }

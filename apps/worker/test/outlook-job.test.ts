@@ -2047,7 +2047,10 @@ async function claimContinuation(lease: JobLease): Promise<JobLease> {
   await env.DB.prepare("UPDATE jobs SET dispatch_at=0 WHERE user_id=? AND id=?")
     .bind(lease.context.userId, continuation)
     .run();
-  const next = await createJobStore(env.DB, { policy }).claim(continuation);
+  const next = await createJobStore(env.DB, {
+    policy,
+    processingReview: null,
+  }).claim(continuation);
   if (!next) throw new Error("Outlook continuation lease unavailable");
   return next;
 }
