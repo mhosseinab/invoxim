@@ -995,3 +995,121 @@ it("T14 new source installments preserve the purchase exclusion decision", () =>
   expect(later.events[0]?.eligible).toBe(false);
   expect(later.purchases).toEqual([]);
 });
+
+describe("OQ-A ingestion recomputes payment state from current cash and credit", () => {
+  function creditPaid() {
+    const plan = planLedgerIngestion(
+      input("credit-paid", {
+        paymentMethodHint: "store-credit",
+        paymentAmount: null,
+        storeCreditAmount: "100.00",
+      }),
+      empty(),
+    );
+    const state = apply(empty(), plan);
+    const purchase = state.purchases[0];
+    if (purchase?.paymentState !== "paid")
+      throw new Error("missing credit-paid synthetic purchase");
+    return { state, purchase };
+  }
+  const installment = () =>
+    input("later-cash", { paymentAmount: "10.00", paymentReference: "P2" });
+  const proof = (purchaseId: string) => ({
+    purchaseId,
+    currency: "EUR",
+    totalMinor: "10000",
+    creditMinor: "10000",
+  });
+  it("a persisted credit proof keeps a credit-settled purchase paid when later cash arrives", () => {
+    const { state, purchase } = creditPaid();
+    const plan = planLedgerIngestion(installment(), {
+      ...state,
+      creditProofs: [proof(purchase.id)],
+    });
+    expect(plan.events.map((event) => event.amountMinor)).toEqual([1000]);
+    expect(plan.paymentStates).toEqual([
+      { purchaseId: purchase.id, expectedVersion: 1, paymentState: "paid" },
+    ]);
+  });
+  it("adversarial: another purchase's credit proof does not settle it and stored 'paid' is not retained", () => {
+    const { state, purchase } = creditPaid();
+    const plan = planLedgerIngestion(installment(), {
+      ...state,
+      creditProofs: [proof("another-purchase")],
+    });
+    expect(plan.paymentStates).toEqual([
+      {
+        purchaseId: purchase.id,
+        expectedVersion: 1,
+        paymentState: "partially_paid",
+      },
+    ]);
+  });
+});
+
+describe("OQ-B ingestion excludes cash blocked by an open financial review", () => {
+  function firstInstallment() {
+    const plan = planLedgerIngestion(
+      input("first-installment", { paymentAmount: "60.00" }),
+      empty(),
+    );
+    const state = apply(empty(), plan);
+    const event = state.events[0];
+    const purchase = state.purchases[0];
+    if (!event?.observationId || !purchase)
+      throw new Error("missing synthetic installment");
+    return { state, event, purchase };
+  }
+  const second = () =>
+    input("second-installment", {
+      paymentAmount: "40.00",
+      paymentReference: "P2",
+    });
+  it("a review on the earlier entry's observation excludes that cash", () => {
+    const { state, event, purchase } = firstInstallment();
+    const plan = planLedgerIngestion(second(), {
+      ...state,
+      reviews: [
+        {
+          id: "earlier-review",
+          observationId: event.observationId,
+          documentId: "first-installment",
+          purchaseId: null,
+          reason: "event-conflict",
+        },
+      ],
+    });
+    expect(plan.paymentStates).toEqual([
+      {
+        purchaseId: purchase.id,
+        expectedVersion: 1,
+        paymentState: "partially_paid",
+      },
+    ]);
+  });
+  it("adversarial: a review on another purchase's observation or document does not exclude it", () => {
+    const { state, purchase } = firstInstallment();
+    const plan = planLedgerIngestion(second(), {
+      ...state,
+      reviews: [
+        {
+          id: "other-observation",
+          observationId: "other-observation",
+          documentId: "first-installment",
+          purchaseId: "other-purchase",
+          reason: "event-conflict",
+        },
+        {
+          id: "other-document",
+          observationId: null,
+          documentId: "other-document",
+          purchaseId: "other-purchase",
+          reason: "extraction-review",
+        },
+      ],
+    });
+    expect(plan.paymentStates).toEqual([
+      { purchaseId: purchase.id, expectedVersion: 1, paymentState: "paid" },
+    ]);
+  });
+});

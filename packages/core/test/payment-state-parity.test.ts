@@ -17,6 +17,7 @@ import type {
   LedgerEvent,
   LedgerInput,
   LedgerPurchase,
+  LedgerReviewReason,
   LedgerSnapshot,
 } from "../src/ledger/types";
 
@@ -257,6 +258,12 @@ function runPlan(scenario: Scenario): PaymentState {
     eligible: entry.eligible,
     version: 1,
     origin: entry.origin,
+    cashProof: {
+      documentId: entry.documentId,
+      evidenceCode: entry.evidenceCode,
+      accepted: entry.accepted,
+      connectionDeletionPending: scenario.connectionDeletionPending ?? false,
+    },
   }));
   // Drop the synthetic trigger event: plan receives it from the trigger input.
   const snapshotEvents = events.slice(0, -1);
@@ -266,6 +273,18 @@ function runPlan(scenario: Scenario): PaymentState {
     events: snapshotEvents,
     decisions: [],
     manualEvidence: [{ contentHash: "parity-trigger", purchaseId }],
+    reviews: (scenario.reviews ?? [])
+      .filter(
+        (review) =>
+          review.status === "open" && review.blockingScope === "financial",
+      )
+      .map((review) => ({
+        id: review.id,
+        observationId: review.observationId,
+        documentId: review.documentId,
+        purchaseId: review.purchaseId,
+        reason: review.reason as LedgerReviewReason,
+      })),
   };
   const record: PersistedAiRecord = {
     merchant: "Parity Shop",
@@ -378,7 +397,7 @@ const scenarios: Scenario[] = [
     expected: "unknown",
   },
   {
-    name: "user-confirmed refund is short-circuited by SQL but blocked in TS by refund-exceeds-payment",
+    name: "paid purchase whose only cash is a blocked user-confirmed refund recomputes to unknown",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "paid" },
     entries: [
       {
@@ -404,19 +423,13 @@ const scenarios: Scenario[] = [
         purchaseId: "parity-purchase",
       },
     ],
-    expectAgreement: false,
-    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
-    // 'paid' when current cash is zero because it cannot re-read the earlier
-    // document evidence; corrections/lifecycle recompute from current evidence
-    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
-    // ingestion downgrades purchases paid by earlier evidence whenever a later
-    // document for the same purchase arrives.
-    openQuestion:
-      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
-    correctionsExpected: "unknown",
+    // OQ-A (owner decision 2026-10-15): a stored 'paid' with zero currently
+    // supported cash+credit recomputes to 'unknown' in ingestion, like corrections.
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
-    name: "open review on the entry document blocks source cash in corrections; planner has no review input",
+    name: "open review on the entry document blocks source cash on every path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -442,18 +455,15 @@ const scenarios: Scenario[] = [
         purchaseId: "parity-purchase",
       },
     ],
-    expectAgreement: false,
-    // OPEN OQ-B: plan.ts receives no review facts (LedgerSnapshot has none), so
-    // it cannot honour an open financial review on the entry's document.
-    // Supplying them needs pipeline/ledger-snapshot.ts, outside this write-set.
+    // OQ-B (owner decision 2026-10-15): ingestion excludes cash whose entry's
+    // observation or document has an open financial review, like corrections.
     // (A review with neither observation nor document is unreachable: the
     // review_items CHECK requires document_id unless payment-allocation-review.)
-    openQuestion:
-      "OQ-B: should ingestion honour open financial reviews on the entry's observation/document that block that cash in corrections? Needs review facts in LedgerSnapshot (PIPE lane).",
-    correctionsExpected: "unknown",
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
-    name: "cash from a connection pending deletion is unsupported in corrections; planner has no deletion input",
+    name: "cash from a connection pending deletion is unsupported on every path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -469,36 +479,28 @@ const scenarios: Scenario[] = [
       },
     ],
     connectionDeletionPending: true,
-    expectAgreement: false,
-    // OPEN OQ-C: plan.ts has no deletion-pending input; the snapshot only rejects
-    // purchases already marked for lifecycle recompute/delete, which happens in a
-    // later cleanup stage than the lifecycle_deletions insert.
-    openQuestion:
-      "OQ-C: confirm ingestion must treat cash from a connection with a pending lifecycle deletion as unsupported; needs a deletion-pending fact in LedgerSnapshot (PIPE lane).",
-    correctionsExpected: "unknown",
+    // OQ-C (owner decision 2026-10-15): ingestion excludes cash from a
+    // connection with a pending deletion. The snapshot only rejects purchases
+    // already marked for lifecycle recompute/delete, which happens in a later
+    // cleanup stage than the lifecycle_deletions insert.
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
-    name: "already-paid purchase with zero remaining cash stays paid in plan but unknown in settlement",
+    name: "already-paid purchase with zero remaining supported cash recomputes to unknown on every path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "paid" },
     entries: [],
-    expectAgreement: false,
-    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
-    // 'paid' when current cash is zero because it cannot re-read the earlier
-    // document evidence; corrections/lifecycle recompute from current evidence
-    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
-    // ingestion downgrades purchases paid by earlier evidence whenever a later
-    // document for the same purchase arrives.
-    openQuestion:
-      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
-    correctionsExpected: "unknown",
+    // OQ-A (owner decision 2026-10-15): a stored 'paid' with zero currently
+    // supported cash+credit recomputes to 'unknown' in ingestion, like corrections.
+    expectAgreement: true,
+    expected: "unknown",
   },
 ];
 
 describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
-  it("scenario catalogue covers agreement and divergence", () => {
+  it("scenario catalogue: OQ-A/B/C are decided, so every scenario agrees", () => {
     expect(scenarios.length).toBeGreaterThan(0);
-    expect(scenarios.some((scenario) => scenario.expectAgreement)).toBe(true);
-    expect(scenarios.some((scenario) => !scenario.expectAgreement)).toBe(true);
+    expect(scenarios.every((scenario) => scenario.expectAgreement)).toBe(true);
   });
 
   for (const scenario of scenarios) {
@@ -615,9 +617,9 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
 
 /**
  * CORE-6 shares derivation after evidence selection; eligibility (S1) and the
- * recompute's cash rule (C1) are now shared too. Remaining open scenarios:
- * OQ-A retained paid evidence (product decision), OQ-B/OQ-C planner inputs
- * (review and deletion-pending facts need pipeline/ledger-snapshot.ts).
+ * recompute's cash rule (C1) are now shared too. OQ-A (recompute like
+ * corrections), OQ-B (review facts) and OQ-C (deletion-pending fact) are
+ * decided and implemented; no open scenario remains.
  */
 it("CORE-6 intended rule: all three paths agree when settlement evidence agrees", () => {
   for (const scenario of scenarios.filter((item) => item.expectAgreement)) {

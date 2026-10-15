@@ -36,7 +36,10 @@ export interface ReviewRow {
   deletion_pending: number;
 }
 /** Deletion-pending EXISTS for a row's owning connection (C8). */
-function deletionPendingSql(userRef: string, documentRef: string): string {
+export function deletionPendingSql(
+  userRef: string,
+  documentRef: string,
+): string {
   return `EXISTS(SELECT 1 FROM lifecycle_deletions ld JOIN source_messages s ON s.user_id=ld.user_id AND s.connection_id=ld.target_id JOIN documents d ON d.user_id=s.user_id AND d.source_message_id=s.id WHERE ld.user_id=${userRef} AND ld.scope='connection' AND d.id=${documentRef})`;
 }
 const reviewDeletionPendingSql = deletionPendingSql(
@@ -92,6 +95,12 @@ export async function events(
     accepted: row.reviewState === "accepted" && row.deletionPending === 0,
   }));
 }
+/**
+ * The purchase's reviews plus the open financial reviews that can block its
+ * cash although linked only through an entry's observation or, without
+ * observation, its document: the superset the lifecycle recompute and the
+ * pipeline snapshot use, so corrections never count cash those paths block.
+ */
 export async function reviews(
   db: D1Database,
   user: string,
@@ -99,9 +108,9 @@ export async function reviews(
 ): Promise<ReviewRow[]> {
   const rows = await db
     .prepare(
-      `SELECT id,purchase_id,document_id,observation_id,reason,blocking_scope,status,version,missing_fields_json,${reviewDeletionPendingSql} AS deletion_pending FROM review_items WHERE user_id=? AND purchase_id=? ORDER BY id LIMIT 201`,
+      `SELECT id,purchase_id,document_id,observation_id,reason,blocking_scope,status,version,missing_fields_json,${reviewDeletionPendingSql} AS deletion_pending FROM review_items WHERE user_id=? AND (purchase_id=? OR (status='open' AND blocking_scope='financial' AND reason!='payment-allocation-review' AND (observation_id IN(SELECT l.observation_id FROM ledger_entries l WHERE l.user_id=review_items.user_id AND l.purchase_id=?) OR (observation_id IS NULL AND document_id IN(SELECT o.document_id FROM ledger_entries l JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=review_items.user_id AND l.purchase_id=?))))) ORDER BY id LIMIT 201`,
     )
-    .bind(user, purchaseId)
+    .bind(user, purchaseId, purchaseId, purchaseId)
     .all<ReviewRow>();
   if (rows.results.length > 200) throw new CorrectionError("TOO_LARGE");
   return rows.results;

@@ -1,4 +1,5 @@
 import type { EventChanges, ReviewResolutionRequest } from "@invoxim/contracts";
+import type { PersistedAiRecord } from "../ai/types";
 import {
   LEDGER_REVIEW_REASONS,
   type LedgerReviewReason,
@@ -68,6 +69,19 @@ export interface CorrectionReviewFact {
   status: ReviewStatus;
   missingFields: readonly string[];
   purchaseId: string | null;
+}
+/**
+ * observations.evidence_code stored for an extracted record (pipeline commit);
+ * hasCashProof reads it back for source cash.
+ */
+export function observationEvidenceCode(
+  record: Pick<PersistedAiRecord, "paymentEvidence" | "refundEvidence">,
+): "explicitly-paid" | "completed-refund" | "invoice-only" {
+  return record.paymentEvidence === "explicitly-paid"
+    ? "explicitly-paid"
+    : record.refundEvidence === "completed"
+      ? "completed-refund"
+      : "invoice-only";
 }
 export function hasCashProof(event: CorrectionEventFact) {
   return (

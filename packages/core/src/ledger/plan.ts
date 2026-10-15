@@ -1,9 +1,18 @@
 import { calendarDate } from "@invoxim/contracts";
 import type { AiMissingField, PersistedAiRecord } from "../ai/types";
 import { validatePersistableAiResult } from "../ai/validation";
+import {
+  evaluateCorrectionSettlement,
+  settlementEvents,
+} from "../corrections/settlement";
+import {
+  type CorrectionEventFact,
+  type CorrectionReviewFact,
+  observationEvidenceCode,
+} from "../corrections/validation";
 import { parseMoney } from "../money";
-import { derivePaymentState } from "./payment-state";
 import type {
+  LedgerCashReview,
   LedgerEvent,
   LedgerInput,
   LedgerObservation,
@@ -360,6 +369,14 @@ function cashEvent(
       purchase?.recordStatus !== "excluded" &&
       purchase?.recordStatus !== "merged",
     version: 1,
+    // `accepted` is settled once all reviews are planned (acceptPlannedCash).
+    // The leased connection is live: a deletion disconnects it atomically.
+    cashProof: {
+      documentId: input.identity.documentId,
+      evidenceCode: observationEvidenceCode(record),
+      accepted: true,
+      connectionDeletionPending: false,
+    },
   });
 }
 function settlementMinor(
@@ -424,8 +441,69 @@ function classify(
   )
     review(plan, input, "unknown-payment", observation);
 }
+/** The commit stores an observation with any planned review as needs_review. */
+function acceptPlannedCash(plan: MutablePlan) {
+  plan.events = plan.events.map((event) => ({
+    ...event,
+    cashProof: {
+      ...event.cashProof,
+      accepted: !plan.reviews.some(
+        (review) => review.observationId === event.observationId,
+      ),
+    },
+  }));
+}
+function cashFact(event: LedgerEvent): CorrectionEventFact {
+  return {
+    id: event.id,
+    observationId: event.observationId,
+    documentId: event.cashProof.documentId,
+    kind: event.kind,
+    amountMinor: String(event.amountMinor),
+    currency: event.currency,
+    eventDate: event.eventDate,
+    origin: event.origin ?? "source",
+    eligible: event.eligible,
+    // Like corrections/data.ts events(): a pending connection deletion
+    // unaccepts the source observation (OQ-C).
+    accepted:
+      event.cashProof.accepted && !event.cashProof.connectionDeletionPending,
+    evidenceCode: event.cashProof.evidenceCode,
+  };
+}
+/**
+ * OQ-B: the reviews that can block a purchase's cash, as the corrections
+ * loader and lifecycle recompute select them: purchase-scoped, or linked
+ * through an entry's observation or, without observation, its document.
+ */
+function cashReviews(
+  purchaseId: string,
+  facts: readonly CorrectionEventFact[],
+  reviews: readonly LedgerCashReview[],
+): CorrectionReviewFact[] {
+  const observations = new Set(facts.map((fact) => fact.observationId));
+  const documents = new Set(facts.map((fact) => fact.documentId));
+  return reviews
+    .filter((review) => {
+      if (review.purchaseId === purchaseId) return true;
+      if (review.observationId !== null)
+        return observations.has(review.observationId);
+      return review.documentId !== null && documents.has(review.documentId);
+    })
+    .map((review) => ({
+      ...review,
+      blockingScope: "financial",
+      status: "open",
+      missingFields: [],
+    }));
+}
 function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
+  acceptPlannedCash(plan);
   const events = [...snapshot.events, ...plan.events];
+  const reviews: LedgerCashReview[] = [
+    ...(snapshot.reviews ?? []),
+    ...plan.reviews,
+  ];
   const involved = new Set(plan.events.map((event) => event.purchaseId));
   for (const purchase of [...snapshot.purchases, ...plan.purchases]) {
     const { currency, totalMinor } = purchase;
@@ -462,30 +540,27 @@ function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
         );
       });
     if (!involved.has(purchase.id) && !fullSettlement) continue;
-    const paid = events
-      .filter(
-        (event) =>
-          event.purchaseId === purchase.id &&
-          event.kind === "payment" &&
-          event.eligible &&
-          event.currency === purchase.currency,
-      )
-      .reduce((sum, event) => sum + BigInt(event.amountMinor), 0n);
+    // OQ-A (owner decision): recompute from currently supported cash and
+    // credit with the corrections rule; a stored 'paid' is not retained.
+    // OQ-B: cash support is core settlementEvents over the same facts.
+    const facts = events
+      .filter((event) => event.purchaseId === purchase.id)
+      .map(cashFact);
     const paymentState = purchase.overriddenFields.includes("paymentState")
       ? purchase.paymentState
-      : derivePaymentState({
-          totalMinor: BigInt(totalMinor),
-          settledMinor: paid,
-          // Ingestion retains earlier document settlement evidence. Corrections
-          // recompute from current cash/credit; changing this needs a product
-          // decision (OQ-A in test/payment-state-parity.test.ts).
-          fullSettlement:
-            fullSettlement ||
-            (purchase.paymentState === "paid" && !correctedSettlement),
-          zeroPaymentState: correctedSettlement
-            ? "unknown"
-            : purchase.paymentState,
-        });
+      : fullSettlement
+        ? "paid"
+        : evaluateCorrectionSettlement(
+            {
+              currency,
+              totalMinor: String(totalMinor),
+              paymentState: purchase.paymentState,
+            },
+            settlementEvents(facts, cashReviews(purchase.id, facts, reviews)),
+            (snapshot.creditProofs ?? []).filter(
+              (proof) => proof.purchaseId === purchase.id,
+            ),
+          ).paymentState;
     const newIndex = plan.purchases.findIndex(
       (item) => item.id === purchase.id,
     );
