@@ -2,7 +2,7 @@
 
 Purchase records across inboxes: find receipts, inspect payment and refund evidence, and understand recorded spending. The app uses React/Vite on Cloudflare Pages, one modular Worker API, and D1. AI adapters are provider-agnostic and selected through validated server configuration.
 
-Implementation is in progress. Local synthetic tests have been executed; they do not prove live OAuth, provider behavior or model quality. A deployment exists at [invoxim-web.pages.dev](https://invoxim-web.pages.dev/), but successful Google login and production schema readiness remain unverified. See the [task backlog](.agents/backlog.json), [implementation evidence](evidence/implementation/), [manual tasks](MANUAL_TASKS.md) and [deployment checklist](DEPLOYMENT_CHECKLIST.md).
+Implementation is in progress. Local synthetic tests have been executed; they do not prove live OAuth, provider behavior or model quality. A deployment exists at [invoxim-web.pages.dev](https://invoxim-web.pages.dev/), but successful Google login and production schema readiness remain unverified. See the [task backlog](.agents/backlog.json), [manual tasks](MANUAL_TASKS.md) and [deployment checklist](DEPLOYMENT_CHECKLIST.md). Implementation evidence records are kept outside git; historical copies are in the commit history before fe99887.
 
 ## Quick start
 
@@ -71,7 +71,7 @@ pnpm --filter @invoxim/worker exec wrangler d1 migrations apply invoxim-db --loc
 pnpm --filter @invoxim/worker exec wrangler d1 migrations apply invoxim-db --remote
 ```
 
-Apply runs all remaining discovered migrations. The migration directory includes M1 work still under integration; these commands are not approval to apply every draft. The consolidated `0001_initial.sql` initializes an empty database. Do not replay it on a populated database: follow the [baseline transition checklist](evidence/implementation/baseline-transition-checklist.md). The app does not migrate at startup, and deploying code does not synchronize the schema. See [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/).
+Apply runs all remaining discovered migrations. The migration directory includes M1 work still under integration; these commands are not approval to apply every draft. The consolidated `0001_initial.sql` initializes an empty database. Do not replay it on a populated database: follow the [baseline transition checklist](docs/runbooks/baseline-transition-checklist.md). The app does not migrate at startup, and deploying code does not synchronize the schema. See [Cloudflare D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/).
 
 ## Deployment commands
 

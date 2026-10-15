@@ -8,6 +8,7 @@
     "review",
     "done"
   ],
+  "evidenceLocation": "Historical, removed in fe99887. Every completionEvidence/localProgressEvidence path under evidence/ names a record that is no longer in the working tree: by owner decision (2026-10-15) evidence records are kept outside git (evidence/implementation/ is gitignored). The copies that were tracked remain in the commit history before fe99887 (git show fe99887^:<path>). These paths are historical references, not files to expect in a checkout; task statuses are unchanged by this note.",
   "tasks": [
     {
       "id": "T00",
@@ -1455,13 +1456,13 @@
       "localProgressEvidence": [
         "evidence/implementation/native-d1-baseline-restoration.md",
         "evidence/implementation/native-d1-restoration-independent-review.md",
-        "evidence/implementation/baseline-transition-checklist.md",
+        "docs/runbooks/baseline-transition-checklist.md",
         "evidence/implementation/t18-drive-folders-security-review.md"
       ],
       "completionEvidence": [
         "evidence/implementation/native-d1-restoration-final-certificate.md",
         "evidence/implementation/native-d1-restoration-independent-review.md",
-        "evidence/implementation/baseline-transition-checklist.md",
+        "docs/runbooks/baseline-transition-checklist.md",
         "evidence/implementation/native-d1-restoration-final/provenance.json"
       ]
     },

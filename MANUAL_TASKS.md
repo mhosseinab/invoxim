@@ -2,7 +2,7 @@
 
 Updated 14 October 2026. This list distinguishes operator inputs from implementation work. No deployment, real OAuth connection, real-model evaluation, paid operation or public release is complete merely because local tests pass.
 
-**Ownership.** This file owns the operator-input table and recorded owner decisions. Deployment gates, rollout checkpoints, enablement prerequisites and live/deployment status live only in `DEPLOYMENT_CHECKLIST.md`. Do not copy section text between the two files. Canonical implementation status is in `.agents/backlog.json`; evidence is in `evidence/implementation/`.
+**Ownership.** This file owns the operator-input table and recorded owner decisions. Deployment gates, rollout checkpoints, enablement prerequisites and live/deployment status live only in `DEPLOYMENT_CHECKLIST.md`. Do not copy section text between the two files. Canonical implementation status is in `.agents/backlog.json`; evidence records are kept outside git (historical copies are in the commit history before fe99887).
 
 | ID  | Manual task                                                                                                                                                                                                              | Status / evidence to supply                                                                                                                                                                                                                                                                                                                                                           | Blocks                                                |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
@@ -23,7 +23,7 @@ Updated 14 October 2026. This list distinguishes operator inputs from implementa
 
 Local development: `pnpm run dev` starts Vite and the local Worker. Current defaults disable live auth/AI/mail/discovery/jobs. The frontend example is synthetic. Follow `DEPLOYMENT_CHECKLIST.md` before enabling any real environment.
 
-Before any deployment to an existing D1 database, preserve its migration ledger and approved backup and follow `evidence/implementation/baseline-transition-checklist.md`. The consolidated `0001_initial.sql` baseline is for empty databases; consolidation does not authorize resetting or automatically replaying it against existing data.
+Before any deployment to an existing D1 database, preserve its migration ledger and approved backup and follow `docs/runbooks/baseline-transition-checklist.md`. The consolidated `0001_initial.sql` baseline is for empty databases; consolidation does not authorize resetting or automatically replaying it against existing data.
 
 ## Owner decisions already recorded
 
@@ -32,7 +32,7 @@ Before any deployment to an existing D1 database, preserve its migration ledger 
 
 ## Implementation status pointers
 
-Local synthetic verification, live-login diagnosis and incremental M0/M1 checkpoints are recorded in `DEPLOYMENT_CHECKLIST.md` and `evidence/implementation/`. In summary: T13–T15 and T29 local verification is complete; T16 found and locally repaired a destructive account-switch intent bug but remains in progress because Gate B, live-smoke and operator prerequisites are unproved; M1 Outlook/Drive/FX/recurring work is under implementation. Those are agent tasks, not requests for the owner to hand-code the application. Missing operator inputs are recorded in the table above against the precise live/release gates they block.
+Local synthetic verification, live-login diagnosis and incremental M0/M1 checkpoints are recorded in `DEPLOYMENT_CHECKLIST.md` and in evidence records kept outside git (historical copies are in the commit history before fe99887). In summary: T13–T15 and T29 local verification is complete; T16 found and locally repaired a destructive account-switch intent bug but remains in progress because Gate B, live-smoke and operator prerequisites are unproved; M1 Outlook/Drive/FX/recurring work is under implementation. Those are agent tasks, not requests for the owner to hand-code the application. Missing operator inputs are recorded in the table above against the precise live/release gates they block.
 
 Open owner-assisted follow-ups (exact commands and identities live with the matching deployment checklist section):
 
