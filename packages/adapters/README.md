@@ -32,7 +32,7 @@ Metadata-only Gmail and Outlook discovery for durable jobs. `createGmailDiscover
 
 - `rate-decision.ts` (G4): the one rate policy for both providers. Missing Retry-After defaults to 30 s, delays are at least 1 s, more than one day pauses rate service, and the fifth consecutive rate limit pauses (`consecutive_failures` is capped at 5). Used by `pages.ts`, `outlook-job.ts`, `outlook-state.ts` and `outlook-delta-recovery.ts`.
 - `outlook-guard.ts` (G2): the one Outlook lease guard, built on `leaseLive` plus Outlook provider, `Mail.Read` grant and the reviewed AI selection/digest check that Gmail's consent check enforces.
-- `stage-and-settle.ts` (G10/O9): the guarded continuation and completion builders and `stageAndSettle` used by `pages.ts`, `outlook-state.ts` and the `outlook-delta-*` modules. It adds no statements (G-40).
+- `stage-and-settle.ts` (G10/O9): the guarded continuation and completion builders and `stageAndSettle` used by `pages.ts`, `outlook-state.ts` and the `outlook-delta-*` modules. Its `"read"` settle reports completion only when the job row still carries this lease's fence, so a job completed by a newer lease does not settle a stale batch. It adds no statements (G-40).
 - `outlook-delta.ts` (G11) keeps its module path and delegates to `outlook-delta-parent.ts`, `outlook-delta-recovery.ts` and `outlook-delta-page.ts`, with shared types and SQL in `outlook-delta-shared.ts`.
 - `import-progress.ts` (G11): Gmail import progress moved out of `pages.ts`, three reads followed by a pure summary.
 - `outlook-budget.ts` (O5): named statement reservations for the Outlook runners. Per OD-11 an Outlook shortfall stays `retry/transient`, while Gmail keeps `paused/budget`.

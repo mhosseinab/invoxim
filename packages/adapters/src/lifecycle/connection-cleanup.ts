@@ -66,9 +66,10 @@ export async function cleanupConnection(db: D1Database, item: Item) {
     const entries =
       "SELECT id FROM ledger_entries WHERE user_id=? AND (observation_id IN(SELECT id FROM target) OR purchase_id IN(SELECT id FROM doomed))";
     const erasedFacts = `((entity_kind='entry' AND entity_id IN(${entries})) OR (entity_kind='purchase' AND entity_id IN(SELECT id FROM doomed)))`;
-    // Fixed stage integers (restore/replay depends on them). 9 recomputes retained
-    // purchases and 10 detaches surviving reviews; the remaining stages drain tables
-    // in dependency order (C7).
+    // Fixed stage integers: an in-flight deletion persists its stage in
+    // lifecycle_deletions.stage, so renumbering would resume it at the wrong
+    // step. 9 recomputes retained purchases and 10 detaches surviving reviews;
+    // the remaining stages drain tables in dependency order (C7).
     const erasureByStage = new Map<
       number,
       [string, string, (string | number)[]]
