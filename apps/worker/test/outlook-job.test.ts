@@ -1622,3 +1622,105 @@ it.each(
     expect(meter.executedStatements()).toBeLessThanOrEqual(40);
   },
 );
+
+it("INT-5/G3 Outlook backfill writes folder enumerated/matched/unknown counters and the run's discovered count", async () => {
+  const lease = await claimed("g3-counters", "recent");
+  const folderId = "receipt-folder";
+  await env.DB.prepare(
+    "INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id,excluded_folder_ids) VALUES(?,?,?,'root',NULL,1,NULL,'complete',?,?)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.generation,
+      crypto.randomUUID(),
+      defaultExcludedFolderIds,
+    )
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO outlook_folders(user_id,connection_id,generation,folder_id,parent_folder_id,child_folder_count,is_hidden) VALUES(?,?,?,?,'provider-root',0,0)",
+  )
+    .bind(lease.context.userId, lease.connectionId, lease.generation, folderId)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO sync_states(id,user_id,connection_id,import_run_id,scope_key,sync_kind,run_key,slice_key,frozen_start,frozen_cutoff,stage,coverage_code) VALUES('child-g3-counters',?,?,'run-g3-counters',?,'backfill','run-g3-counters','recent','2026-09-13T00:00:00.000Z','2026-10-13T00:00:00.000Z','queued','candidate_unknown')",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      `outlook:${lease.generation}:${folderId}`,
+    )
+    .run();
+  const inRange = Date.parse("2026-10-01T12:00:00.000Z");
+  const references = {
+    "g3-matched": { receivedAtMs: inRange, candidate: "matched" },
+    "g3-unknown": { receivedAtMs: inRange, candidate: "unknown" },
+    "g3-outside": {
+      receivedAtMs: Date.parse("2026-08-01T12:00:00.000Z"),
+      candidate: "matched",
+    },
+  } as const;
+  const graph: OutlookGraphDiscoveryPort = {
+    ...provider(async () => {
+      throw new Error("Inventory is complete");
+    }),
+    listFolder: async (input) => {
+      expect(input.folderId).toBe(folderId);
+      return { ids: Object.keys(references) };
+    },
+    metadata: async (id) => ({
+      id,
+      parentFolderId: folderId,
+      available: true,
+      excluded: false,
+      ...references[id as keyof typeof references],
+    }),
+  };
+  const control = {
+    signal: new AbortController().signal,
+    checkpoint: async () => true,
+  };
+  const page = createInvocationDatabase(env.DB, 40);
+  expect(
+    await createOutlookJobRunner(page.db, {
+      open: async () => graph,
+      remainingStatements: page.remainingStatements,
+    }).run(lease, control),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,enumerated_count,matched_count,unknown_count FROM sync_states WHERE user_id=? AND id='child-g3-counters'",
+    )
+      .bind(lease.context.userId)
+      .first(),
+  ).toEqual({
+    stage: "discovery_complete",
+    enumerated_count: 3,
+    matched_count: 1,
+    unknown_count: 1,
+  });
+  expect(page.executedStatements()).toBeLessThanOrEqual(40);
+  const continuation = await env.DB.prepare(
+    "SELECT id FROM jobs WHERE user_id=? AND dedupe_key=?",
+  )
+    .bind(lease.context.userId, `outlook:page:${lease.jobId}`)
+    .first<string>("id");
+  if (!continuation) throw new Error("Missing Outlook page continuation");
+  const next = await createJobStore(env.DB, { policy }).claim(continuation);
+  if (!next) throw new Error("Outlook page continuation lease unavailable");
+  const parent = createInvocationDatabase(env.DB, 40);
+  expect(
+    await createOutlookJobRunner(parent.db, {
+      open: async () => graph,
+      remainingStatements: parent.remainingStatements,
+    }).run(next, control),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,discovered_count FROM import_runs WHERE user_id=? AND id='run-g3-counters'",
+    )
+      .bind(lease.context.userId)
+      .first(),
+  ).toEqual({ stage: "discovering_older", discovered_count: 2 });
+  expect(parent.executedStatements()).toBeLessThanOrEqual(40);
+});

@@ -65,6 +65,14 @@ function guard(lease: JobLease, now: number) {
     syncState: true,
   });
 }
+/**
+ * G3: a folder's seen-ref count after this page's upserts, computed in the
+ * page CAS statement. Binds: userId, syncStateId, pageKinds, pageKinds, where
+ * pageKinds is a JSON array of [providerMessageId, candidateKind] pairs.
+ */
+function seenRefCountSql(kind?: "matched" | "unknown") {
+  return `(SELECT COUNT(*) FROM (SELECT provider_message_id AS id,candidate_kind AS kind FROM discovery_seen_refs WHERE user_id=? AND sync_state_id=? AND provider_message_id NOT IN (SELECT json_extract(value,'$[0]') FROM json_each(?)) UNION ALL SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?))${kind ? ` WHERE kind='${kind}'` : ""})`;
+}
 export function createOutlookDeltaRunner(
   db: D1Database,
   options: { remainingStatements: () => number; clock?: () => number },
@@ -262,10 +270,12 @@ export function createOutlookDeltaRunner(
       statements.push(
         db
           .prepare(
-            `UPDATE import_runs SET stage=? WHERE user_id=? AND id=? AND connection_id=? AND ${marker} AND ${leaseGuard.sql}`,
+            `UPDATE import_runs SET stage=?,discovered_count=(SELECT COUNT(*) FROM discovery_run_sources WHERE user_id=? AND import_run_id=?) WHERE user_id=? AND id=? AND connection_id=? AND ${marker} AND ${leaseGuard.sql}`,
           )
           .bind(
             older ? "discovering_older" : "processing_pending",
+            lease.context.userId,
+            parent.import_run_id,
             lease.context.userId,
             parent.import_run_id,
             lease.connectionId,
@@ -674,23 +684,9 @@ export function createOutlookDeltaRunner(
           : folder.stage === "recovering"
             ? "recovering_delta"
             : "idle";
-      add(
-        `UPDATE sync_states SET discovery_version=discovery_version+1,page_token=?,history_cursor=?,stage=?,pending_history_id=?,last_discovery_at=?,consecutive_failures=0 WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${leaseGuard.sql}`,
-        [
-          nextLink,
-          deltaLink ?? folder.history_cursor,
-          stage,
-          nonce,
-          now,
-          lease.context.userId,
-          folder.id,
-          lease.connectionId,
-          folder.discovery_version,
-          ...leaseGuard.values,
-        ],
-      );
-      for (const item of metadata) {
-        const candidate =
+      const references = metadata.map((item) => ({
+        item,
+        candidate:
           !item.removed &&
           item.available &&
           !item.excluded &&
@@ -701,7 +697,38 @@ export function createOutlookDeltaRunner(
             : item.receivedAtMs >=
                 Date.parse(folder.frozen_start ?? parent.frozen_start ?? "") &&
               item.receivedAtMs <
-                Date.parse(folder.frozen_cutoff ?? parent.frozen_cutoff ?? ""));
+                Date.parse(folder.frozen_cutoff ?? parent.frozen_cutoff ?? "")),
+      }));
+      // G3: the seen-ref upserts below run later in this batch, so the
+      // counters combine the folder's other refs with this page's final kinds.
+      const pageKinds = JSON.stringify([
+        ...new Map(
+          references.map(({ item, candidate }) => [
+            item.id,
+            candidate ? item.candidate : "excluded",
+          ]),
+        ),
+      ]);
+      const counted = [lease.context.userId, folder.id, pageKinds, pageKinds];
+      add(
+        `UPDATE sync_states SET discovery_version=discovery_version+1,page_token=?,history_cursor=?,stage=?,pending_history_id=?,last_discovery_at=?,consecutive_failures=0,enumerated_count=${seenRefCountSql()},matched_count=${seenRefCountSql("matched")},unknown_count=${seenRefCountSql("unknown")} WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${leaseGuard.sql}`,
+        [
+          nextLink,
+          deltaLink ?? folder.history_cursor,
+          stage,
+          nonce,
+          now,
+          ...counted,
+          ...counted,
+          ...counted,
+          lease.context.userId,
+          folder.id,
+          lease.connectionId,
+          folder.discovery_version,
+          ...leaseGuard.values,
+        ],
+      );
+      for (const { item, candidate } of references) {
         add(
           `INSERT INTO discovery_seen_refs(user_id,sync_state_id,provider_message_id,candidate_kind) SELECT ?,?,?,? WHERE ${childMarker} AND ${leaseGuard.sql} ON CONFLICT(user_id,sync_state_id,provider_message_id) DO UPDATE SET candidate_kind=excluded.candidate_kind`,
           [
