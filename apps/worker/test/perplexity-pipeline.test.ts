@@ -1068,9 +1068,23 @@ it("AI-CLASSIFIER-PROVIDER a crash after a billed decision never makes a second 
   expect(fetch).toHaveBeenCalledTimes(1);
   // The next lease (no crash) must not pay for a second decision.
   const second = service({ perplexityApiKey: KEY }, 3);
-  await second.pipeline.run(lease);
-  await second.pipeline.run(lease);
+  // The possibly billed attempt stays `sent`; the meter admits no further
+  // attempt after it, so the document waits in a budget pause (operator
+  // recovery) rather than paying again.
+  expect(await second.pipeline.run(lease)).toEqual({
+    kind: "paused",
+    code: "budget",
+  });
+  expect(await second.pipeline.run(lease)).toEqual({
+    kind: "paused",
+    code: "budget",
+  });
   expect(fetch).toHaveBeenCalledTimes(1);
+  const events = await classificationState();
+  expect(events.events).toEqual([
+    { attempt_number: 1, state: "sent", actual_usd_micros: null },
+  ]);
+  expect(events.extraction).toEqual([{ result_json: null }]);
   const billed = await db
     .prepare(
       "SELECT COUNT(*) AS n FROM usage_events WHERE user_id=? AND CAST(COALESCE(actual_units,'0') AS INTEGER)>0",
@@ -1171,4 +1185,44 @@ it("AI-CLASSIFIER-PROVIDER an oversized result still settles usage but is report
   expect(state.events).toEqual([
     { attempt_number: 1, state: "known", actual_usd_micros: "20" },
   ]);
+});
+
+it("AI-CLASSIFIER-PROVIDER skipping a used slot 1 and re-arming slot 2 stays within the forty-statement invocation", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  const statuses = [401, 401, 200];
+  let call = 0;
+  const fetch = perplexityFetch(() => {
+    const status = statuses[call++] ?? 200;
+    return status === 200
+      ? Response.json(decision(0.02))
+      : new Response("", { status });
+  });
+  const { pipeline, counts } = service({ perplexityApiKey: KEY }, 5);
+  expect(await runAt(pipeline, 0, 1)).toMatchObject({ kind: "retry" });
+  // Make slot 1 non-re-armable (a zero-cost settlement without a floor).
+  await db
+    .prepare(
+      "UPDATE usage_events SET cooldown_until=0 WHERE user_id=? AND attempt_number=1",
+    )
+    .bind(tenant.userId)
+    .run();
+  expect(await runAt(pipeline, 16 * 60 * 1000, 2)).toMatchObject({
+    kind: "retry",
+  });
+  // Third lease: slot 1 is skipped, slot 2 is re-armed and succeeds.
+  expect(await runAt(pipeline, 32 * 60 * 1000, 3)).toEqual({
+    kind: "completed",
+  });
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(counts).toHaveLength(3);
+  for (const count of counts) expect(count).toBeLessThanOrEqual(40);
+  const state = await classificationState();
+  expect(state.events).toEqual([
+    { attempt_number: 1, state: "known", actual_usd_micros: "0" },
+    { attempt_number: 2, state: "known", actual_usd_micros: "20" },
+  ]);
+  expect(JSON.parse(state.extraction[0]?.result_json ?? "null")).toMatchObject({
+    status: "classified",
+  });
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
