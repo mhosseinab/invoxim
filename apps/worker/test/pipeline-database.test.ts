@@ -3,13 +3,22 @@
 import { env } from "cloudflare:workers";
 import { purchaseCorrectionRequestSchema } from "@invoxim/contracts";
 import {
+  evaluateCorrectionSettlement,
   type JobLease,
   type LedgerInput,
   planLedgerIngestion,
+  settlementEvents,
   type TenantContext,
 } from "@invoxim/core";
 import { beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { creditProofs } from "../../../packages/adapters/src/corrections/allocation";
+import {
+  events,
+  reviewFact,
+  reviews,
+} from "../../../packages/adapters/src/corrections/data";
 import { createCorrectionStore } from "../../../packages/adapters/src/corrections/store";
+import { recomputeConnectionPurchase } from "../../../packages/adapters/src/lifecycle/connection-recompute";
 import { createPipelineRepository } from "../../../packages/adapters/src/pipeline/repository";
 import { createPurchaseViewReader } from "../../../packages/adapters/src/purchase-views";
 import { useCurrentSchema } from "./support/db";
@@ -1606,3 +1615,85 @@ it("CORE-6 OQ-C pipeline adversarial: a pending deletion of another tenant's con
   });
   expect(await ingest(current)).toBe("paid");
 });
+it.each([
+  ["card", {}],
+  [
+    "store-credit",
+    {
+      paymentMethodHint: "store-credit",
+      paymentAmount: null,
+      storeCreditAmount: "10.00",
+      paymentReference: null,
+    },
+  ],
+] as const)(
+  "reviewer P1 parity: an explicitly-paid full %s receipt with a possible-duplicate review agrees with corrections and the D1 recompute",
+  async (_name, patch) => {
+    const user = "pipeline-a";
+    // Same merchant, currency, total and day; different references.
+    await db
+      .prepare(
+        "INSERT INTO purchases(id,user_id,merchant_raw,merchant_normalized,invoice_ref,order_ref,document_date,total_minor,currency,payment_state) VALUES('similar',?,'Synthetic Store','synthetic store','OTHER-INV',NULL,'2026-10-12',1000,'EUR','paid')",
+      )
+      .bind(user)
+      .run();
+    const base = input();
+    if (base.result.status !== "accepted" || !base.result.records[0])
+      throw new Error("missing synthetic record");
+    const current: LedgerInput = {
+      ...base,
+      result: {
+        ...base.result,
+        records: [{ ...base.result.records[0], ...patch }],
+      },
+    };
+    await db
+      .prepare("UPDATE ai_extractions SET result_json=? WHERE user_id=?")
+      .bind(JSON.stringify(current.result), user)
+      .run();
+    const repo = createPipelineRepository(db, repoOptions());
+    const snapshot = await repo.loadSnapshot(lease(), current);
+    if (!snapshot) throw new Error("missing synthetic snapshot");
+    const plan = planLedgerIngestion(current, snapshot);
+    expect(plan.reviews.map((review) => review.reason)).toEqual([
+      "possible-duplicate",
+    ]);
+    expect(
+      await repo.commit(lease(), {
+        input: current,
+        plan,
+        nextDocumentIndex: null,
+      }),
+    ).toBe("committed");
+    const created = plan.purchases[0]?.id;
+    if (!created) throw new Error("missing synthetic purchase");
+    const stored = () =>
+      db
+        .prepare("SELECT payment_state FROM purchases WHERE user_id=? AND id=?")
+        .bind(user, created)
+        .first<string>("payment_state");
+    const ingested = await stored();
+    const [entries, reviewRows, credits] = await Promise.all([
+      events(db, user, created),
+      reviews(db, user, created),
+      creditProofs(db, user, created),
+    ]);
+    const corrections = evaluateCorrectionSettlement(
+      { currency: "EUR", totalMinor: "1000", paymentState: "unknown" },
+      settlementEvents(entries, reviewRows.map(reviewFact)),
+      credits,
+    ).paymentState;
+    await db
+      .prepare(
+        "UPDATE purchases SET lifecycle_recompute_connection_id='c' WHERE user_id=? AND id=?",
+      )
+      .bind(user, created)
+      .run();
+    await recomputeConnectionPurchase(db, user, "c", "1=1", []);
+    expect({ ingested, corrections, recompute: await stored() }).toEqual({
+      ingested: "unknown",
+      corrections: "unknown",
+      recompute: "unknown",
+    });
+  },
+);

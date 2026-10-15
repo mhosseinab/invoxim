@@ -655,3 +655,174 @@ it.each([
     }).toEqual({ plan: expected, settlement: expected, sql: expected });
   },
 );
+
+/**
+ * Reviewer P1: plan-level parity for the full-settlement path. The commit
+ * stores an observation with any planned review as needs_review, so the
+ * corrections loader and the lifecycle recompute see its cash and credit as
+ * unaccepted. Ingestion must not report 'paid' from that same observation.
+ */
+describe("plan-level parity: explicitly-paid full receipt under a review", () => {
+  const record = (
+    patch: Partial<PersistedAiRecord> = {},
+  ): PersistedAiRecord => ({
+    merchant: "Parity Shop",
+    documentDate: "2026-01-01",
+    eventDate: "2026-01-01",
+    currency: "EUR",
+    total: "100.00",
+    tax: null,
+    invoiceNumber: null,
+    orderReference: null,
+    category: "shopping",
+    paymentEvidence: "explicitly-paid",
+    refundEvidence: "none",
+    paymentMethodHint: "card",
+    recurringCadence: "unknown",
+    paymentAmount: "100.00",
+    refundAmount: null,
+    storeCreditAmount: null,
+    paymentReference: null,
+    refundReference: null,
+    provenance: [],
+    ...patch,
+  });
+  const storeCredit = () =>
+    record({
+      paymentMethodHint: "store-credit",
+      paymentAmount: null,
+      storeCreditAmount: "100.00",
+    });
+  const ingestion = (value: PersistedAiRecord): LedgerInput => ({
+    identity: {
+      documentId: "doc-full",
+      contentHash: "hash-full",
+      extractionFingerprint: "v1",
+    },
+    result: {
+      status: "accepted",
+      documentType: "receipt",
+      warnings: [],
+      records: [value],
+    },
+  });
+  const similar: LedgerPurchase = {
+    id: "similar-purchase",
+    merchant: "Parity Shop",
+    currency: "EUR",
+    totalMinor: 10000,
+    documentDate: "2026-01-01",
+    invoiceNumber: null,
+    orderReference: null,
+    category: "shopping",
+    paymentState: "paid",
+    version: 1,
+    overriddenFields: [],
+  };
+  const snapshot: LedgerSnapshot = {
+    observations: [],
+    purchases: [similar],
+    events: [],
+    decisions: [],
+  };
+  /**
+   * The committed facts as corrections/recompute load them: the observation's
+   * review_state is needs_review, so its cash is unaccepted and creditProofSql
+   * yields no credit proof for it.
+   */
+  function committedSettlement(
+    plan: ReturnType<typeof planLedgerIngestion>,
+    purchaseId: string,
+  ) {
+    const facts: CorrectionEventFact[] = plan.events
+      .filter((event) => event.purchaseId === purchaseId)
+      .map((event) => ({
+        id: event.id,
+        observationId: event.observationId,
+        documentId: event.cashProof.documentId,
+        kind: event.kind,
+        amountMinor: String(event.amountMinor),
+        currency: event.currency,
+        eventDate: event.eventDate,
+        origin: event.origin ?? "source",
+        eligible: event.eligible,
+        accepted: !plan.reviews.some(
+          (review) => review.observationId === event.observationId,
+        ),
+        evidenceCode: event.cashProof.evidenceCode,
+      }));
+    const reviews: CorrectionReviewFact[] = plan.reviews.map((review) => ({
+      ...review,
+      status: "open",
+      missingFields: [],
+    }));
+    return evaluateCorrectionSettlement(
+      { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
+      settlementEvents(facts, reviews),
+      [],
+    ).paymentState;
+  }
+  it.each([
+    ["card", record()],
+    ["store-credit", storeCredit()],
+  ] as const)(
+    "explicitly-paid full %s receipt with a possible-duplicate review: plan and settlement agree on unknown",
+    (_name, value) => {
+      const plan = planLedgerIngestion(ingestion(value), snapshot);
+      expect(plan.reviews.map((review) => review.reason)).toEqual([
+        "possible-duplicate",
+      ]);
+      const created = plan.purchases[0];
+      if (!created) throw new Error("missing synthetic purchase");
+      expect({
+        plan: created.paymentState,
+        settlement: committedSettlement(plan, created.id),
+      }).toEqual({ plan: "unknown", settlement: "unknown" });
+    },
+  );
+  it("an open snapshot review on the current document blocks the full-settlement shortcut", () => {
+    const existing: LedgerPurchase = {
+      ...similar,
+      id: "existing-purchase",
+      invoiceNumber: "INV-FULL",
+      paymentState: "unknown",
+    };
+    const plan = planLedgerIngestion(
+      ingestion(
+        record({ invoiceNumber: "INV-FULL", paymentReference: "PAY-FULL" }),
+      ),
+      {
+        ...snapshot,
+        purchases: [existing],
+        reviews: [
+          {
+            id: "earlier-extraction-review",
+            observationId: null,
+            documentId: "doc-full",
+            purchaseId: null,
+            reason: "extraction-review",
+          },
+        ],
+      },
+    );
+    expect(plan.reviews).toEqual([]);
+    expect(plan.events.map((event) => event.amountMinor)).toEqual([10000]);
+    // Corrections: the open review on this document blocks its cash.
+    expect(plan.paymentStates).toEqual([
+      {
+        purchaseId: "existing-purchase",
+        expectedVersion: 1,
+        paymentState: "unknown",
+      },
+    ]);
+  });
+  it("adversarial: without any review a full card or store-credit receipt still settles the purchase", () => {
+    for (const value of [record(), storeCredit()]) {
+      const plan = planLedgerIngestion(ingestion(value), {
+        ...snapshot,
+        purchases: [],
+      });
+      expect(plan.purchases[0]?.paymentState).toBe("paid");
+    }
+  });
+});

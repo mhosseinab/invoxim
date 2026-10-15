@@ -13,6 +13,7 @@ import {
 import { parseMoney } from "../money";
 import type {
   LedgerCashReview,
+  LedgerCreditProof,
   LedgerEvent,
   LedgerInput,
   LedgerObservation,
@@ -497,6 +498,51 @@ function cashReviews(
       missingFields: [],
     }));
 }
+/**
+ * The corrections creditProofSql rule over this plan's observations as the
+ * commit stores them: an accepted (no planned review) explicitly-paid
+ * observation without an open financial review on it or, without
+ * observation, on its document. evaluateCorrectionSettlement counts a proof
+ * only when its total equals the purchase total.
+ */
+function plannedCreditProofs(
+  plan: MutablePlan,
+  reviews: readonly LedgerCashReview[],
+): LedgerCreditProof[] {
+  return plan.observations.flatMap((observation) => {
+    const { record, purchaseId } = observation;
+    const currency = record.currency;
+    if (
+      purchaseId === null ||
+      currency === null ||
+      record.paymentEvidence !== "explicitly-paid" ||
+      reviews.some(
+        (review) =>
+          review.reason !== "payment-allocation-review" &&
+          (review.observationId === observation.id ||
+            (review.observationId === null &&
+              review.documentId === observation.identity.documentId)),
+      )
+    )
+      return [];
+    const total = parseMoney(record.total, currency);
+    const credit = parseMoney(
+      record.paymentMethodHint === "store-credit"
+        ? (record.storeCreditAmount ?? record.paymentAmount)
+        : record.storeCreditAmount,
+      currency,
+    );
+    if (total === null || credit === null || credit > total) return [];
+    return [
+      {
+        purchaseId,
+        currency,
+        totalMinor: String(total),
+        creditMinor: String(credit),
+      },
+    ];
+  });
+}
 function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
   acceptPlannedCash(plan);
   const events = [...snapshot.events, ...plan.events];
@@ -504,71 +550,41 @@ function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
     ...(snapshot.reviews ?? []),
     ...plan.reviews,
   ];
-  const involved = new Set(plan.events.map((event) => event.purchaseId));
+  // OQ-A (owner decision): recompute from currently supported cash and
+  // credit with the corrections rule; a stored 'paid' is not retained.
+  // OQ-B: cash support is core settlementEvents over the same facts. This
+  // plan's credit is proven only as the commit will store it, so a reviewed
+  // observation (any planned review, including possible-duplicate, or an
+  // open snapshot review on its document) supports neither cash nor credit.
+  const planned = plannedCreditProofs(plan, reviews);
+  const credits = [...(snapshot.creditProofs ?? []), ...planned];
+  const involved = new Set([
+    ...plan.events.map((event) => event.purchaseId),
+    ...planned.map((proof) => proof.purchaseId),
+  ]);
   for (const purchase of [...snapshot.purchases, ...plan.purchases]) {
     const { currency, totalMinor } = purchase;
     if (currency === null || totalMinor === null) continue;
-    const correctedSettlement =
-      hasFinancialOverride(purchase) ||
-      events.some(
-        (event) =>
-          event.purchaseId === purchase.id &&
-          event.kind === "payment" &&
-          ((event.sourceValues?.amountMinor !== undefined &&
-            event.sourceValues.amountMinor !== event.amountMinor) ||
-            (event.sourceValues?.currency !== undefined &&
-              event.sourceValues.currency !== event.currency)),
-      );
-    const fullSettlement =
-      !correctedSettlement &&
-      plan.observations.some((observation) => {
-        const record = observation.record;
-        return (
-          observation.purchaseId === purchase.id &&
-          ["receipt", "invoice", "order-confirmation"].includes(
-            observation.documentType,
-          ) &&
-          record.paymentEvidence === "explicitly-paid" &&
-          record.currency === purchase.currency &&
-          minor(record.total, currency) === purchase.totalMinor &&
-          settlementMinor(record, currency) === BigInt(totalMinor) &&
-          !plan.reviews.some(
-            (item) =>
-              item.observationId === observation.id &&
-              item.reason !== "possible-duplicate",
-          )
-        );
-      });
-    if (!involved.has(purchase.id) && !fullSettlement) continue;
-    // OQ-A (owner decision): recompute from currently supported cash and
-    // credit with the corrections rule; a stored 'paid' is not retained.
-    // OQ-B: cash support is core settlementEvents over the same facts.
+    if (!involved.has(purchase.id)) continue;
     const facts = events
       .filter((event) => event.purchaseId === purchase.id)
       .map(cashFact);
     const paymentState = purchase.overriddenFields.includes("paymentState")
       ? purchase.paymentState
-      : fullSettlement
-        ? "paid"
-        : evaluateCorrectionSettlement(
-            {
-              currency,
-              totalMinor: String(totalMinor),
-              paymentState: purchase.paymentState,
-            },
-            settlementEvents(facts, cashReviews(purchase.id, facts, reviews)),
-            (snapshot.creditProofs ?? []).filter(
-              (proof) => proof.purchaseId === purchase.id,
-            ),
-          ).paymentState;
+      : evaluateCorrectionSettlement(
+          {
+            currency,
+            totalMinor: String(totalMinor),
+            paymentState: purchase.paymentState,
+          },
+          settlementEvents(facts, cashReviews(purchase.id, facts, reviews)),
+          credits.filter((proof) => proof.purchaseId === purchase.id),
+        ).paymentState;
     const newIndex = plan.purchases.findIndex(
       (item) => item.id === purchase.id,
     );
     if (newIndex >= 0) plan.purchases[newIndex] = { ...purchase, paymentState };
-    else if (
-      involved.has(purchase.id) ||
-      paymentState !== purchase.paymentState
-    )
+    else
       plan.paymentStates.push({
         purchaseId: purchase.id,
         expectedVersion: purchase.version,
