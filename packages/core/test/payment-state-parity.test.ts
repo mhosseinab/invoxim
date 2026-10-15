@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { PersistedAiRecord } from "../src/ai/types";
 import {
   type CorrectionSettlement,
-  type CorrectionSettlementEvent,
   evaluateCorrectionSettlement,
   settlementEvents,
 } from "../src/corrections/settlement";
@@ -28,12 +27,12 @@ import type {
  *   A. projectPaymentStates (core/ledger/plan.ts) — counts eligible payment events
  *   B. evaluateCorrectionSettlement + settlementEvents (core/corrections/settlement.ts)
  *      — counts supported events (hasCashProof && restorationEligibility)
- *   C. the supportedCash SQL CASE in adapters lifecycle/connection-recompute.ts:14
- *      — counts its own "supported" flag, then feeds evaluateCorrectionSettlement
+ *   C. the lifecycle recompute in adapters lifecycle/connection-recompute.ts
+ *      — formerly its own supportedCash SQL CASE (C1); now projects facts and
+ *      feeds settlementEvents + evaluateCorrectionSettlement
  *
  * This suite runs identical purchases/entries/reviews through all three and
- * records whether they agree. Test-only: no production code changes (CORE-6 is
- * the fix card and is out of scope here).
+ * records whether they agree. Open scenarios name the owner question.
  */
 
 type PaymentState = "unknown" | "unpaid" | "partially_paid" | "paid";
@@ -138,50 +137,33 @@ function toReviewFact(review: ReviewFact): CorrectionReviewFact {
 }
 
 /**
- * TypeScript transcription of the supportedCash CASE in
- * packages/adapters/src/lifecycle/connection-recompute.ts:14.
- * Kept byte-faithful to the SQL NULL semantics (NULL = NULL is not true).
- * A worker/adapters SQL case re-checks this transcription against D1.
+ * Model of the lifecycle recompute in
+ * packages/adapters/src/lifecycle/connection-recompute.ts: SQL projects each
+ * entry's facts with `accepted` = review_state accepted AND no pending
+ * connection deletion, then core settlementEvents decides support.
+ * apps/worker/test/payment-state-recompute-parity.test.ts runs the real SQL on D1.
  */
+function sqlProjectedFact(
+  entry: CashFact,
+  index: number,
+  connectionDeletionPending: boolean,
+): CorrectionEventFact {
+  return {
+    ...toCorrectionEventFact(entry, index),
+    accepted: entry.accepted && !connectionDeletionPending,
+  };
+}
+
 function sqlSupportedCash(
   entry: CashFact,
   reviews: readonly ReviewFact[],
   connectionDeletionPending: boolean,
 ): boolean {
-  if (!entry.eligible) return false;
-  if (entry.origin === "user-confirmed") return true;
-  if (!entry.accepted) return false;
-  const expected =
-    entry.kind === "payment" ? "explicitly-paid" : "completed-refund";
-  if (
-    entry.evidenceCode !== "manual-confirmation" &&
-    entry.evidenceCode !== expected
-  )
-    return false;
-  if (connectionDeletionPending) return false;
-  for (const review of reviews) {
-    if (
-      review.status !== "open" ||
-      review.blockingScope !== "financial" ||
-      review.reason === "payment-allocation-review"
-    )
-      continue;
-    if (
-      review.observationId !== null &&
-      review.observationId === entry.observationId
-    )
-      return false;
-    if (
-      review.observationId === null &&
-      review.documentId !== null &&
-      entry.documentId !== null &&
-      review.documentId === entry.documentId &&
-      review.reason !== "refund-exceeds-payment" &&
-      review.reason !== "refund-currency-mismatch"
-    )
-      return false;
-  }
-  return true;
+  const [event] = settlementEvents(
+    [sqlProjectedFact(entry, 0, connectionDeletionPending)],
+    reviews.map(toReviewFact),
+  );
+  return event?.supported ?? false;
 }
 
 function scenarioEntries(scenario: Scenario): CashFact[] {
@@ -206,18 +188,15 @@ function runTsSettlement(scenario: Scenario): CorrectionSettlement {
 }
 
 function runSqlSettlement(scenario: Scenario): CorrectionSettlement {
-  const events: CorrectionSettlementEvent[] = scenarioEntries(scenario).map(
-    (entry) => ({
-      kind: entry.kind,
-      amountMinor: entry.amountMinor,
-      currency: entry.currency,
-      origin: entry.origin,
-      supported: sqlSupportedCash(
+  const events = settlementEvents(
+    scenarioEntries(scenario).map((entry, index) =>
+      sqlProjectedFact(
         entry,
-        scenario.reviews ?? [],
+        index,
         scenario.connectionDeletionPending ?? false,
       ),
-    }),
+    ),
+    (scenario.reviews ?? []).map(toReviewFact),
   );
   return evaluateCorrectionSettlement(
     {
@@ -407,7 +386,7 @@ const scenarios: Scenario[] = [
       {
         id: "review-refund",
         observationId: null,
-        documentId: null,
+        documentId: "doc-unrelated",
         reason: "refund-exceeds-payment",
         blockingScope: "financial",
         status: "open",
@@ -426,7 +405,7 @@ const scenarios: Scenario[] = [
     correctionsExpected: "unknown",
   },
   {
-    name: "source cash blocked by a no-observation fallback review in TS but not in SQL",
+    name: "open review on the entry document blocks source cash in corrections; planner has no review input",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -445,7 +424,7 @@ const scenarios: Scenario[] = [
       {
         id: "review-2",
         observationId: null,
-        documentId: null,
+        documentId: "doc-2",
         reason: "unknown-payment",
         blockingScope: "financial",
         status: "open",
@@ -454,10 +433,13 @@ const scenarios: Scenario[] = [
     ],
     expectAgreement: false,
     // OPEN OQ-B: plan.ts receives no review facts (LedgerSnapshot has none), so
-    // it cannot honour an open purchase-level financial review. Supplying them
-    // needs pipeline/ledger-snapshot.ts, outside this card's write-set.
+    // it cannot honour an open financial review on the entry's document.
+    // Supplying them needs pipeline/ledger-snapshot.ts, outside this write-set.
+    // (A review with neither observation nor document is unreachable: the
+    // review_items CHECK requires document_id unless payment-allocation-review.)
     openQuestion:
-      "OQ-B: should ingestion honour open purchase-level financial reviews (observation/document NULL) that block cash in corrections? Needs review facts in LedgerSnapshot (PIPE lane).",
+      "OQ-B: should ingestion honour open financial reviews on the entry's observation/document that block that cash in corrections? Needs review facts in LedgerSnapshot (PIPE lane).",
+    correctionsExpected: "unknown",
   },
   {
     name: "connection deletion pending unsupports SQL cash but not the TS rule",
@@ -538,7 +520,7 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
     });
   }
 
-  it("CORE-1 supported-flag parity: SQL transcription vs hasCashProof/restorationEligibility", () => {
+  it("CORE-1 supported-flag parity: recompute projection vs hasCashProof/restorationEligibility", () => {
     const shared: CashFact = {
       kind: "payment",
       amountMinor: "100",
@@ -562,13 +544,13 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
     expect(sqlSupportedCash(shared, clean, false)).toBe(
       tsSupportedFlag(shared, clean),
     );
-    // user-confirmed short-circuit: SQL true even with a blocking refund-exceeds review
-    // (user-confirmed entries carry observation_id NULL per schema; TS still blocks refunds).
+    // A purchase-level refund allocation review blocks a user-confirmed refund
+    // on both paths (formerly short-circuited by the SQL user-confirmed branch).
     const refundBlockReview: ReviewFact[] = [
       {
         id: "r",
         observationId: null,
-        documentId: null,
+        documentId: "doc-unrelated",
         reason: "refund-exceeds-payment",
         blockingScope: "financial",
         status: "open",
@@ -584,26 +566,33 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       documentId: null,
     };
     expect(sqlSupportedCash(confirmedRefund, refundBlockReview, false)).toBe(
-      true,
+      false,
     );
     expect(tsSupportedFlag(confirmedRefund, refundBlockReview)).toBe(false);
     // Connection deletion only exists in the SQL rule.
     expect(sqlSupportedCash(shared, clean, true)).toBe(false);
     expect(tsSupportedFlag(shared, clean)).toBe(true);
-    // Fallback review reasons without observation/document ids block only the TS rule.
+    // A document-matched review without observation blocks source cash on both paths.
     const fallbackReview: ReviewFact[] = [
       {
         id: "r2",
         observationId: null,
-        documentId: null,
+        documentId: "doc-x",
         reason: "unknown-payment",
         blockingScope: "financial",
         status: "open",
         purchaseId: "p",
       },
     ];
-    expect(sqlSupportedCash(shared, fallbackReview, false)).toBe(true);
+    expect(sqlSupportedCash(shared, fallbackReview, false)).toBe(false);
     expect(tsSupportedFlag(shared, fallbackReview)).toBe(false);
+    // A review on another document of the purchase blocks neither path.
+    const otherDocument = fallbackReview.map((review) => ({
+      ...review,
+      documentId: "doc-other",
+    }));
+    expect(sqlSupportedCash(shared, otherDocument, false)).toBe(true);
+    expect(tsSupportedFlag(shared, otherDocument)).toBe(true);
   });
 });
 

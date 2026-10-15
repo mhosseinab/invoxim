@@ -38,7 +38,12 @@ interface Entry {
 
 interface Review {
   reason: CorrectionReviewFact["reason"];
-  /** Link the review to the purchase only, or to entry `index`'s observation/document. */
+  /**
+   * "purchase": purchase_id set, observation NULL, document = an unrelated
+   * document (review_items CHECK requires document_id). Otherwise linked only
+   * through entry `index`'s observation (with its document) or its document
+   * alone (purchase_id NULL).
+   */
   link: "purchase" | { observationOf: number } | { documentOf: number };
 }
 
@@ -49,6 +54,13 @@ interface Case {
   entries: Entry[];
   reviews?: Review[];
   expected: PaymentState;
+  /**
+   * Known loader gap, reported to the PIPE lane: corrections/data.ts reviews()
+   * loads only reviews with purchase_id = the purchase, so a review linked only
+   * through the entry's observation/document is invisible to corrections. The
+   * recompute keeps the stricter superset; this records what corrections sees.
+   */
+  correctionsLoaderState?: PaymentState;
 }
 
 const cases: Case[] = [
@@ -104,6 +116,138 @@ const cases: Case[] = [
     ],
     expected: "unknown",
   },
+  {
+    name: "open review on another document of the purchase does not block proven cash",
+    recordStatus: "active",
+    paymentState: "unknown",
+    entries: [
+      {
+        kind: "payment",
+        amountMinor: 10000,
+        origin: "source",
+        eligible: true,
+        source: {
+          evidenceCode: "explicitly-paid",
+          accepted: true,
+          connection: "mail-live",
+        },
+      },
+    ],
+    reviews: [{ reason: "unknown-payment", link: "purchase" }],
+    expected: "paid",
+  },
+  {
+    // Rule-level guard: cleanup stage 3 resets payment_state to 'unknown' before
+    // recompute, so through cleanup this flag cannot change the stored state.
+    name: "open purchase-level refund-exceeds-payment review blocks a user-confirmed refund",
+    recordStatus: "active",
+    paymentState: "unpaid",
+    entries: [
+      {
+        kind: "refund",
+        amountMinor: 5000,
+        origin: "user-confirmed",
+        eligible: true,
+      },
+    ],
+    reviews: [{ reason: "refund-exceeds-payment", link: "purchase" }],
+    expected: "unpaid",
+  },
+  {
+    name: "observation-matched review not linked to the purchase still blocks the entry",
+    recordStatus: "active",
+    paymentState: "unknown",
+    entries: [
+      {
+        kind: "payment",
+        amountMinor: 10000,
+        origin: "source",
+        eligible: true,
+        source: {
+          evidenceCode: "explicitly-paid",
+          accepted: true,
+          connection: "mail-live",
+        },
+      },
+    ],
+    reviews: [{ reason: "event-conflict", link: { observationOf: 0 } }],
+    expected: "unknown",
+    correctionsLoaderState: "paid",
+  },
+  {
+    name: "document-matched review without observation still blocks the entry",
+    recordStatus: "active",
+    paymentState: "unknown",
+    entries: [
+      {
+        kind: "payment",
+        amountMinor: 10000,
+        origin: "source",
+        eligible: true,
+        source: {
+          evidenceCode: "explicitly-paid",
+          accepted: true,
+          connection: "mail-live",
+        },
+      },
+    ],
+    reviews: [{ reason: "extraction-review", link: { documentOf: 0 } }],
+    expected: "unknown",
+    correctionsLoaderState: "paid",
+  },
+  {
+    name: "source cash from a connection with pending deletion is unsupported",
+    recordStatus: "active",
+    paymentState: "unknown",
+    entries: [
+      {
+        kind: "payment",
+        amountMinor: 10000,
+        origin: "source",
+        eligible: true,
+        source: {
+          evidenceCode: "explicitly-paid",
+          accepted: true,
+          connection: "mail-deleted",
+        },
+      },
+    ],
+    expected: "unknown",
+  },
+  {
+    name: "unaccepted observation is not cash proof",
+    recordStatus: "active",
+    paymentState: "unknown",
+    entries: [
+      {
+        kind: "payment",
+        amountMinor: 10000,
+        origin: "source",
+        eligible: true,
+        source: {
+          evidenceCode: "explicitly-paid",
+          accepted: false,
+          connection: "mail-live",
+        },
+      },
+    ],
+    expected: "unknown",
+  },
+  {
+    name: "independent user-confirmed cash survives a purchase-level unknown-payment review",
+    recordStatus: "active",
+    paymentState: "unknown",
+    entries: [
+      {
+        kind: "payment",
+        amountMinor: 4000,
+        origin: "user-confirmed",
+        eligible: true,
+      },
+    ],
+    reviews: [{ reason: "unknown-payment", link: "purchase" }],
+    expected: "partially_paid",
+  },
 ];
 
 const ids = (caseIndex: number, entryIndex: number) => ({
@@ -136,6 +280,18 @@ beforeAll(async () => {
       )
       .bind(connection, user, connection, `${connection}@example.invalid`)
       .run();
+  await db
+    .prepare(
+      "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES('msg-unrelated',?,'mail-live','msg-unrelated',0,1)",
+    )
+    .bind(user)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES('doc-unrelated',?,'msg-unrelated','body','hash-unrelated','text/plain',1)",
+    )
+    .bind(user)
+    .run();
   await db
     .prepare(
       "INSERT INTO lifecycle_deletions(user_id,scope,target_id,request_id,deleted_at,stage,journal_ack) VALUES(?,'connection','mail-deleted','recompute-parity-deletion',0,8,0)",
@@ -179,7 +335,7 @@ beforeAll(async () => {
             user,
             id.document,
             entry.source.evidenceCode,
-            entry.source.accepted ? "accepted" : "pending",
+            entry.source.accepted ? "accepted" : "needs_review",
           )
           .run();
       }
@@ -208,9 +364,12 @@ beforeAll(async () => {
           ? ids(caseIndex, link.observationOf).observation
           : null;
       const document =
-        typeof link === "object" && "documentOf" in link
-          ? ids(caseIndex, link.documentOf).document
-          : null;
+        link === "purchase"
+          ? "doc-unrelated"
+          : ids(
+              caseIndex,
+              "documentOf" in link ? link.documentOf : link.observationOf,
+            ).document;
       await db
         .prepare(
           "INSERT INTO review_items(id,user_id,document_id,observation_id,purchase_id,reason,blocking_scope,status,created_at) VALUES(?,?,?,?,?,?,'financial','open',0)",
@@ -249,19 +408,15 @@ function correctionsState(caseIndex: number, testCase: Case): PaymentState {
       evidenceCode: entry.source?.evidenceCode ?? null,
     }),
   );
-  const reviews: CorrectionReviewFact[] = (testCase.reviews ?? []).map(
+  // data.ts reviews() is purchase-scoped (WHERE purchase_id=?).
+  const reviews: CorrectionReviewFact[] = (testCase.reviews ?? []).flatMap(
     (review, reviewIndex) => {
       const link = review.link;
+      if (link !== "purchase") return [];
       return {
         id: `c${caseIndex}-r${reviewIndex}`,
-        observationId:
-          typeof link === "object" && "observationOf" in link
-            ? ids(caseIndex, link.observationOf).observation
-            : null,
-        documentId:
-          typeof link === "object" && "documentOf" in link
-            ? ids(caseIndex, link.documentOf).document
-            : null,
+        observationId: null,
+        documentId: "doc-unrelated",
         reason: review.reason,
         blockingScope: "financial",
         status: "open",
@@ -297,5 +452,7 @@ for (const [caseIndex, testCase] of cases.entries())
       payment_state: testCase.expected,
       lifecycle_recompute_connection_id: null,
     });
-    expect(correctionsState(caseIndex, testCase)).toBe(testCase.expected);
+    expect(correctionsState(caseIndex, testCase)).toBe(
+      testCase.correctionsLoaderState ?? testCase.expected,
+    );
   });
