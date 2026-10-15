@@ -317,7 +317,9 @@ it("rejects over4096 finite tiny chunks despite valid under-bytecap JSON", async
   });
   await expect(
     createPublicReferenceRateReader(
-      config,
+      // The chunk cap, not the 100 ms deadline, must be what rejects this body,
+      // even when the host is busy streaming 4097 one-byte reads.
+      { ...config, timeoutMs: 10000 },
       async () =>
         new Response(body, { headers: { "content-type": "application/json" } }),
     ).lookup(request),
