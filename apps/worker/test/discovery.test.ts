@@ -289,3 +289,60 @@ it("GMAIL-05 unsupported numeric Retry-After overflow pauses rather than silentl
     transport.mockRestore();
   }
 });
+
+it("PIPE-3/P1 consent review hands the readiness port only a selection valid under the shared schema", async () => {
+  const userId = "discovery-schema-owner";
+  const digest = "a".repeat(64);
+  await db
+    .prepare(
+      "INSERT INTO user(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,1,?,?)",
+    )
+    .bind(userId, "Synthetic", "discovery-schema@example.invalid", now, now)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO profiles(user_id,created_at,updated_at) VALUES(?,?,?)",
+    )
+    .bind(userId, now, now)
+    .run();
+  // revision 0 = never-configured AI settings; the shared schema requires >=1.
+  await db
+    .prepare(
+      "INSERT INTO ai_settings(user_id,mode,provider_id,model_id,config_version,revision,consent_version) VALUES(?,'hosted','synthetic-approved','synthetic-model','synthetic-config',0,0)",
+    )
+    .bind(userId)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scopes,credential_ciphertext,credential_key_version) VALUES(?,?,'mailbox','gmail','schema-subject','schema@example.invalid',?,?,1)",
+    )
+    .bind(
+      input.connectionId,
+      userId,
+      JSON.stringify(["https://www.googleapis.com/auth/gmail.readonly"]),
+      "synthetic-ciphertext-marker-not-a-live-token",
+    )
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized,accepted_configuration_digest) VALUES(?,?,?,0,'synthetic-approved','synthetic-local',0,?,1,?)",
+    )
+    .bind(input.consentId, userId, input.connectionId, now, digest)
+    .run();
+  const open = vi.fn(async () => syntheticProvider());
+  const allow = vi.fn(async () => true);
+  const service = createDiscoveryService(db, {
+    providers: { open },
+    readiness: { requiresProcessingSelection: true, allow },
+    remainingStatements: () => 40,
+    clock: () => now,
+  });
+  await expect(
+    service.beginAcceptedImport(
+      { userId, authority: "session" } as TenantContext,
+      { ...input, fingerprint: "schema-synthetic-range" },
+    ),
+  ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  expect(allow).not.toHaveBeenCalled();
+  expect(open).not.toHaveBeenCalled();
+});

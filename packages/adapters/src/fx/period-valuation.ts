@@ -5,10 +5,11 @@ import {
   type FxRateQuote,
   fxCalculationVersion,
   fxConversionResultSchema,
+  fxEntrySchema,
   fxPeriodSummarySchema,
   fxRateQuoteSchema,
 } from "@invoxim/contracts";
-import { convertFxEntry } from "@invoxim/core";
+import { convertFxEntry, ENTRY_MINOR_BOUND } from "@invoxim/core";
 import { hashJsonValue } from "../hash";
 import type { FxValuationRead } from "./repository";
 export interface OwnedEntry {
@@ -47,10 +48,18 @@ export function mapFxEntry(row: OwnedEntry): FxEntry {
     eventDate: row.event_date,
   };
 }
+/** Map and Zod-validate a D1 ledger-entry row at the service boundary (PIPE-8). */
+export function parseFxEntry(row: OwnedEntry): FxEntry {
+  return fxEntrySchema.parse(mapFxEntry(row));
+}
 /** Bind a text minor-unit amount to the integer original_minor column. */
 export function minorBinding(value: string): number {
   const minor = Number(value);
-  if (!Number.isSafeInteger(minor) || minor < 0 || minor > 9000000000000)
+  if (
+    !Number.isSafeInteger(minor) ||
+    minor < 0 ||
+    BigInt(minor) > ENTRY_MINOR_BOUND
+  )
     throw new Error("INVALID_FX_INPUT");
   return minor;
 }

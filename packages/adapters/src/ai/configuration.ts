@@ -182,7 +182,7 @@ export function aiConfiguration(bindings: AiBindings) {
     const tracing = langsmithConfiguration(bindings);
     return {
       ...(tracing ? { tracing } : {}),
-      ...(classification ? { classification } : {}),
+      classification,
       destinations,
       cipher,
       keyVersions: Object.keys(keyring.keys).map(Number),

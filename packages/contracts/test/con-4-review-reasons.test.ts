@@ -1,5 +1,4 @@
 import { expect, it } from "vitest";
-import { CORRECTION_REVIEW_REASONS } from "../../core/src/index";
 import {
   PURCHASE_REVIEW_REASONS,
   purchaseReviewSchema,
@@ -11,7 +10,8 @@ import {
 // `CORRECTION_REVIEW_REASONS` (`LEDGER_REVIEW_REASONS` + `document-review`).
 // `document-review` is kept: an open operational document-review does not block
 // financial restoration (OD-2). contracts cannot import `@invoxim/core`
-// (package boundaries), so the equality is pinned here instead of by import.
+// (package boundaries: contracts depends on nothing), so the equality with
+// core is pinned in packages/core/test/con-4-review-reasons.test.ts.
 // ---------------------------------------------------------------------------
 
 const review = (reason: string) => ({
@@ -44,8 +44,4 @@ it("CON-4 rejects a reason outside the vocabulary", () => {
   expect(
     purchaseReviewSchema.safeParse(review("not-a-review-reason")).success,
   ).toBe(false);
-});
-
-it("CON-4 vocabulary equals core CORRECTION_REVIEW_REASONS", () => {
-  expect([...PURCHASE_REVIEW_REASONS]).toEqual([...CORRECTION_REVIEW_REASONS]);
 });

@@ -186,6 +186,10 @@ export async function loadGmailReviewHeaders(
       : null,
   };
 }
+/** O3: the one open-review→document→source→connection join. Bind order: userId, reviewId. */
+const reviewConnectionJoin =
+  "review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id";
+const openReview = "r.user_id=? AND r.id=? AND r.status='open'";
 /**
  * O3: provider lookup from the review→document→source→connection join shared
  * with `source()`. Purchase-routes uses this instead of duplicating the join.
@@ -197,7 +201,7 @@ export async function lookupReviewProvider(
 ): Promise<string | null> {
   const row = await db
     .prepare(
-      "SELECT c.provider FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id WHERE r.user_id=? AND r.id=? AND r.status='open' AND c.kind='mailbox'",
+      `SELECT c.provider FROM ${reviewConnectionJoin} WHERE ${openReview} AND c.kind='mailbox'`,
     )
     .bind(userId, reviewId)
     .first<string>("provider");
@@ -219,7 +223,7 @@ export function createReviewSourceReader(
   async function source(tenant: TenantContext, id: string) {
     const row = await db
       .prepare(
-        "SELECT c.id AS connectionId,c.generation,s.provider_message_id AS providerMessageId,c.display_address AS mailboxAddress,s.received_at AS receivedAt,pc.id AS consentId,c.scopes FROM review_items r JOIN documents d ON d.user_id=r.user_id AND d.id=r.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id JOIN connections c ON c.user_id=s.user_id AND c.id=s.connection_id JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id AND pc.revoked_at IS NULL AND pc.background_authorized=1 WHERE r.user_id=? AND r.id=? AND r.status='open' AND c.provider=? AND c.kind='mailbox' AND c.state='connected' AND s.available=1 AND s.generation=c.generation AND EXISTS(SELECT 1 FROM profiles WHERE user_id=r.user_id AND status='active') ORDER BY pc.accepted_at DESC,pc.id LIMIT 1",
+        `SELECT c.id AS connectionId,c.generation,s.provider_message_id AS providerMessageId,c.display_address AS mailboxAddress,s.received_at AS receivedAt,pc.id AS consentId,c.scopes FROM ${reviewConnectionJoin} JOIN processing_consents pc ON pc.user_id=c.user_id AND pc.connection_id=c.id AND pc.revoked_at IS NULL AND pc.background_authorized=1 WHERE ${openReview} AND c.provider=? AND c.kind='mailbox' AND c.state='connected' AND s.available=1 AND s.generation=c.generation AND EXISTS(SELECT 1 FROM profiles WHERE user_id=r.user_id AND status='active') ORDER BY pc.accepted_at DESC,pc.id LIMIT 1`,
       )
       .bind(tenant.userId, id, configuration.provider)
       .first<Source>();

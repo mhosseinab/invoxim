@@ -407,3 +407,26 @@ it("FX-05: bounded Unicode entry IDs produce usable opaque continuation cursors"
     nextCursor: null,
   });
 });
+it("PIPE-8: malformed D1 entry rows are rejected at the service boundary", async () => {
+  // D1 does not constrain currency or event_date; the service must validate.
+  await event("bad-currency", "payment", "2026-10-11", "eur", 5);
+  await expect(service().service.readPage(context, input)).rejects.toThrow(
+    "FX_SERVICE_UNAVAILABLE",
+  );
+  let lookups = 0;
+  const reader = {
+    async lookup(): Promise<never> {
+      lookups += 1;
+      throw new Error("provider must not be called");
+    },
+  };
+  await expect(
+    service(reader).service.revaluePage(context, input),
+  ).rejects.toThrow("FX_SERVICE_UNAVAILABLE");
+  expect(lookups).toBe(0);
+  await env.DB.prepare("DELETE FROM ledger_entries").run();
+  await event("bad-date", "payment", "2026-02-30", "EUR", 5);
+  await expect(service().service.readPage(context, input)).rejects.toThrow(
+    "FX_SERVICE_UNAVAILABLE",
+  );
+});

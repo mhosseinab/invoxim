@@ -20,9 +20,9 @@ import {
 import { z } from "zod";
 import { hashJsonValue } from "../hash";
 import {
-  mapFxEntry,
   type OwnedEntry,
   ownedEntryColumns,
+  parseFxEntry,
 } from "./period-valuation";
 import { createFxValuationRepository } from "./repository";
 
@@ -224,7 +224,7 @@ export function createFxReportingService(
     const entries: FxReportingRow[] = [];
     const results: FxConversionResult[] = [];
     for (const row of selected.rows) {
-      const original = mapFxEntry(row);
+      const original = parseFxEntry(row);
       const valuation = await repository.get(context, {
         entryId: row.id,
         expectedProfileVersion: selected.input.expectedProfileVersion,
@@ -326,7 +326,7 @@ export function createFxReportingService(
         )
         .first<OwnedEntry>();
       if (!current) return { status: "stale" };
-      const original = mapFxEntry(current);
+      const original = parseFxEntry(current);
       let quote: FxRateQuote | null = null;
       if (original.currency !== key.reportingCurrency) {
         quote = await cachedQuote(original, key.reportingCurrency);
