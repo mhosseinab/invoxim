@@ -10,6 +10,7 @@ it("reports a fixed discovery stage without retaining database or mailbox error 
   const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
   const { db: database } = faultingDatabase(env.DB, [
     {
+      once: false,
       on: "prepare",
       fire: () => {
         throw new Error("PRIVATE DATABASE VALUE");
