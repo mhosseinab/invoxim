@@ -1,6 +1,8 @@
 import type { DiscoveryProviderPort } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
+import { parseRetryAfter } from "../http";
+import { RATE_DEFAULT_RETRY_AFTER_MS } from "./rate-decision";
 export const GMAIL_QUERY_VERSION = 1;
 const terms = [
   "invoice",
@@ -222,20 +224,11 @@ export function createGmailDiscovery(
           "dailyLimitExceeded",
         ].includes(reason ?? "")
       ) {
-        const value = response.headers.get("retry-after");
-        const numeric = value !== null && /^[0-9]+$/.test(value);
-        const delayMs = numeric
-          ? Number(value) * 1000
-          : value
-            ? Date.parse(value) - Date.now()
-            : 30000;
+        // G5: SEC-4's single Retry-After rule; absent or unusable keeps 30 s.
         throw new DiscoveryError(
           "RATE_LIMITED",
-          Number.isFinite(delayMs)
-            ? Math.max(1000, delayMs)
-            : numeric
-              ? 86400001
-              : 30000,
+          parseRetryAfter(response.headers.get("retry-after")) ??
+            RATE_DEFAULT_RETRY_AFTER_MS,
         );
       }
       if (!response.ok || (response.status >= 300 && response.status < 400))
