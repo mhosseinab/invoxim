@@ -1079,3 +1079,32 @@ it("AI-CLASSIFIER-PROVIDER a crash after a billed decision never makes a second 
     .first("n");
   expect(billed).toBeLessThanOrEqual(1);
 });
+
+it("AI-CLASSIFIER-PROVIDER on the final lease an active provider cooldown is a reviewable outcome with no call", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  // Another tenant's rejection left a shared hosted cooldown in force.
+  await db
+    .prepare(
+      "INSERT INTO hosted_ai_cooldowns(destination_id,model_id,cooldown_until) VALUES('perplexity-decider','pplx-decider-v1.1-27b',?)",
+    )
+    .bind(Date.now() + 10 * 60 * 1000)
+    .run();
+  const fetch = perplexityFetch(() => Response.json(decision(0.02)));
+  const { pipeline } = service({ perplexityApiKey: KEY }, 3);
+  // Not final: rescheduled for the cooldown end, no call.
+  expect(await runAt(pipeline, 0, 2)).toMatchObject({
+    kind: "retry",
+    code: "transient",
+  });
+  // Final lease: no call, and the document gets a reviewable code instead
+  // of the job ending attempts-exhausted with the document unresolved.
+  const final = await runAt(pipeline, 0, 3);
+  expect(final).not.toMatchObject({ kind: "retry" });
+  expect(final).not.toMatchObject({ kind: "paused" });
+  expect(fetch).not.toHaveBeenCalled();
+  expect(await documentCode()).toEqual({
+    parse_state: "needs_review",
+    parse_code: "classification-rate-limit",
+  });
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+});

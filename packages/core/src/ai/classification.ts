@@ -169,13 +169,18 @@ export function createClassificationEngine(dependencies: {
         if (reservation !== "reserved") {
           const until = await store.cooldownUntil(checkpoint);
           const wait = until === null ? 0 : until - Date.now();
-          return wait > 0
-            ? {
-                status: "deferred",
-                reason: "cooldown",
-                retryAfterMs: Math.min(wait, 86400000),
-              }
-            : { status: "needs-review", reason: "budget" };
+          if (wait <= 0) return { status: "needs-review", reason: "budget" };
+          // On the job's last lease a provider cooldown is a reviewable
+          // document outcome (not persisted as a classification; no call).
+          // The shared cooldown does not record its cause, so it is reported
+          // as the provider-imposed wait it is: rate-limit.
+          if (options.finalAttempt)
+            return { status: "needs-review", reason: "rate-limit" };
+          return {
+            status: "deferred",
+            reason: "cooldown",
+            retryAfterMs: Math.min(wait, 86400000),
+          };
         }
         if (!(await store.authorize(attempt)))
           return { status: "needs-review", reason: "settings-changed" };
