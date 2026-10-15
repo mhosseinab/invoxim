@@ -1,6 +1,7 @@
 import { supportedCurrency, validCalendarDate } from "@invoxim/contracts";
 import type {
   JobLease,
+  LedgerCreditProof,
   LedgerEvent,
   LedgerInput,
   LedgerObservation,
@@ -14,6 +15,10 @@ import {
   parseMoney,
 } from "@invoxim/core";
 import { z } from "zod";
+import {
+  creditProofSql,
+  parseCreditProofRows,
+} from "../corrections/allocation";
 import {
   checkedResult,
   fingerprintSchema,
@@ -50,6 +55,7 @@ type PurchaseRow = {
   lifecycle_recompute_connection_id: string | null;
   version: number;
   overrides_json: string;
+  credits_json: string;
 };
 type EventRow = {
   id: string;
@@ -152,7 +158,7 @@ export async function loadLedgerSnapshot(
           SELECT le.purchase_id FROM json_each(?) k CROSS JOIN ledger_entries le WHERE le.user_id=? AND le.business_event_key=k.value
         ), candidate_ids AS (
           SELECT id FROM purchase_refs UNION SELECT purchase_id FROM observation_refs UNION SELECT purchase_id FROM cash_refs
-        ) SELECT p.id,p.merchant_raw,p.currency,p.total_minor,p.document_date,p.invoice_ref,p.order_ref,p.category,p.payment_state,p.record_status,p.lifecycle_delete_connection_id,p.lifecycle_recompute_connection_id,p.version,(SELECT json_group_array(field) FROM (SELECT field FROM field_overrides fo WHERE fo.user_id=p.user_id AND fo.entity_kind='purchase' AND fo.entity_id=p.id ORDER BY field LIMIT 21)) AS overrides_json FROM purchases p WHERE p.user_id=? AND (p.id IN (SELECT id FROM candidate_ids) OR EXISTS(SELECT 1 FROM manual_purchase_evidence me JOIN documents md ON md.user_id=me.user_id AND md.id=me.document_id WHERE me.user_id=p.user_id AND me.purchase_id=p.id AND md.content_hash=?)) AND p.record_status!='merged' AND ${guard.sql} ORDER BY p.id LIMIT 101`,
+        ) SELECT p.id,p.merchant_raw,p.currency,p.total_minor,p.document_date,p.invoice_ref,p.order_ref,p.category,p.payment_state,p.record_status,p.lifecycle_delete_connection_id,p.lifecycle_recompute_connection_id,p.version,(SELECT json_group_array(field) FROM (SELECT field FROM field_overrides fo WHERE fo.user_id=p.user_id AND fo.entity_kind='purchase' AND fo.entity_id=p.id ORDER BY field LIMIT 21)) AS overrides_json,(SELECT json_group_array(json_object('currency',currency,'total',total,'credit',credit)) FROM (${creditProofSql("p.user_id", "p.id")})) AS credits_json FROM purchases p WHERE p.user_id=? AND (p.id IN (SELECT id FROM candidate_ids) OR EXISTS(SELECT 1 FROM manual_purchase_evidence me JOIN documents md ON md.user_id=me.user_id AND md.id=me.document_id WHERE me.user_id=p.user_id AND me.purchase_id=p.id AND md.content_hash=?)) AND p.record_status!='merged' AND ${guard.sql} ORDER BY p.id LIMIT 101`,
     )
     .bind(
       json(candidates),
@@ -211,6 +217,27 @@ export async function loadLedgerSnapshot(
       .parse(safeJson(purchase.overrides_json))
       .map((field) => (field === "invoiceReference" ? "invoiceNumber" : field)),
   }));
+  // OQ-A: payment state counts current cash plus credit, so load the same
+  // credit proofs corrections and the lifecycle recompute use.
+  const creditProofs: LedgerCreditProof[] = purchaseRows.results.flatMap(
+    (purchase) => {
+      const rows = z
+        .array(
+          z.strictObject({
+            currency: z.unknown(),
+            total: z.unknown(),
+            credit: z.unknown(),
+          }),
+        )
+        .parse(safeJson(purchase.credits_json));
+      if (rows.length > 200)
+        throw new PipelinePersistenceError("PIPELINE_LIMIT");
+      return parseCreditProofRows(rows).map((proof) => ({
+        purchaseId: purchase.id,
+        ...proof,
+      }));
+    },
+  );
   const ids = json(purchases.map((purchase) => purchase.id));
   const rows = await db
     .prepare(
@@ -333,5 +360,12 @@ export async function loadLedgerSnapshot(
     )
     .max(100)
     .parse(safeJson(authorized.manual_evidence));
-  return { observations, purchases, events, decisions, manualEvidence };
+  return {
+    observations,
+    purchases,
+    events,
+    decisions,
+    manualEvidence,
+    creditProofs,
+  };
 }

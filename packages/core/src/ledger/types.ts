@@ -111,6 +111,13 @@ export interface LedgerMatchDecision {
   readonly purchaseId: string;
   readonly decision: "same-purchase" | "different-purchase";
 }
+/** A persisted store-credit settlement proof (corrections creditProofSql rule). */
+export interface LedgerCreditProof {
+  readonly purchaseId: string;
+  readonly currency: string;
+  readonly totalMinor: string;
+  readonly creditMinor: string;
+}
 /** Must be loaded exclusively for the trusted tenant by the persistence port. */
 export interface LedgerSnapshot {
   /** User-associated source documents, without invented model observations or segment IDs. */
@@ -122,6 +129,8 @@ export interface LedgerSnapshot {
   readonly purchases: readonly LedgerPurchase[];
   readonly events: readonly LedgerEvent[];
   readonly decisions: readonly LedgerMatchDecision[];
+  /** Credit proofs of the snapshot purchases; payment state counts cash plus credit. */
+  readonly creditProofs?: readonly LedgerCreditProof[];
 }
 /** Insert-only candidate plan. Existing financial values and overrides stay intact. */
 export interface LedgerPlan {

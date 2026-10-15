@@ -378,7 +378,7 @@ const scenarios: Scenario[] = [
     expected: "unknown",
   },
   {
-    name: "user-confirmed refund is short-circuited by SQL but blocked in TS by refund-exceeds-payment",
+    name: "paid purchase whose only cash is a blocked user-confirmed refund recomputes to unknown",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "paid" },
     entries: [
       {
@@ -404,16 +404,10 @@ const scenarios: Scenario[] = [
         purchaseId: "parity-purchase",
       },
     ],
-    expectAgreement: false,
-    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
-    // 'paid' when current cash is zero because it cannot re-read the earlier
-    // document evidence; corrections/lifecycle recompute from current evidence
-    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
-    // ingestion downgrades purchases paid by earlier evidence whenever a later
-    // document for the same purchase arrives.
-    openQuestion:
-      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
-    correctionsExpected: "unknown",
+    // OQ-A (owner decision 2026-10-15): a stored 'paid' with zero currently
+    // supported cash+credit recomputes to 'unknown' in ingestion, like corrections.
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
     name: "open review on the entry document blocks source cash in corrections; planner has no review input",
@@ -478,19 +472,13 @@ const scenarios: Scenario[] = [
     correctionsExpected: "unknown",
   },
   {
-    name: "already-paid purchase with zero remaining cash stays paid in plan but unknown in settlement",
+    name: "already-paid purchase with zero remaining supported cash recomputes to unknown on every path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "paid" },
     entries: [],
-    expectAgreement: false,
-    // OPEN OQ-A (retained paid, product semantics): plan.ts keeps a stored
-    // 'paid' when current cash is zero because it cannot re-read the earlier
-    // document evidence; corrections/lifecycle recompute from current evidence
-    // and report 'unknown'. Rule 04 leans to 'unknown', but adopting it in
-    // ingestion downgrades purchases paid by earlier evidence whenever a later
-    // document for the same purchase arrives.
-    openQuestion:
-      "OQ-A: with stored payment_state 'paid' and zero currently supported cash/credit, should ingestion keep 'paid' or recompute to 'unknown' like corrections?",
-    correctionsExpected: "unknown",
+    // OQ-A (owner decision 2026-10-15): a stored 'paid' with zero currently
+    // supported cash+credit recomputes to 'unknown' in ingestion, like corrections.
+    expectAgreement: true,
+    expected: "unknown",
   },
 ];
 
@@ -615,9 +603,9 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
 
 /**
  * CORE-6 shares derivation after evidence selection; eligibility (S1) and the
- * recompute's cash rule (C1) are now shared too. Remaining open scenarios:
- * OQ-A retained paid evidence (product decision), OQ-B/OQ-C planner inputs
- * (review and deletion-pending facts need pipeline/ledger-snapshot.ts).
+ * recompute's cash rule (C1) are now shared too. OQ-A is decided (ingestion
+ * recomputes like corrections). Remaining open scenarios: OQ-B/OQ-C planner
+ * inputs (review and deletion-pending facts need pipeline/ledger-snapshot.ts).
  */
 it("CORE-6 intended rule: all three paths agree when settlement evidence agrees", () => {
   for (const scenario of scenarios.filter((item) => item.expectAgreement)) {

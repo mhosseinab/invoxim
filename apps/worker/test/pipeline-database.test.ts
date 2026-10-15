@@ -1412,3 +1412,150 @@ it("T04 LEDGER-01 concurrent commits of two sources planned against the same emp
     ).results.map((row) => row.status),
   ).toEqual(["completed", "leased"]);
 });
+
+// CORE-6 OQ-A/B/C through the real pipeline snapshot, planner and commit:
+// an earlier persisted document `d0` already settled part of purchase
+// `existing`; the current document `d` adds a 4.00 installment.
+async function seedEarlierPayment(options: {
+  storedState: "unknown" | "paid";
+  cashMinor: number | null;
+  record?: Record<string, unknown>;
+  connection?: "c" | "c-old";
+  review?: "document" | "observation";
+}) {
+  const user = "pipeline-a";
+  const connection = options.connection ?? "c";
+  if (connection === "c-old") {
+    await db
+      .prepare(
+        "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,state) VALUES('c-old',?,'mailbox','gmail','old-subject','old@example.invalid','disconnected')",
+      )
+      .bind(user)
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO lifecycle_deletions(user_id,scope,target_id,request_id,deleted_at,journal_ack) VALUES(?,'connection','c-old','oq-c-deletion',0,1)",
+      )
+      .bind(user)
+      .run();
+  }
+  await db
+    .prepare(
+      "INSERT INTO purchases(id,user_id,merchant_raw,merchant_normalized,invoice_ref,order_ref,document_date,total_minor,currency,payment_state) VALUES('existing',?,'Synthetic Store','synthetic store','INV1','ORDER1','2026-10-12',1000,'EUR',?)",
+    )
+    .bind(user, options.storedState)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES('s0',?,?,'message-0',0,1)",
+    )
+    .bind(user, connection)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length,pipeline_index,parser_version,parse_state) VALUES('d0',?,'s0','body',?,'text/plain',100,0,'parser-v1','extracted')",
+    )
+    .bind(user, "e".repeat(64))
+    .run();
+  const base = input();
+  if (base.result.status !== "accepted" || !base.result.records[0])
+    throw new Error("missing synthetic record");
+  const record = {
+    ...base.result.records[0],
+    paymentAmount: "6.00",
+    paymentReference: "PAID0",
+    ...options.record,
+  };
+  await db
+    .prepare(
+      "INSERT INTO observations(id,user_id,document_id,segment_index,extraction_fingerprint,extraction_version,evidence_code,normalized_fields,structured_fields,merchant_key,invoice_ref,order_ref,review_state) VALUES('o0',?,'d0',0,?,1,'explicitly-paid','{\"schemaVersion\":1}',?,'synthetic store','INV1','ORDER1','accepted')",
+    )
+    .bind(
+      user,
+      "f".repeat(64),
+      JSON.stringify({ schemaVersion: 1, documentType: "receipt", record }),
+    )
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO purchase_evidence(user_id,purchase_id,observation_id,relationship) VALUES(?,'existing','o0','document')",
+    )
+    .bind(user)
+    .run();
+  if (options.cashMinor !== null)
+    await db
+      .prepare(
+        "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible) VALUES('e0',?,'existing','o0',?,'payment',?,'EUR','2026-10-12','explicit-event-date',1)",
+      )
+      .bind(
+        user,
+        `cash-reference:${JSON.stringify(["synthetic store", "payment", "PAID0"])}`,
+        options.cashMinor,
+      )
+      .run();
+  if (options.review)
+    await db
+      .prepare(
+        "INSERT INTO review_items(id,user_id,document_id,observation_id,purchase_id,reason,blocking_scope,status,created_at) VALUES('earlier-review',?,'d0',?,NULL,'extraction-review','financial','open',0)",
+      )
+      .bind(user, options.review === "observation" ? "o0" : null)
+      .run();
+  const installment = input();
+  if (
+    installment.result.status !== "accepted" ||
+    !installment.result.records[0]
+  )
+    throw new Error("missing synthetic record");
+  const current: LedgerInput = {
+    ...installment,
+    result: {
+      ...installment.result,
+      records: [{ ...installment.result.records[0], paymentAmount: "4.00" }],
+    },
+  };
+  await db
+    .prepare("UPDATE ai_extractions SET result_json=? WHERE user_id=?")
+    .bind(JSON.stringify(current.result), user)
+    .run();
+  return current;
+}
+async function ingest(current: LedgerInput) {
+  const repo = createPipelineRepository(db, repoOptions());
+  const snapshot = await repo.loadSnapshot(lease(), current);
+  if (!snapshot) throw new Error("missing synthetic snapshot");
+  const plan = planLedgerIngestion(current, snapshot);
+  expect(
+    await repo.commit(lease(), {
+      input: current,
+      plan,
+      nextDocumentIndex: null,
+    }),
+  ).toBe("committed");
+  expect(plan.events.map((event) => event.amountMinor)).toEqual([400]);
+  return db
+    .prepare(
+      "SELECT payment_state FROM purchases WHERE user_id='pipeline-a' AND id='existing'",
+    )
+    .first<string>("payment_state");
+}
+it("CORE-6 OQ-A pipeline: a persisted store-credit proof plus new cash keeps the purchase paid", async () => {
+  const current = await seedEarlierPayment({
+    storedState: "paid",
+    cashMinor: null,
+    record: {
+      paymentMethodHint: "store-credit",
+      paymentAmount: null,
+      storeCreditAmount: "10.00",
+      paymentReference: null,
+    },
+  });
+  expect(await ingest(current)).toBe("paid");
+});
+it("CORE-6 OQ-A pipeline: stored 'paid' without current cash/credit support is recomputed from the new cash", async () => {
+  const current = await seedEarlierPayment({
+    storedState: "paid",
+    cashMinor: null,
+    record: { paymentEvidence: "unknown", paymentAmount: null },
+  });
+  expect(await ingest(current)).toBe("partially_paid");
+});

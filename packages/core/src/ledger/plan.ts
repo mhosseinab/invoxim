@@ -1,8 +1,8 @@
 import { calendarDate } from "@invoxim/contracts";
 import type { AiMissingField, PersistedAiRecord } from "../ai/types";
 import { validatePersistableAiResult } from "../ai/validation";
+import { evaluateCorrectionSettlement } from "../corrections/settlement";
 import { parseMoney } from "../money";
-import { derivePaymentState } from "./payment-state";
 import type {
   LedgerEvent,
   LedgerInput,
@@ -462,30 +462,31 @@ function projectPaymentStates(plan: MutablePlan, snapshot: LedgerSnapshot) {
         );
       });
     if (!involved.has(purchase.id) && !fullSettlement) continue;
-    const paid = events
-      .filter(
-        (event) =>
-          event.purchaseId === purchase.id &&
-          event.kind === "payment" &&
-          event.eligible &&
-          event.currency === purchase.currency,
-      )
-      .reduce((sum, event) => sum + BigInt(event.amountMinor), 0n);
+    // OQ-A (owner decision): recompute from currently supported cash and
+    // credit with the corrections rule; a stored 'paid' is not retained.
     const paymentState = purchase.overriddenFields.includes("paymentState")
       ? purchase.paymentState
-      : derivePaymentState({
-          totalMinor: BigInt(totalMinor),
-          settledMinor: paid,
-          // Ingestion retains earlier document settlement evidence. Corrections
-          // recompute from current cash/credit; changing this needs a product
-          // decision (OQ-A in test/payment-state-parity.test.ts).
-          fullSettlement:
-            fullSettlement ||
-            (purchase.paymentState === "paid" && !correctedSettlement),
-          zeroPaymentState: correctedSettlement
-            ? "unknown"
-            : purchase.paymentState,
-        });
+      : fullSettlement
+        ? "paid"
+        : evaluateCorrectionSettlement(
+            {
+              currency,
+              totalMinor: String(totalMinor),
+              paymentState: purchase.paymentState,
+            },
+            events
+              .filter((event) => event.purchaseId === purchase.id)
+              .map((event) => ({
+                kind: event.kind,
+                amountMinor: String(event.amountMinor),
+                currency: event.currency,
+                origin: event.origin ?? "source",
+                supported: event.eligible,
+              })),
+            (snapshot.creditProofs ?? []).filter(
+              (proof) => proof.purchaseId === purchase.id,
+            ),
+          ).paymentState;
     const newIndex = plan.purchases.findIndex(
       (item) => item.id === purchase.id,
     );
