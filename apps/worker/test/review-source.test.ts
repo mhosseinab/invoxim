@@ -160,7 +160,7 @@ it("oversized headers and redirects are rejected", async () => {
       "synthetic@example.invalid",
       async () => new Response("x".repeat(16385)),
     ),
-  ).rejects.toThrow("source_unavailable");
+  ).rejects.toMatchObject({ code: "source_unreadable" });
   await expect(
     loadGmailReviewHeaders(
       "api-id",
@@ -204,7 +204,7 @@ it("wrong message metadata cannot identify a review", async () => {
       async () =>
         Response.json({ id: "other-message", payload: { headers: [] } }),
     ),
-  ).rejects.toThrow("source_unavailable");
+  ).rejects.toMatchObject({ code: "source_unreadable" });
 });
 
 it("explicit inspection returns bounded inert attachment metadata, never requests file data", async () => {
@@ -354,4 +354,79 @@ it("accepts unrelated full-message headers beyond the old metadata-only count wi
   expect(result.subject).toBe("Synthetic receipt");
   expect(result.sender).toBe("sender@example.invalid");
   expect(JSON.stringify(result)).not.toContain("PRIVATE UNUSED HEADER");
+});
+
+it.each([
+  [
+    "provider 404",
+    "source_unreadable",
+    async () => new Response(null, { status: 404 }),
+  ],
+  [
+    "provider 401",
+    "source_unreadable",
+    async () => new Response(null, { status: 401 }),
+  ],
+  [
+    "provider 403",
+    "source_unreadable",
+    async () => new Response(null, { status: 403 }),
+  ],
+  [
+    "body over the 64 KiB cap",
+    "source_unreadable",
+    async () =>
+      Response.json({
+        id: "api-id",
+        payload: { headers: [] },
+        pad: "x".repeat(65536),
+      }),
+  ],
+  [
+    "schema mismatch",
+    "source_unreadable",
+    async () => Response.json({ id: "api-id", payload: { headers: "x" } }),
+  ],
+  [
+    "provider 500",
+    "source_unavailable",
+    async () => new Response(null, { status: 500 }),
+  ],
+  [
+    "provider 429",
+    "source_unavailable",
+    async () => new Response(null, { status: 429 }),
+  ],
+  [
+    "network failure",
+    "source_unavailable",
+    async () => {
+      throw new TypeError("synthetic network failure");
+    },
+  ],
+] as const)(
+  "Gmail metadata %s is classified %s (permanent vs retryable)",
+  async (_label, code, fetcher) => {
+    await expect(
+      loadGmailReviewHeaders(
+        "api-id",
+        "synthetic",
+        "synthetic@example.invalid",
+        fetcher,
+      ),
+    ).rejects.toMatchObject({ code });
+  },
+);
+
+it("Gmail metadata with an invalid provider message id is permanent and never fetched", async () => {
+  const fetcher = vi.fn(async () => new Response(null, { status: 500 }));
+  await expect(
+    loadGmailReviewHeaders(
+      "bad id/../x",
+      "synthetic",
+      "synthetic@example.invalid",
+      fetcher,
+    ),
+  ).rejects.toMatchObject({ code: "source_unreadable" });
+  expect(fetcher).not.toHaveBeenCalled();
 });

@@ -1,7 +1,12 @@
 import { type PurchaseReview, reviewSourceSchema } from "@invoxim/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { copy } from "../copy";
 import { formatLocalDateTime } from "../format";
-import { identityFailure, readPrivateForIdentity } from "./api";
+import {
+  identityFailure,
+  PrivateLoadError,
+  readPrivateForIdentity,
+} from "./api";
 
 type Source = ReturnType<typeof reviewSourceSchema.parse>;
 export function ReviewSource({
@@ -22,6 +27,8 @@ export function ReviewSource({
   const [source, setSource] = useState<Source | null>(initialSource ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // The server marked the failure permanent (retryable:false): no retry offer.
+  const [permanent, setPermanent] = useState(false);
   const controller = useRef<AbortController | null>(null);
   const autoRequested = useRef(false);
   useEffect(() => () => controller.current?.abort(), []);
@@ -52,7 +59,11 @@ export function ReviewSource({
         onReload();
         return;
       }
-      if (!request.signal.aborted)
+      if (request.signal.aborted) return;
+      if (failure instanceof PrivateLoadError && failure.retryable === false) {
+        setPermanent(true);
+        setError(copy["review.sourcePermanentlyUnavailable"]);
+      } else
         setError(
           "The source email could not be opened. It may have been deleted, or your inbox may need reconnecting. You can retry without changing this question.",
         );
@@ -126,7 +137,7 @@ export function ReviewSource({
             </p>
           )}
         </>
-      ) : context.available ? (
+      ) : context.available && !permanent ? (
         <button type="button" disabled={loading} onClick={() => void load()}>
           {loading ? "Loading source email…" : "Show source email"}
         </button>

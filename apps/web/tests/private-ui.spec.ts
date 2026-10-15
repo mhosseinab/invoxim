@@ -1408,6 +1408,59 @@ test("UX-PRIVATE-LISTS-01 failed metadata remains distinct and dialog retry repa
   expect(attempts).toBe(2);
 });
 
+test("UX-PRIVATE-LISTS-01 a permanent source failure never offers a retry", async ({
+  page,
+}) => {
+  await fixtures(page);
+  await page.route("**/api/purchase-reviews?*", (route) =>
+    route.fulfill({
+      json: {
+        reviews: [
+          {
+            id: "permanent-source",
+            documentId: "permanent-document",
+            purchaseId: null,
+            sourceMessageId: "permanent-message",
+            reason: "document-review",
+            missingFields: [],
+            sourceContext: {
+              mailboxAddress: "receipts@example.test",
+              receivedAt: 1,
+              provider: "outlook",
+              available: true,
+            },
+          },
+        ],
+        hasMore: false,
+      },
+    }),
+  );
+  await page.route("**/api/review/permanent-source/source", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "source_not_configured",
+          message: "Request unavailable",
+          requestId: "synthetic",
+          retryable: false,
+        },
+      },
+    }),
+  );
+  await page.goto("/needs-attention");
+  const row = page.locator(".private-review");
+  await row.getByRole("button", { name: "Review email", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(
+    "The source email cannot be shown here, and retrying will not change that.",
+  );
+  await expect(dialog).not.toContainText("You can retry");
+  await expect(
+    dialog.getByRole("button", { name: "Show source email" }),
+  ).toHaveCount(0);
+});
+
 test("UX-PRIVATE-LISTS-01 actor change while identifying email never publishes old metadata", async ({
   page,
 }) => {

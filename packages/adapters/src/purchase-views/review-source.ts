@@ -1,5 +1,5 @@
 import { reviewSourceSchema } from "@invoxim/contracts";
-import type { TenantContext } from "@invoxim/core";
+import { DiscoveryError, type TenantContext } from "@invoxim/core";
 import { z } from "zod";
 import type { GmailConfiguration } from "../mailbox/configuration";
 import { createGmailAuthorization } from "../mailbox/gmail";
@@ -12,9 +12,18 @@ import { createMailboxService } from "../mailbox/service";
 import { createCredentialVault } from "../security/vault";
 import { loadOutlookReviewMetadata } from "./outlook-review-metadata";
 
+/**
+ * `source_unavailable` is transient (network, deadline, provider 429/5xx) and
+ * stays retryable. `source_unreadable` is a provider answer a retry cannot
+ * change (message gone, access revoked, response over the cap or off-schema).
+ */
 export class ReviewSourceError extends Error {
   constructor(
-    public readonly code: "not_found" | "source_unavailable" | "source_changed",
+    public readonly code:
+      | "not_found"
+      | "source_unavailable"
+      | "source_unreadable"
+      | "source_changed",
   ) {
     super(code);
   }
@@ -62,7 +71,7 @@ export async function loadGmailReviewHeaders(
   fetcher: typeof fetch = fetch,
 ) {
   if (!/^[a-zA-Z0-9_-]{1,256}$/.test(messageId))
-    throw new ReviewSourceError("source_unavailable");
+    throw new ReviewSourceError("source_unreadable");
   const deadline = Date.now() + 10000;
   const signal = AbortSignal.timeout(10000);
   function assertWithinDeadline() {
@@ -90,7 +99,11 @@ export async function loadGmailReviewHeaders(
   }
   if (!response.ok || !response.body) {
     await response.body?.cancel().catch(() => {});
-    throw new ReviewSourceError("source_unavailable");
+    throw new ReviewSourceError(
+      [401, 403, 404, 410].includes(response.status)
+        ? "source_unreadable"
+        : "source_unavailable",
+    );
   }
   const reader = response.body.getReader();
   const cancel = () => {
@@ -115,10 +128,11 @@ export async function loadGmailReviewHeaders(
         continue;
       }
       size += next.value.byteLength;
-      if (size > 65536) throw new ReviewSourceError("source_unavailable");
+      if (size > 65536) throw new ReviewSourceError("source_unreadable");
       chunks.push(next.value);
     }
-  } catch {
+  } catch (cause) {
+    if (cause instanceof ReviewSourceError) throw cause;
     throw new ReviewSourceError("source_unavailable");
   } finally {
     signal.removeEventListener("abort", cancel);
@@ -138,11 +152,11 @@ export async function loadGmailReviewHeaders(
       new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes),
     );
   } catch {
-    throw new ReviewSourceError("source_unavailable");
+    throw new ReviewSourceError("source_unreadable");
   }
   const result = headersSchema.safeParse(decoded);
   if (!result.success || result.data.id !== messageId)
-    throw new ReviewSourceError("source_unavailable");
+    throw new ReviewSourceError("source_unreadable");
   function header(name: string) {
     const rows = result.success
       ? result.data.payload.headers.filter(
@@ -159,9 +173,9 @@ export async function loadGmailReviewHeaders(
   let partCount = 0;
   function collect(value: unknown, depth: number) {
     if (++partCount > 64 || depth > 8)
-      throw new ReviewSourceError("source_unavailable");
+      throw new ReviewSourceError("source_unreadable");
     const checked = metadataPartSchema.safeParse(value);
-    if (!checked.success) throw new ReviewSourceError("source_unavailable");
+    if (!checked.success) throw new ReviewSourceError("source_unreadable");
     const part = checked.data;
     if (part.filename)
       attachments.push({
@@ -185,6 +199,22 @@ export async function loadGmailReviewHeaders(
       ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(mailboxAddress)}#search/${encodeURIComponent(`rfc822msgid:${identifier}`)}`
       : null,
   };
+}
+/**
+ * Outlook metadata failures a retry cannot change: Graph 404/401/403, or a
+ * response that fails the metadata schema/identity checks. Generic transport
+ * `UNAVAILABLE` (network, deadline, redirect, size) and `RATE_LIMITED` stay
+ * transient because the transport does not distinguish them.
+ */
+function permanentOutlookFailure(cause: unknown): boolean {
+  if (cause instanceof DiscoveryError)
+    return (
+      cause.code === "SOURCE_UNAVAILABLE" || cause.code === "AUTH_REQUIRED"
+    );
+  return (
+    cause instanceof z.ZodError ||
+    (cause instanceof Error && cause.message === "OUTLOOK_REVIEW_METADATA")
+  );
 }
 /** O3: the one open-review→document→source→connection join. Bind order: userId, reviewId. */
 const reviewConnectionJoin =
@@ -296,7 +326,11 @@ export function createReviewSourceReader(
               );
       } catch (cause) {
         if (cause instanceof ReviewSourceError) throw cause;
-        throw new ReviewSourceError("source_unavailable");
+        throw new ReviewSourceError(
+          permanentOutlookFailure(cause)
+            ? "source_unreadable"
+            : "source_unavailable",
+        );
       }
       const after = await source(tenant, id);
       const latestCredentials = await vault.read(
