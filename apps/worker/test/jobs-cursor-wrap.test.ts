@@ -69,7 +69,11 @@ async function tick(at: number) {
   const meter = createInvocationDatabase(env.DB, 40);
   const sent: string[] = [];
   const engine = createJobEngine({
-    store: createJobStore(meter.db, { policy, clock: () => at }),
+    store: createJobStore(meter.db, {
+      processingReview: null,
+      policy,
+      clock: () => at,
+    }),
     queue: {
       async send(body) {
         sent.push(body.jobId);
@@ -137,6 +141,7 @@ it("A page crossing the end returns the remaining workspace and wrapped workspac
   ).run();
   const meter = createInvocationDatabase(env.DB, 40);
   const store = createJobStore(meter.db, {
+    processingReview: null,
     policy: { ...policy, dispatchLimit: 2 },
     clock: () => 1000,
   });

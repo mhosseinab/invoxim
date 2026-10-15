@@ -52,9 +52,10 @@ async function claimed(
   )
     .bind(`j-${name}`, userId, `pc-${name}`, `j-${name}`)
     .run();
-  const lease = await createJobStore(claimDatabase, { policy }).claim(
-    `j-${name}`,
-  );
+  const lease = await createJobStore(claimDatabase, {
+    processingReview: null,
+    policy,
+  }).claim(`j-${name}`);
   if (!lease) throw new Error("Synthetic Outlook lease unavailable");
   return lease;
 }
@@ -297,7 +298,7 @@ it("OUTLOOK-02 processing revision changed while opening credentials stops the n
 it("OUTLOOK-02 claim, credential read, real checkpoints, page commit and settlement share at most forty statements", async () => {
   const meter = createInvocationDatabase(env.DB, 40);
   const lease = await claimed("combined-meter", meter.db);
-  const jobs = createJobStore(meter.db, { policy });
+  const jobs = createJobStore(meter.db, { processingReview: null, policy });
   let requests = 0;
   const coordinator = createOutlookInventoryCoordinator(meter.db, {
     remainingStatements: meter.remainingStatements,

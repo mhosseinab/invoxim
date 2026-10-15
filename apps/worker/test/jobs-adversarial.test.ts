@@ -217,6 +217,7 @@ it("W14: store.manualSync classifies missing, foreign and non-live mailboxes in 
     const { db: measured, count } = statementCounter(db);
     expect(
       await createJobStore(measured, {
+        processingReview: null,
         policy,
         clock: () => instant,
       }).manualSync(ctx, id),
@@ -233,7 +234,7 @@ it("W14: an empty ownership read fails closed instead of reporting eligible", as
     await classifyManualSync(empty, "jobs-a", "connection-jobs-a"),
   ).toEqual({ kind: "not-found" });
   expect(
-    await createJobStore(empty, { policy }).manualSync(
+    await createJobStore(empty, { processingReview: null, policy }).manualSync(
       { userId: "jobs-a", authority: "session" } as TenantContext,
       "connection-jobs-a",
     ),
@@ -250,7 +251,8 @@ const policy: JobPolicy = {
   redeliveryMs: 2000,
 };
 let instant = Date.now();
-const store = () => createJobStore(db, { policy, clock: () => instant });
+const store = () =>
+  createJobStore(db, { processingReview: null, policy, clock: () => instant });
 async function tenant(name: string) {
   await db
     .prepare(
@@ -619,6 +621,7 @@ it("one Cron invocation stays within its D1 query cap and later invocations visi
     const { db: measured, count } = statementCounter(db);
     await createJobRuntime({
       store: createJobStore(measured, {
+        processingReview: null,
         policy: {
           ...policy,
           dispatchLimit: 50,

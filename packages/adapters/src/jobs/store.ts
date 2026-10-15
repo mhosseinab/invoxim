@@ -107,9 +107,16 @@ export function createJobStore(
     clock?: () => number;
     id?: () => string;
     classification?: ReceiptClassificationConfiguration;
-    processingReview?: (
-      metadata: ProcessingReviewMetadata,
-    ) => Promise<string | null>;
+    /**
+     * P7 / PIPE-2: required so every composition states its digest mode.
+     * A resolver gates checkpoint and recovery on the accepted consent
+     * digest. `null` is only for stores that never lease digest-gated work:
+     * the manual-sync route, and the Worker when extraction is unconfigured
+     * (then no mailbox handler can read content, call a model or meter usage).
+     */
+    processingReview:
+      | ((metadata: ProcessingReviewMetadata) => Promise<string | null>)
+      | null;
   },
 ): JobStore {
   const policy = options.policy;

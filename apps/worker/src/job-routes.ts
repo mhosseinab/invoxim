@@ -37,12 +37,13 @@ export function createJobRoutes() {
       // W14: store.manualSync owns the single ownership/eligibility
       // statement. Without jobs configured the same classification still maps
       // a missing mailbox to 404 and a non-live one to 409 before the 503.
+      // Manual sync only schedules, never leases digest-gated work (P7).
       const policy = jobConfiguration(context.env ?? {});
       const result = policy
-        ? await createJobStore(ready.db, { policy }).manualSync(
-            ready.tenant,
-            id.data,
-          )
+        ? await createJobStore(ready.db, {
+            policy,
+            processingReview: null,
+          }).manualSync(ready.tenant, id.data)
         : await classifyManualSync(ready.db, ready.tenant.userId, id.data);
       if (result.kind === "not-found") return apiError(404, "not_found");
       if (result.kind === "review-required")

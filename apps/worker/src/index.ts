@@ -196,7 +196,9 @@ function configuredJobs(
   return createJobRuntime({
     store: createJobStore(database.db, {
       policy,
-      ...(ai ? { processingReview: createProcessingReviewResolver(ai) } : {}),
+      // P7: without an extraction AI no mailbox handler reaches digest-gated
+      // work (jobs-processing-review-entry.test.ts), so no review is needed.
+      processingReview: ai ? createProcessingReviewResolver(ai) : null,
       ...(ai?.classification ? { classification: ai.classification } : {}),
     }),
     ...(handler ? { handler } : {}),

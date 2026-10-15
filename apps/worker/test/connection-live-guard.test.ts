@@ -93,7 +93,7 @@ it("P2: a mailbox connection without stored credentials is not live for claim", 
     credentials: false,
     jobId: "job-nocred",
   });
-  const store = createJobStore(db, { policy, clock });
+  const store = createJobStore(db, { processingReview: null, policy, clock });
   // The store live guard must require credential_ciphertext, matching
   // pipeline/repository-guards. Without it the job would run unauthenticated.
   expect(await store.claim("job-nocred")).toBeNull();
@@ -108,7 +108,7 @@ it("P2: a non-mailbox connection is never live", async () => {
     kind: "storage",
     jobId: "job-storage",
   });
-  const store = createJobStore(db, { policy, clock });
+  const store = createJobStore(db, { processingReview: null, policy, clock });
   expect(await store.claim("job-storage")).toBeNull();
 });
 

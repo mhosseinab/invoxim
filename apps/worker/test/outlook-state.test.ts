@@ -65,7 +65,10 @@ async function claimed(name: string) {
     .bind(jobId, current.tenant.userId, consentId, jobId)
     .run();
   const meter = createInvocationDatabase(env.DB, 40);
-  const lease = await createJobStore(meter.db, { policy }).claim(jobId);
+  const lease = await createJobStore(meter.db, {
+    processingReview: null,
+    policy,
+  }).claim(jobId);
   if (!lease)
     throw new Error(
       "Positive Outlook inventory fixture must obtain an actual native JobStore lease",

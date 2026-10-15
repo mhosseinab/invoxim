@@ -55,7 +55,11 @@ function batch(messages: ReturnType<typeof delivery>[]) {
 }
 function invocation() {
   const meter = createInvocationDatabase(env.DB, 40);
-  const store = createJobStore(meter.db, { policy, clock: () => at });
+  const store = createJobStore(meter.db, {
+    processingReview: null,
+    policy,
+    clock: () => at,
+  });
   return { meter, store };
 }
 it("configured two independent consumer invocations overlap one workspace while retaining forty statements each and rejecting a third lease", async () => {

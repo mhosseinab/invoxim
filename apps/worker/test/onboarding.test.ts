@@ -274,22 +274,27 @@ it("the existing recovering page enumerates a source between review cutoff and a
       historyId: "998878",
     });
     const meter = createInvocationDatabase(env.DB, 40),
-      store = createJobStore(meter.db, { policy, clock: () => clock }),
+      store = createJobStore(meter.db, {
+        processingReview: null,
+        policy,
+        clock: () => clock,
+      }),
       jobId = `owned-gap-live-${index}`;
     expect(
-      await createJobStore(db, { policy, clock: () => clock }).enqueue(
-        session.tenant,
-        {
-          id: jobId,
-          connectionId: "mailbox-b",
-          consentId: live.consent_id,
-          generation: 1,
-          syncStateId: live.id,
-          type: "sync",
-          dedupeKey: jobId,
-          priority: 0,
-        },
-      ),
+      await createJobStore(db, {
+        processingReview: null,
+        policy,
+        clock: () => clock,
+      }).enqueue(session.tenant, {
+        id: jobId,
+        connectionId: "mailbox-b",
+        consentId: live.consent_id,
+        generation: 1,
+        syncStateId: live.id,
+        type: "sync",
+        dedupeKey: jobId,
+        priority: 0,
+      }),
     ).toBe(true);
     const lease = await store.claim(jobId);
     if (!lease) throw new Error("Missing native lease");
@@ -609,6 +614,7 @@ it("actual invalid_grant and canceled auth work resume after same-subject reconn
     .first<string>("id");
   if (!jobId) throw new Error("Missing actual unfinished job");
   const oldLease = await createJobStore(db, {
+    processingReview: null,
     policy,
     clock: () => now,
   }).claim(jobId);
@@ -650,7 +656,11 @@ it("actual invalid_grant and canceled auth work resume after same-subject reconn
     generation: 1,
     scheduling_state: "paused",
   });
-  await createJobStore(db, { policy, clock: () => now + 300001 }).recover();
+  await createJobStore(db, {
+    processingReview: null,
+    policy,
+    clock: () => now + 300001,
+  }).recover();
   expect(
     await db
       .prepare("SELECT status,outcome_code FROM jobs WHERE user_id=? AND id=?")
@@ -666,9 +676,11 @@ it("actual invalid_grant and canceled auth work resume after same-subject reconn
     code: "synthetic-verified-code",
   });
   expect(
-    await createJobStore(db, { policy, clock: () => now + 300002 }).claim(
-      jobId,
-    ),
+    await createJobStore(db, {
+      processingReview: null,
+      policy,
+      clock: () => now + 300002,
+    }).claim(jobId),
   ).toBeNull();
   const usecases = createOnboardingUsecases({
     repository: createOnboardingRepository(db, {
@@ -707,6 +719,7 @@ it("actual invalid_grant and canceled auth work resume after same-subject reconn
   expect(fresh.cutoffAt).toBe(parent.frozen_cutoff);
   expect(
     await createJobStore(db, {
+      processingReview: null,
       policy,
       clock: () => now + 300002,
     }).checkpoint(oldLease),

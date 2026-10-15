@@ -147,6 +147,7 @@ async function runSample(
     const sourceId = `message-${sample.name}`;
     const discoveryMeter = createInvocationDatabase(env.DB, 40),
       discoveryStore = createJobStore(discoveryMeter.db, {
+        processingReview: null,
         policy,
         clock: () => now,
       });
@@ -393,7 +394,11 @@ async function runSample(
         .first<string>("id");
       if (!jobId) throw new Error(`Native pipeline stage ${stage} missing`);
       const meter = createInvocationDatabase(env.DB, 40),
-        store = createJobStore(meter.db, { policy, clock: () => now }),
+        store = createJobStore(meter.db, {
+          processingReview: null,
+          policy,
+          clock: () => now,
+        }),
         lease = await store.claim(jobId);
       if (!lease) throw new Error("Native pipeline claim failed");
       const provider = createAiProviderFactory(meter.db, configuration, {

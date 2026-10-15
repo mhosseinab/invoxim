@@ -65,9 +65,9 @@ async function dispatch(activePolicy = policy, reviewed = false) {
   const meter = createInvocationDatabase(env.DB, activePolicy.queryLimit ?? 40);
   const queued: string[] = [];
   const jobs = createJobStore(meter.db, {
+    processingReview: reviewed ? async () => "a".repeat(64) : null,
     policy: activePolicy,
     clock: () => 1000,
-    ...(reviewed ? { processingReview: async () => "a".repeat(64) } : {}),
   });
   const result = await createJobEngine({
     store: jobs,
@@ -95,7 +95,11 @@ it("Five ready jobs enter the queue in one Cron tick while only one lease can be
   const first = queued[0];
   if (!first) throw new Error("Expected queued job");
   const meter = createInvocationDatabase(env.DB, 40);
-  const store = createJobStore(meter.db, { policy, clock: () => 1000 });
+  const store = createJobStore(meter.db, {
+    processingReview: null,
+    policy,
+    clock: () => 1000,
+  });
   const lease = await store.claim(first);
   if (!lease) throw new Error("First dispatched job did not acquire lease");
   for (const job of queued.slice(1)) expect(await store.claim(job)).toBeNull();
@@ -110,6 +114,7 @@ it("Five ready jobs enter the queue in one Cron tick while only one lease can be
   for (const job of queued.slice(1)) {
     const invocation = createInvocationDatabase(env.DB, 40);
     const currentStore = createJobStore(invocation.db, {
+      processingReview: null,
       policy,
       clock: () => 1000,
     });

@@ -461,6 +461,7 @@ it("AI-05 native job claim, inference reservation/settlement/cache and ACK share
   const d = await document(user, "native", "ready");
   const guarded = createInvocationDatabase(env.DB, 40);
   const jobsStore = createJobStore(guarded.db, {
+    processingReview: null,
     clock: () => at,
     policy: {
       dispatchLimit: 2,
@@ -664,6 +665,7 @@ it.each([
     });
     const guarded = createInvocationDatabase(env.DB, 40);
     const jobStore = createJobStore(guarded.db, {
+      processingReview: null,
       clock: () => at,
       policy: {
         dispatchLimit: 2,

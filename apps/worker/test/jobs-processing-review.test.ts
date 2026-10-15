@@ -152,7 +152,11 @@ it("T17 checkpoint preserves exact tenant, job owner and lease fence before revi
 
 it("T17 internal store without processing resolver retains existing checkpoint compatibility", async () => {
   const { lease } = await leased("job-review-internal");
-  const store = createJobStore(env.DB, { policy, clock: () => now });
+  const store = createJobStore(env.DB, {
+    processingReview: null,
+    policy,
+    clock: () => now,
+  });
   await env.DB.prepare("DELETE FROM ai_settings WHERE user_id=?")
     .bind(lease.context.userId)
     .run();
