@@ -15,6 +15,12 @@ import { stateHash } from "../security/helpers";
 import { createOAuthStateStore } from "../security/oauth-state";
 import type { CredentialCipher } from "../security/types";
 import { createCredentialVault } from "../security/vault";
+import {
+  RECONNECT_CODES,
+  REFRESH_LEASE_MS,
+  REFRESH_MIN_REMAINING_MS,
+  refreshSealedCredential,
+} from "./credentials";
 
 /** Server-composed configuration; account and storage consent remain separate from login/mail. */
 export interface MailboxServiceConfiguration {
@@ -54,6 +60,30 @@ function verifier() {
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
+/**
+ * O7: the one tenant-scoped mailbox connection read for the service and the
+ * local management API. `provider` narrows to one provider; omitted, any
+ * supported mailbox provider matches.
+ */
+function readMailboxConnection(
+  db: D1Database,
+  context: TenantContext,
+  id: string,
+  provider?: "gmail" | "outlook",
+) {
+  return db
+    .prepare(
+      `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND (? IS NULL OR provider=?) AND ${activeProfileSql}`,
+    )
+    .bind(
+      context.userId,
+      id,
+      provider ?? null,
+      provider ?? null,
+      context.userId,
+    )
+    .first<ConnectionRow>();
+}
 function project(row: ConnectionRow) {
   return mailboxConnectionViewSchema.parse({
     id: row.id,
@@ -86,14 +116,8 @@ export function createMailboxService(
   });
   const vault = createCredentialVault(db, configuration.cipher);
   const management = createMailboxManagement(db, configuration.provider);
-  async function row(context: TenantContext, id: string) {
-    return db
-      .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND ${activeProfileSql}`,
-      )
-      .bind(context.userId, id, configuration.provider, context.userId)
-      .first<ConnectionRow>();
-  }
+  const row = (context: TenantContext, id: string) =>
+    readMailboxConnection(db, context, id, configuration.provider);
   async function start(session: MailboxSession, connectionId?: string) {
     requireRecentMailboxSession(session, Date.now());
     await liveMailboxSession(db, session);
@@ -317,102 +341,100 @@ export function createMailboxService(
       snapshot.keyVersion > configuration.cipher.activeVersion
     )
       throw new MailboxError("RECONNECT_REQUIRED");
-    const leaseId = crypto.randomUUID();
+    const current: MailboxCredentials = {
+      accessToken: snapshot.secret.accessToken,
+      expiresAt: snapshot.secret.expiresAt,
+      ...(snapshot.secret.refreshToken
+        ? { refreshToken: snapshot.secret.refreshToken }
+        : {}),
+    };
     const now = Date.now();
-    const lease = await db
-      .prepare(
-        "INSERT INTO mailbox_refresh_leases(user_id,connection_id,lease_id,lease_expires_at,connection_generation,credential_version,fence) SELECT ?,?,?,?,?,?,1 WHERE EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND state='connected' AND generation=? AND credential_version=?) ON CONFLICT(user_id,connection_id) DO UPDATE SET lease_id=excluded.lease_id,lease_expires_at=excluded.lease_expires_at,connection_generation=excluded.connection_generation,credential_version=excluded.credential_version,fence=mailbox_refresh_leases.fence+1 WHERE mailbox_refresh_leases.lease_expires_at<=? AND mailbox_refresh_leases.fence<? RETURNING fence",
-      )
-      .bind(
-        context.userId,
-        id,
-        leaseId,
-        now + 60000,
-        existing.generation,
-        existing.credential_version,
-        context.userId,
-        id,
-        existing.generation,
-        existing.credential_version,
-        now,
-        MAX,
-      )
-      .first<{ fence: number }>();
-    if (!lease) throw new MailboxError("CONFLICT");
     const leaseClause =
       "EXISTS(SELECT 1 FROM mailbox_refresh_leases WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=? AND lease_expires_at>?)";
-    try {
-      const latest = await row(context, id);
-      if (
-        latest?.state !== "connected" ||
-        latest.generation !== existing.generation ||
-        latest.credential_version !== existing.credential_version
-      )
-        throw new MailboxError("CONFLICT");
-      const current: MailboxCredentials = {
-        accessToken: snapshot.secret.accessToken,
-        expiresAt: snapshot.secret.expiresAt,
-        ...(snapshot.secret.refreshToken
-          ? { refreshToken: snapshot.secret.refreshToken }
-          : {}),
-      };
-      const checkpoint = await db
-        .prepare(
-          `SELECT fence FROM mailbox_refresh_leases WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=? AND lease_expires_at>? AND connection_generation=? AND credential_version=? AND EXISTS(SELECT 1 FROM connections WHERE user_id=mailbox_refresh_leases.user_id AND id=mailbox_refresh_leases.connection_id AND state='connected' AND generation=mailbox_refresh_leases.connection_generation AND credential_version=mailbox_refresh_leases.credential_version) AND ${activeProfile("mailbox_refresh_leases")}`,
+    return refreshSealedCredential(db, {
+      table: "mailbox_refresh_leases",
+      userId: context.userId,
+      connectionId: id,
+      acquire: (leaseId) =>
+        db
+          .prepare(
+            "INSERT INTO mailbox_refresh_leases(user_id,connection_id,lease_id,lease_expires_at,connection_generation,credential_version,fence) SELECT ?,?,?,?,?,?,1 WHERE EXISTS(SELECT 1 FROM connections WHERE user_id=? AND id=? AND state='connected' AND generation=? AND credential_version=?) ON CONFLICT(user_id,connection_id) DO UPDATE SET lease_id=excluded.lease_id,lease_expires_at=excluded.lease_expires_at,connection_generation=excluded.connection_generation,credential_version=excluded.credential_version,fence=mailbox_refresh_leases.fence+1 WHERE mailbox_refresh_leases.lease_expires_at<=? AND mailbox_refresh_leases.fence<? RETURNING fence",
+          )
+          .bind(
+            context.userId,
+            id,
+            leaseId,
+            now + REFRESH_LEASE_MS,
+            existing.generation,
+            existing.credential_version,
+            context.userId,
+            id,
+            existing.generation,
+            existing.credential_version,
+            now,
+            MAX,
+          ),
+      conflict: () => new MailboxError("CONFLICT"),
+      exchange: async (lease) => {
+        const latest = await row(context, id);
+        if (
+          latest?.state !== "connected" ||
+          latest.generation !== existing.generation ||
+          latest.credential_version !== existing.credential_version
         )
-        .bind(
-          context.userId,
-          id,
-          leaseId,
-          lease.fence,
-          Date.now() + 45000,
-          existing.generation,
-          existing.credential_version,
-        )
-        .first();
-      if (!checkpoint) throw new MailboxError("CONFLICT");
-      const credentials = await provider.refresh(current, {
-        subject: existing.provider_subject,
-        address: existing.display_address,
-      });
-      const sealed = await configuration.cipher.seal(
-        context,
-        { entityId: id, purpose: "mailbox-credentials" },
-        credentials,
-      );
-      const changed = await db
-        .prepare(
-          `UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND state='connected' AND generation=? AND credential_version=? AND credential_version<? AND credential_key_version<=? AND ${leaseClause} AND ${activeProfileSql} RETURNING ${fields}`,
-        )
-        .bind(
-          sealed,
-          configuration.cipher.activeVersion,
-          context.userId,
-          id,
-          existing.generation,
-          existing.credential_version,
-          MAX,
-          configuration.cipher.activeVersion,
-          context.userId,
-          id,
-          leaseId,
-          lease.fence,
-          Date.now(),
-          context.userId,
-        )
-        .first<ConnectionRow>();
-      if (!changed) throw new MailboxError("CONFLICT");
-      return project(changed);
-    } catch (cause) {
-      if (
-        cause instanceof MailboxError &&
-        [
-          "RECONNECT_REQUIRED",
-          "ACCOUNT_MISMATCH",
-          "MISSING_PERMISSION",
-        ].includes(cause.code)
-      ) {
-        await db
+          throw new MailboxError("CONFLICT");
+        const checkpoint = await db
+          .prepare(
+            `SELECT fence FROM mailbox_refresh_leases WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=? AND lease_expires_at>? AND connection_generation=? AND credential_version=? AND EXISTS(SELECT 1 FROM connections WHERE user_id=mailbox_refresh_leases.user_id AND id=mailbox_refresh_leases.connection_id AND state='connected' AND generation=mailbox_refresh_leases.connection_generation AND credential_version=mailbox_refresh_leases.credential_version) AND ${activeProfile("mailbox_refresh_leases")}`,
+          )
+          .bind(
+            context.userId,
+            id,
+            lease.leaseId,
+            lease.fence,
+            Date.now() + REFRESH_MIN_REMAINING_MS,
+            existing.generation,
+            existing.credential_version,
+          )
+          .first();
+        if (!checkpoint) throw new MailboxError("CONFLICT");
+        const credentials = await provider.refresh(current, {
+          subject: existing.provider_subject,
+          address: existing.display_address,
+        });
+        const sealed = await configuration.cipher.seal(
+          context,
+          { entityId: id, purpose: "mailbox-credentials" },
+          credentials,
+        );
+        const changed = await db
+          .prepare(
+            `UPDATE connections SET credential_ciphertext=?,credential_key_version=?,credential_version=credential_version+1 WHERE user_id=? AND id=? AND state='connected' AND generation=? AND credential_version=? AND credential_version<? AND credential_key_version<=? AND ${leaseClause} AND ${activeProfileSql} RETURNING ${fields}`,
+          )
+          .bind(
+            sealed,
+            configuration.cipher.activeVersion,
+            context.userId,
+            id,
+            existing.generation,
+            existing.credential_version,
+            MAX,
+            configuration.cipher.activeVersion,
+            context.userId,
+            id,
+            lease.leaseId,
+            lease.fence,
+            Date.now(),
+            context.userId,
+          )
+          .first<ConnectionRow>();
+        if (!changed) throw new MailboxError("CONFLICT");
+        return project(changed);
+      },
+      reconnect: (cause) =>
+        cause instanceof MailboxError && RECONNECT_CODES.includes(cause.code),
+      markReconnect: (lease) =>
+        db
           .prepare(
             `UPDATE connections SET state='needs_reconnect',scheduling_state='paused',next_sync_at=NULL WHERE user_id=? AND id=? AND state='connected' AND generation=? AND credential_version=? AND ${leaseClause}`,
           )
@@ -423,21 +445,11 @@ export function createMailboxService(
             existing.credential_version,
             context.userId,
             id,
-            leaseId,
+            lease.leaseId,
             lease.fence,
             Date.now(),
-          )
-          .run();
-      }
-      throw cause;
-    } finally {
-      await db
-        .prepare(
-          "UPDATE mailbox_refresh_leases SET lease_id=NULL,lease_expires_at=0 WHERE user_id=? AND connection_id=? AND lease_id=? AND fence=?",
-        )
-        .bind(context.userId, id, leaseId, lease.fence)
-        .run();
-    }
+          ),
+    });
   }
   return {
     start: (...args: Parameters<typeof start>) => safe(() => start(...args)),
@@ -470,20 +482,8 @@ export function createMailboxManagement(
   db: D1Database,
   provider?: "gmail" | "outlook",
 ) {
-  async function row(context: TenantContext, id: string) {
-    return db
-      .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND (? IS NULL OR provider=?) AND ${activeProfileSql}`,
-      )
-      .bind(
-        context.userId,
-        id,
-        provider ?? null,
-        provider ?? null,
-        context.userId,
-      )
-      .first<ConnectionRow>();
-  }
+  const row = (context: TenantContext, id: string) =>
+    readMailboxConnection(db, context, id, provider);
   async function list(context: TenantContext) {
     const result = await db
       .prepare(

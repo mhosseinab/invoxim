@@ -4,6 +4,7 @@ import type {
 } from "@invoxim/core";
 import { DiscoveryError, MailboxError } from "@invoxim/core";
 import type { GmailConfiguration } from "../mailbox/configuration";
+import { openMailboxCredential, RECONNECT_CODES } from "../mailbox/credentials";
 import { createGmailAuthorization } from "../mailbox/gmail";
 import { createMailboxService } from "../mailbox/service";
 import { activeProfile } from "../pipeline/repository-guards";
@@ -59,46 +60,35 @@ export function createGmailDiscoveryProviderFactory(
         id: input.connectionId,
         generation: input.generation,
       };
-      let snapshot = await vault.read(context, target, expectedVersion);
-      if (
-        !snapshot ||
-        !("accessToken" in snapshot.secret) ||
-        !snapshot.secret.accessToken ||
-        !snapshot.secret.expiresAt
-      )
-        throw new DiscoveryError("AUTH_REQUIRED");
-      if (snapshot.secret.expiresAt <= Date.now() + 30000) {
-        stage = "credential_refresh";
-        if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
-        const refreshed = await mailbox.refresh(
-          context,
-          input.connectionId,
-          input.generation,
-          expectedVersion,
-        );
-        if (
-          reviewed &&
-          (reviewed.credentialVersion >= Number.MAX_SAFE_INTEGER ||
-            refreshed.credentialVersion !== reviewed.credentialVersion + 1)
-        )
-          throw new DiscoveryError("CONFLICT");
-        expectedVersion = reviewed ? refreshed.credentialVersion : undefined;
-        snapshot = await vault.read(context, target, expectedVersion);
-      }
-      if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
-      if (
-        !snapshot ||
-        !("accessToken" in snapshot.secret) ||
-        !snapshot.secret.accessToken ||
-        !snapshot.secret.expiresAt ||
-        snapshot.secret.expiresAt <= Date.now() + 30000
-      )
-        throw new DiscoveryError("AUTH_REQUIRED");
-      if (reviewed) await pin(snapshot.version, reviewed.scopes);
+      const credential = await openMailboxCredential({
+        read: () => vault.read(context, target, expectedVersion),
+        refresh: async () => {
+          stage = "credential_refresh";
+          if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
+          const refreshed = await mailbox.refresh(
+            context,
+            input.connectionId,
+            input.generation,
+            expectedVersion,
+          );
+          if (
+            reviewed &&
+            (reviewed.credentialVersion >= Number.MAX_SAFE_INTEGER ||
+              refreshed.credentialVersion !== reviewed.credentialVersion + 1)
+          )
+            throw new DiscoveryError("CONFLICT");
+          expectedVersion = reviewed ? refreshed.credentialVersion : undefined;
+        },
+        settled: () => {
+          if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
+        },
+        fail: () => new DiscoveryError("AUTH_REQUIRED"),
+      });
+      if (reviewed) await pin(credential.version, reviewed.scopes);
       if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
       return {
-        provider: createGmailDiscovery(snapshot.secret.accessToken),
-        credentialVersion: snapshot.version,
+        provider: createGmailDiscovery(credential.accessToken),
+        credentialVersion: credential.version,
       };
     } catch (cause) {
       console.warn("gmail_preparation_failed", {
@@ -113,14 +103,7 @@ export function createGmailDiscoveryProviderFactory(
       if (cause instanceof DiscoveryError) throw cause;
       if (cause instanceof MailboxError && cause.code === "CONFLICT")
         throw new DiscoveryError("CONFLICT");
-      if (
-        cause instanceof MailboxError &&
-        [
-          "RECONNECT_REQUIRED",
-          "ACCOUNT_MISMATCH",
-          "MISSING_PERMISSION",
-        ].includes(cause.code)
-      )
+      if (cause instanceof MailboxError && RECONNECT_CODES.includes(cause.code))
         throw new DiscoveryError("AUTH_REQUIRED");
       throw new DiscoveryError("UNAVAILABLE");
     }

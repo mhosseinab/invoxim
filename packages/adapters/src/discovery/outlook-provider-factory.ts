@@ -1,13 +1,13 @@
 import type { TenantContext } from "@invoxim/core";
 import { DiscoveryError, MailboxError } from "@invoxim/core";
-import { z } from "zod";
 import {
-  createOutlookAuthorization,
-  validateOutlookReadScopes,
-} from "../mailbox/outlook";
+  openMailboxCredential,
+  RECONNECT_CODES,
+  requireOutlookConnection,
+} from "../mailbox/credentials";
+import { createOutlookAuthorization } from "../mailbox/outlook";
 import type { OutlookConfiguration } from "../mailbox/outlook-configuration";
 import { createMailboxService } from "../mailbox/service";
-import { activeProfileSql } from "../pipeline/repository-guards";
 import { createCredentialVault } from "../security/vault";
 import type { OutlookGraphDiscoveryPort } from "./outlook";
 import { createOutlookGraphDiscovery } from "./outlook";
@@ -36,28 +36,16 @@ export function createOutlookDiscoveryProviderFactory(
       const active = () => {
         if (signal.aborted) throw new DiscoveryError("UNAVAILABLE");
       };
+      const authRequired = () => new DiscoveryError("AUTH_REQUIRED");
       async function requireConnection() {
         active();
-        const row = await db
-          .prepare(
-            `SELECT id,scopes FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider='outlook' AND state='connected' AND generation=? AND ${activeProfileSql}`,
-          )
-          .bind(
-            context.userId,
-            input.connectionId,
-            input.generation,
-            context.userId,
-          )
-          .first<{ id: string; scopes: string }>();
-        active();
-        if (!row) throw new DiscoveryError("AUTH_REQUIRED");
-        let scopes: string[];
-        try {
-          scopes = z.array(z.string()).parse(JSON.parse(row.scopes));
-        } catch {
-          throw new DiscoveryError("AUTH_REQUIRED");
-        }
-        validateOutlookReadScopes(scopes.join(" "), true);
+        await requireOutlookConnection(
+          db,
+          context,
+          input,
+          authRequired,
+          active,
+        );
       }
       try {
         await requireConnection();
@@ -66,31 +54,24 @@ export function createOutlookDiscoveryProviderFactory(
           id: input.connectionId,
           generation: input.generation,
         };
-        let snapshot = await vault.read(context, target);
-        active();
-        if (
-          !snapshot ||
-          !("accessToken" in snapshot.secret) ||
-          !snapshot.secret.accessToken ||
-          !snapshot.secret.expiresAt
-        )
-          throw new DiscoveryError("AUTH_REQUIRED");
-        if (snapshot.secret.expiresAt <= Date.now() + 30000) {
-          await mailbox.refresh(context, input.connectionId, input.generation);
-          active();
-          snapshot = await vault.read(context, target);
-          active();
-        }
-        if (
-          !snapshot ||
-          !("accessToken" in snapshot.secret) ||
-          !snapshot.secret.accessToken ||
-          !snapshot.secret.expiresAt ||
-          snapshot.secret.expiresAt <= Date.now() + 30000
-        )
-          throw new DiscoveryError("AUTH_REQUIRED");
+        const credential = await openMailboxCredential({
+          read: async () => {
+            const snapshot = await vault.read(context, target);
+            active();
+            return snapshot;
+          },
+          refresh: async () => {
+            await mailbox.refresh(
+              context,
+              input.connectionId,
+              input.generation,
+            );
+            active();
+          },
+          fail: authRequired,
+        });
         await requireConnection();
-        return createOutlookGraphDiscovery(snapshot.secret.accessToken, {
+        return createOutlookGraphDiscovery(credential.accessToken, {
           pageSize: 1,
         });
       } catch (cause) {
@@ -98,11 +79,7 @@ export function createOutlookDiscoveryProviderFactory(
         if (cause instanceof DiscoveryError) throw cause;
         if (
           cause instanceof MailboxError &&
-          [
-            "RECONNECT_REQUIRED",
-            "ACCOUNT_MISMATCH",
-            "MISSING_PERMISSION",
-          ].includes(cause.code)
+          RECONNECT_CODES.includes(cause.code)
         )
           throw new DiscoveryError("AUTH_REQUIRED");
         throw new DiscoveryError("UNAVAILABLE");
