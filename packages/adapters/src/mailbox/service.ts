@@ -60,6 +60,30 @@ function verifier() {
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
+/**
+ * O7: the one tenant-scoped mailbox connection read for the service and the
+ * local management API. `provider` narrows to one provider; omitted, any
+ * supported mailbox provider matches.
+ */
+function readMailboxConnection(
+  db: D1Database,
+  context: TenantContext,
+  id: string,
+  provider?: "gmail" | "outlook",
+) {
+  return db
+    .prepare(
+      `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND (? IS NULL OR provider=?) AND ${activeProfileSql}`,
+    )
+    .bind(
+      context.userId,
+      id,
+      provider ?? null,
+      provider ?? null,
+      context.userId,
+    )
+    .first<ConnectionRow>();
+}
 function project(row: ConnectionRow) {
   return mailboxConnectionViewSchema.parse({
     id: row.id,
@@ -92,14 +116,8 @@ export function createMailboxService(
   });
   const vault = createCredentialVault(db, configuration.cipher);
   const management = createMailboxManagement(db, configuration.provider);
-  async function row(context: TenantContext, id: string) {
-    return db
-      .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider=? AND ${activeProfileSql}`,
-      )
-      .bind(context.userId, id, configuration.provider, context.userId)
-      .first<ConnectionRow>();
-  }
+  const row = (context: TenantContext, id: string) =>
+    readMailboxConnection(db, context, id, configuration.provider);
   async function start(session: MailboxSession, connectionId?: string) {
     requireRecentMailboxSession(session, Date.now());
     await liveMailboxSession(db, session);
@@ -464,20 +482,8 @@ export function createMailboxManagement(
   db: D1Database,
   provider?: "gmail" | "outlook",
 ) {
-  async function row(context: TenantContext, id: string) {
-    return db
-      .prepare(
-        `SELECT ${fields} FROM connections WHERE user_id=? AND id=? AND kind='mailbox' AND provider IN('gmail','outlook') AND (? IS NULL OR provider=?) AND ${activeProfileSql}`,
-      )
-      .bind(
-        context.userId,
-        id,
-        provider ?? null,
-        provider ?? null,
-        context.userId,
-      )
-      .first<ConnectionRow>();
-  }
+  const row = (context: TenantContext, id: string) =>
+    readMailboxConnection(db, context, id, provider);
   async function list(context: TenantContext) {
     const result = await db
       .prepare(
