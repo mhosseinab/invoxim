@@ -101,7 +101,7 @@ export async function executeCashConfirm(
       ],
       remaining,
     ),
-    await creditProofs(db, user, row.id),
+    await creditProofs(db, user, row.id, undefined, resolving?.id),
   );
   const allocations = planAllocations(row, settlement, warnings);
   checks.push(...allocationsCheck(user, allocations));

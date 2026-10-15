@@ -14,13 +14,13 @@ import type { correctionTransaction, VersionCheck } from "./transaction";
 export function creditProofSql(
   userRef = "?",
   purchaseRef = "?",
-  options?: { observationIds?: boolean },
+  options?: { observationIds?: boolean; excludeReview?: boolean },
 ): string {
   return `SELECT json_extract(o.structured_fields,'$.record.currency') AS currency,json_extract(o.structured_fields,'$.record.total') AS total,CASE WHEN json_extract(o.structured_fields,'$.record.paymentMethodHint')='store-credit' THEN COALESCE(json_extract(o.structured_fields,'$.record.storeCreditAmount'),json_extract(o.structured_fields,'$.record.paymentAmount')) ELSE json_extract(o.structured_fields,'$.record.storeCreditAmount') END AS credit FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id JOIN documents d ON d.user_id=o.user_id AND d.id=o.document_id JOIN source_messages s ON s.user_id=d.user_id AND s.id=d.source_message_id WHERE pe.user_id=${userRef} AND pe.purchase_id=${purchaseRef}${
     options?.observationIds
       ? " AND pe.observation_id IN(SELECT value FROM json_each(?))"
       : ""
-  } AND o.review_state='accepted' AND o.evidence_code='explicitly-paid' AND json_extract(o.structured_fields,'$.record.paymentEvidence')='explicitly-paid' AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions ld WHERE ld.user_id=s.user_id AND ld.scope='connection' AND ld.target_id=s.connection_id) AND NOT EXISTS(SELECT 1 FROM review_items r WHERE r.user_id=o.user_id AND r.status='open' AND r.blocking_scope='financial' AND r.reason!='payment-allocation-review' AND (r.observation_id=o.id OR (r.observation_id IS NULL AND r.document_id=o.document_id))) ORDER BY o.id LIMIT 201`;
+  } AND o.review_state='accepted' AND o.evidence_code='explicitly-paid' AND json_extract(o.structured_fields,'$.record.paymentEvidence')='explicitly-paid' AND NOT EXISTS(SELECT 1 FROM lifecycle_deletions ld WHERE ld.user_id=s.user_id AND ld.scope='connection' AND ld.target_id=s.connection_id) AND NOT EXISTS(SELECT 1 FROM review_items r WHERE r.user_id=o.user_id AND r.status='open' AND r.blocking_scope='financial' AND r.reason!='payment-allocation-review'${options?.excludeReview ? " AND r.id!=?" : ""} AND (r.observation_id=o.id OR (r.observation_id IS NULL AND r.document_id=o.document_id))) ORDER BY o.id LIMIT 201`;
 }
 
 export async function creditProofs(
@@ -28,15 +28,21 @@ export async function creditProofs(
   user: string,
   purchaseId: string,
   observationIds?: readonly string[],
+  /** Evaluate as if this review were already closed (the resolving command). */
+  excludeReviewId?: string,
 ): Promise<CorrectionCreditProof[]> {
   if (observationIds && observationIds.length > 200)
     throw new CorrectionError("TOO_LARGE");
   const sql = creditProofSql("?", "?", {
     observationIds: observationIds !== undefined,
+    excludeReview: excludeReviewId !== undefined,
   });
-  const args = observationIds
-    ? [user, purchaseId, JSON.stringify(observationIds)]
-    : [user, purchaseId];
+  const args = [
+    user,
+    purchaseId,
+    ...(observationIds ? [JSON.stringify(observationIds)] : []),
+    ...(excludeReviewId !== undefined ? [excludeReviewId] : []),
+  ];
   const result = await db
     .prepare(sql)
     .bind(...args)

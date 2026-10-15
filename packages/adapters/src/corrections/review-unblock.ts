@@ -95,9 +95,12 @@ export async function planReviewUnblock(
     resolved.reason === "payment-allocation-review"
   )
     return none;
+  // Purchases whose cash entries or credit evidence the review is linked to;
+  // `credit` marks an accepted explicitly-paid evidence observation the
+  // review blocks (creditProofSql), so credit-only purchases are recomputed.
   const linked = await db
     .prepare(
-      "SELECT DISTINCT l.purchase_id AS id FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) ORDER BY l.purchase_id LIMIT ?",
+      "SELECT id,MAX(credit) AS credit FROM (SELECT l.purchase_id AS id,0 AS credit FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) UNION ALL SELECT pe.purchase_id,1 FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id WHERE pe.user_id=? AND (o.id=? OR (? IS NULL AND o.document_id=?)) AND o.review_state='accepted' AND o.evidence_code='explicitly-paid') GROUP BY id ORDER BY id LIMIT ?",
     )
     .bind(
       user,
@@ -105,14 +108,18 @@ export async function planReviewUnblock(
       resolved.observation_id,
       resolved.observation_id,
       resolved.document_id,
+      user,
+      resolved.observation_id,
+      resolved.observation_id,
+      resolved.document_id,
       MAX_UNBLOCKED_PURCHASES + 1,
     )
-    .all<{ id: string }>();
+    .all<{ id: string; credit: number }>();
   if (linked.results.length > MAX_UNBLOCKED_PURCHASES)
     throw new CorrectionError("TOO_LARGE");
   const plans: UnblockPlan[] = [];
   const checks: VersionCheck[] = [];
-  for (const { id } of linked.results) {
+  for (const { id, credit } of linked.results) {
     if (id === options.skip) continue;
     const owned = options.owned?.id === id;
     const row =
@@ -128,8 +135,9 @@ export async function planReviewUnblock(
     const all = warnings.map(reviewFact);
     const remainingRows = warnings.filter((item) => item.id !== resolved.id);
     const remaining = remainingRows.map(reviewFact);
-    // Only purchases whose cash support this resolution changes.
+    // Only purchases whose cash or credit support this resolution changes.
     if (
+      credit !== 1 &&
       !entries.some(
         (entry) =>
           !restorationEligibility(entry, all) &&
@@ -150,7 +158,7 @@ export async function planReviewUnblock(
         ),
         remaining,
       ),
-      await creditProofs(db, user, id),
+      await creditProofs(db, user, id, undefined, resolved.id),
     );
     const allocations = planAllocations(row, settlement, remainingRows);
     if (!owned) checks.push(purchaseVersion(user, row, row.version));
