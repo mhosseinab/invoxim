@@ -614,10 +614,10 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
 });
 
 /**
- * CORE-6 shares derivation after evidence selection. The divergence scenarios
- * above remain policy boundaries: eligibility vs restoration, fallback reviews,
- * connection deletion, and retained paid document evidence. Resolving those
- * requires richer planner inputs/product decisions outside this card's write-set.
+ * CORE-6 shares derivation after evidence selection; eligibility (S1) and the
+ * recompute's cash rule (C1) are now shared too. Remaining open scenarios:
+ * OQ-A retained paid evidence (product decision), OQ-B/OQ-C planner inputs
+ * (review and deletion-pending facts need pipeline/ledger-snapshot.ts).
  */
 it("CORE-6 intended rule: all three paths agree when settlement evidence agrees", () => {
   for (const scenario of scenarios.filter((item) => item.expectAgreement)) {
