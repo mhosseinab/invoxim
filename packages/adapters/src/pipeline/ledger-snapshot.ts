@@ -1,6 +1,8 @@
 import { supportedCurrency, validCalendarDate } from "@invoxim/contracts";
 import type {
   JobLease,
+  LedgerCashProof,
+  LedgerCashReview,
   LedgerCreditProof,
   LedgerEvent,
   LedgerInput,
@@ -10,6 +12,7 @@ import type {
 } from "@invoxim/core";
 import {
   ENTRY_MINOR_BOUND,
+  LEDGER_REVIEW_REASONS,
   ledgerEventKey,
   normalizeLedgerMerchant,
   parseMoney,
@@ -71,7 +74,24 @@ type EventRow = {
   date_basis: LedgerEvent["dateBasis"];
   eligible: number;
   version: number;
+  proof_json: string | null;
 };
+const cashProofSchema = z.strictObject({
+  documentId: identifier,
+  evidenceCode: z.string().max(40).nullable(),
+  accepted: z.union([z.literal(0), z.literal(1)]),
+});
+/** Corrections events() facts: no observation means no source proof. */
+function cashProof(encoded: string | null): LedgerCashProof {
+  if (encoded === null)
+    return { documentId: null, evidenceCode: null, accepted: false };
+  const proof = cashProofSchema.parse(safeJson(encoded));
+  return {
+    documentId: proof.documentId,
+    evidenceCode: proof.evidenceCode,
+    accepted: proof.accepted === 1,
+  };
+}
 function originalEventValues(
   encoded: string,
 ): NonNullable<LedgerEvent["sourceValues"]> {
@@ -295,7 +315,7 @@ export async function loadLedgerSnapshot(
           SELECT id FROM ledger_entries WHERE user_id=? AND purchase_id IN (SELECT value FROM json_each(?))
           UNION SELECT id FROM ledger_entries WHERE user_id=? AND observation_id IN (SELECT value FROM json_each(?))
           UNION SELECT id FROM ledger_entries WHERE user_id=? AND business_event_key IN (SELECT value FROM json_each(?))
-        ) SELECT id,business_event_key,purchase_id,observation_id,kind,amount_minor,currency,event_date,date_basis,eligible,version,origin,(SELECT json_group_object(field,json(original_value_json)) FROM field_overrides fo WHERE fo.user_id=ledger_entries.user_id AND fo.entity_kind='entry' AND fo.entity_id=ledger_entries.id) AS original_values_json FROM ledger_entries WHERE user_id=? AND id IN (SELECT id FROM related) AND ${guard.sql} ORDER BY id LIMIT 1001`,
+        ) SELECT id,business_event_key,purchase_id,observation_id,kind,amount_minor,currency,event_date,date_basis,eligible,version,origin,(SELECT json_group_object(field,json(original_value_json)) FROM field_overrides fo WHERE fo.user_id=ledger_entries.user_id AND fo.entity_kind='entry' AND fo.entity_id=ledger_entries.id) AS original_values_json,(SELECT json_object('documentId',o.document_id,'evidenceCode',o.evidence_code,'accepted',o.review_state='accepted') FROM observations o WHERE o.user_id=ledger_entries.user_id AND o.id=ledger_entries.observation_id) AS proof_json FROM ledger_entries WHERE user_id=? AND id IN (SELECT id FROM related) AND ${guard.sql} ORDER BY id LIMIT 1001`,
     )
     .bind(
       lease.context.userId,
@@ -324,11 +344,13 @@ export async function loadLedgerSnapshot(
     dateBasis: event.date_basis,
     eligible: event.eligible === 1,
     version: event.version,
+    cashProof: cashProof(event.proof_json),
   }));
+  const entryIds = json(events.map((event) => event.id));
   // Empty arrays also need a positive authorization check. The source read is cheap and never caches a lease.
   const authorized = await db
     .prepare(
-      `SELECT (SELECT json_group_array(json_object('contentHash',content_hash,'segmentIndex',segment_index,'purchaseId',purchase_id,'decision',decision)) FROM (SELECT content_hash,segment_index,purchase_id,decision FROM ledger_match_decisions WHERE user_id=? AND (content_hash=? OR purchase_id IN (SELECT value FROM json_each(?))) ORDER BY content_hash,segment_index,purchase_id LIMIT 1001)) AS decisions,(SELECT json_group_array(json_object('contentHash',content_hash,'purchaseId',purchase_id)) FROM (SELECT DISTINCT md.content_hash,me.purchase_id FROM manual_purchase_evidence me JOIN documents md ON md.user_id=me.user_id AND md.id=me.document_id JOIN purchases mp ON mp.user_id=me.user_id AND mp.id=me.purchase_id WHERE me.user_id=? AND md.content_hash=? AND mp.record_status!='merged' AND mp.lifecycle_delete_connection_id IS NULL ORDER BY me.purchase_id LIMIT 101)) AS manual_evidence WHERE ${guard.sql}`,
+      `SELECT (SELECT json_group_array(json_object('contentHash',content_hash,'segmentIndex',segment_index,'purchaseId',purchase_id,'decision',decision)) FROM (SELECT content_hash,segment_index,purchase_id,decision FROM ledger_match_decisions WHERE user_id=? AND (content_hash=? OR purchase_id IN (SELECT value FROM json_each(?))) ORDER BY content_hash,segment_index,purchase_id LIMIT 1001)) AS decisions,(SELECT json_group_array(json_object('contentHash',content_hash,'purchaseId',purchase_id)) FROM (SELECT DISTINCT md.content_hash,me.purchase_id FROM manual_purchase_evidence me JOIN documents md ON md.user_id=me.user_id AND md.id=me.document_id JOIN purchases mp ON mp.user_id=me.user_id AND mp.id=me.purchase_id WHERE me.user_id=? AND md.content_hash=? AND mp.record_status!='merged' AND mp.lifecycle_delete_connection_id IS NULL ORDER BY me.purchase_id LIMIT 101)) AS manual_evidence,(SELECT json_group_array(json_object('id',id,'observationId',observation_id,'documentId',document_id,'purchaseId',purchase_id,'reason',reason)) FROM (SELECT r.id,r.observation_id,r.document_id,r.purchase_id,r.reason FROM review_items r WHERE r.user_id=? AND r.status='open' AND r.blocking_scope='financial' AND r.reason!='payment-allocation-review' AND (r.purchase_id IN (SELECT value FROM json_each(?)) OR r.document_id=? OR r.observation_id IN (SELECT observation_id FROM ledger_entries WHERE user_id=r.user_id AND id IN (SELECT value FROM json_each(?))) OR (r.observation_id IS NULL AND r.document_id IN (SELECT o.document_id FROM ledger_entries l JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=r.user_id AND l.id IN (SELECT value FROM json_each(?))))) ORDER BY r.id LIMIT 1001)) AS reviews WHERE ${guard.sql}`,
     )
     .bind(
       lease.context.userId,
@@ -336,9 +358,14 @@ export async function loadLedgerSnapshot(
       ids,
       lease.context.userId,
       input.identity.contentHash,
+      lease.context.userId,
+      ids,
+      input.identity.documentId,
+      entryIds,
+      entryIds,
       ...guard.values,
     )
-    .first<{ decisions: string; manual_evidence: string }>();
+    .first<{ decisions: string; manual_evidence: string; reviews: string }>();
   if (!authorized) return null;
   const decisions = z
     .array(
@@ -360,6 +387,20 @@ export async function loadLedgerSnapshot(
     )
     .max(100)
     .parse(safeJson(authorized.manual_evidence));
+  // OQ-B: the open financial reviews corrections would apply to this cash
+  // (purchase-scoped, entry observation/document, or the current document).
+  const reviews: LedgerCashReview[] = z
+    .array(
+      z.strictObject({
+        id: identifier,
+        observationId: identifier.nullable(),
+        documentId: identifier.nullable(),
+        purchaseId: identifier.nullable(),
+        reason: z.enum(LEDGER_REVIEW_REASONS),
+      }),
+    )
+    .max(1000)
+    .parse(safeJson(authorized.reviews));
   return {
     observations,
     purchases,
@@ -367,5 +408,6 @@ export async function loadLedgerSnapshot(
     decisions,
     manualEvidence,
     creditProofs,
+    reviews,
   };
 }

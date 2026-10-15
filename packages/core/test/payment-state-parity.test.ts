@@ -17,6 +17,7 @@ import type {
   LedgerEvent,
   LedgerInput,
   LedgerPurchase,
+  LedgerReviewReason,
   LedgerSnapshot,
 } from "../src/ledger/types";
 
@@ -257,6 +258,11 @@ function runPlan(scenario: Scenario): PaymentState {
     eligible: entry.eligible,
     version: 1,
     origin: entry.origin,
+    cashProof: {
+      documentId: entry.documentId,
+      evidenceCode: entry.evidenceCode,
+      accepted: entry.accepted,
+    },
   }));
   // Drop the synthetic trigger event: plan receives it from the trigger input.
   const snapshotEvents = events.slice(0, -1);
@@ -266,6 +272,18 @@ function runPlan(scenario: Scenario): PaymentState {
     events: snapshotEvents,
     decisions: [],
     manualEvidence: [{ contentHash: "parity-trigger", purchaseId }],
+    reviews: (scenario.reviews ?? [])
+      .filter(
+        (review) =>
+          review.status === "open" && review.blockingScope === "financial",
+      )
+      .map((review) => ({
+        id: review.id,
+        observationId: review.observationId,
+        documentId: review.documentId,
+        purchaseId: review.purchaseId,
+        reason: review.reason as LedgerReviewReason,
+      })),
   };
   const record: PersistedAiRecord = {
     merchant: "Parity Shop",
@@ -410,7 +428,7 @@ const scenarios: Scenario[] = [
     expected: "unknown",
   },
   {
-    name: "open review on the entry document blocks source cash in corrections; planner has no review input",
+    name: "open review on the entry document blocks source cash on every path",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -436,15 +454,12 @@ const scenarios: Scenario[] = [
         purchaseId: "parity-purchase",
       },
     ],
-    expectAgreement: false,
-    // OPEN OQ-B: plan.ts receives no review facts (LedgerSnapshot has none), so
-    // it cannot honour an open financial review on the entry's document.
-    // Supplying them needs pipeline/ledger-snapshot.ts, outside this write-set.
+    // OQ-B (owner decision 2026-10-15): ingestion excludes cash whose entry's
+    // observation or document has an open financial review, like corrections.
     // (A review with neither observation nor document is unreachable: the
     // review_items CHECK requires document_id unless payment-allocation-review.)
-    openQuestion:
-      "OQ-B: should ingestion honour open financial reviews on the entry's observation/document that block that cash in corrections? Needs review facts in LedgerSnapshot (PIPE lane).",
-    correctionsExpected: "unknown",
+    expectAgreement: true,
+    expected: "unknown",
   },
   {
     name: "cash from a connection pending deletion is unsupported in corrections; planner has no deletion input",
@@ -603,9 +618,9 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
 
 /**
  * CORE-6 shares derivation after evidence selection; eligibility (S1) and the
- * recompute's cash rule (C1) are now shared too. OQ-A is decided (ingestion
- * recomputes like corrections). Remaining open scenarios: OQ-B/OQ-C planner
- * inputs (review and deletion-pending facts need pipeline/ledger-snapshot.ts).
+ * recompute's cash rule (C1) are now shared too. OQ-A (recompute like
+ * corrections) and OQ-B (review facts in LedgerSnapshot) are decided and
+ * implemented. Remaining open scenario: OQ-C (deletion-pending fact).
  */
 it("CORE-6 intended rule: all three paths agree when settlement evidence agrees", () => {
   for (const scenario of scenarios.filter((item) => item.expectAgreement)) {

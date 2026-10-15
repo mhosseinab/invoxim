@@ -73,6 +73,20 @@ export interface LedgerEvent {
     | "user-corrected-date";
   readonly eligible: boolean;
   readonly version: number;
+  /**
+   * Cash-proof facts of the entry's source observation, as corrections load
+   * them: snapshot events carry the persisted facts, planned events this
+   * document's facts.
+   */
+  readonly cashProof: LedgerCashProof;
+}
+export interface LedgerCashProof {
+  /** The source observation's document; null without an observation. */
+  readonly documentId: string | null;
+  /** observations.evidence_code; null without an observation. */
+  readonly evidenceCode: string | null;
+  /** observations.review_state = 'accepted'. */
+  readonly accepted: boolean;
 }
 export const LEDGER_REVIEW_REASONS = [
   "extraction-review",
@@ -111,6 +125,18 @@ export interface LedgerMatchDecision {
   readonly purchaseId: string;
   readonly decision: "same-purchase" | "different-purchase";
 }
+/**
+ * A persisted open financial review that can block cash (corrections rule):
+ * purchase-scoped, or linked through an entry's observation or, without
+ * observation, its document. Never `payment-allocation-review`.
+ */
+export interface LedgerCashReview {
+  readonly id: string;
+  readonly observationId: string | null;
+  readonly documentId: string | null;
+  readonly purchaseId: string | null;
+  readonly reason: LedgerReviewReason;
+}
 /** A persisted store-credit settlement proof (corrections creditProofSql rule). */
 export interface LedgerCreditProof {
   readonly purchaseId: string;
@@ -131,6 +157,8 @@ export interface LedgerSnapshot {
   readonly decisions: readonly LedgerMatchDecision[];
   /** Credit proofs of the snapshot purchases; payment state counts cash plus credit. */
   readonly creditProofs?: readonly LedgerCreditProof[];
+  /** Open financial reviews that can block the snapshot's (and this document's) cash. */
+  readonly reviews?: readonly LedgerCashReview[];
 }
 /** Insert-only candidate plan. Existing financial values and overrides stay intact. */
 export interface LedgerPlan {

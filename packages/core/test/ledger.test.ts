@@ -1046,3 +1046,70 @@ describe("OQ-A ingestion recomputes payment state from current cash and credit",
     ]);
   });
 });
+
+describe("OQ-B ingestion excludes cash blocked by an open financial review", () => {
+  function firstInstallment() {
+    const plan = planLedgerIngestion(
+      input("first-installment", { paymentAmount: "60.00" }),
+      empty(),
+    );
+    const state = apply(empty(), plan);
+    const event = state.events[0];
+    const purchase = state.purchases[0];
+    if (!event?.observationId || !purchase)
+      throw new Error("missing synthetic installment");
+    return { state, event, purchase };
+  }
+  const second = () =>
+    input("second-installment", {
+      paymentAmount: "40.00",
+      paymentReference: "P2",
+    });
+  it("a review on the earlier entry's observation excludes that cash", () => {
+    const { state, event, purchase } = firstInstallment();
+    const plan = planLedgerIngestion(second(), {
+      ...state,
+      reviews: [
+        {
+          id: "earlier-review",
+          observationId: event.observationId,
+          documentId: "first-installment",
+          purchaseId: null,
+          reason: "event-conflict",
+        },
+      ],
+    });
+    expect(plan.paymentStates).toEqual([
+      {
+        purchaseId: purchase.id,
+        expectedVersion: 1,
+        paymentState: "partially_paid",
+      },
+    ]);
+  });
+  it("adversarial: a review on another purchase's observation or document does not exclude it", () => {
+    const { state, purchase } = firstInstallment();
+    const plan = planLedgerIngestion(second(), {
+      ...state,
+      reviews: [
+        {
+          id: "other-observation",
+          observationId: "other-observation",
+          documentId: "first-installment",
+          purchaseId: "other-purchase",
+          reason: "event-conflict",
+        },
+        {
+          id: "other-document",
+          observationId: null,
+          documentId: "other-document",
+          purchaseId: "other-purchase",
+          reason: "extraction-review",
+        },
+      ],
+    });
+    expect(plan.paymentStates).toEqual([
+      { purchaseId: purchase.id, expectedVersion: 1, paymentState: "paid" },
+    ]);
+  });
+});

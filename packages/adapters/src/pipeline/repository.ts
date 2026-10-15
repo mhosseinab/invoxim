@@ -6,7 +6,11 @@ import type {
   LedgerSnapshot,
   PersistableAiResult,
 } from "@invoxim/core";
-import { normalizeLedgerMerchant, parseMoney } from "@invoxim/core";
+import {
+  normalizeLedgerMerchant,
+  observationEvidenceCode,
+  parseMoney,
+} from "@invoxim/core";
 import { z } from "zod";
 import { hashJsonValue } from "../hash";
 import type { ProcessingReviewMetadata } from "../onboarding/processing-readiness";
@@ -535,12 +539,7 @@ export function createPipelineRepository(
       documentId: observation.identity.documentId,
       segment: observation.segmentIndex,
       fingerprint: observation.identity.extractionFingerprint,
-      evidenceCode:
-        observation.record.paymentEvidence === "explicitly-paid"
-          ? "explicitly-paid"
-          : observation.record.refundEvidence === "completed"
-            ? "completed-refund"
-            : "invoice-only",
+      evidenceCode: observationEvidenceCode(observation.record),
       normalized: json({
         schemaVersion: 1,
         merchant: observation.record.merchant,

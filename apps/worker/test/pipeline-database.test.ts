@@ -1422,6 +1422,7 @@ async function seedEarlierPayment(options: {
   record?: Record<string, unknown>;
   connection?: "c" | "c-old";
   review?: "document" | "observation";
+  reviewStatus?: "open" | "resolved";
 }) {
   const user = "pipeline-a";
   const connection = options.connection ?? "c";
@@ -1496,9 +1497,13 @@ async function seedEarlierPayment(options: {
   if (options.review)
     await db
       .prepare(
-        "INSERT INTO review_items(id,user_id,document_id,observation_id,purchase_id,reason,blocking_scope,status,created_at) VALUES('earlier-review',?,'d0',?,NULL,'extraction-review','financial','open',0)",
+        "INSERT INTO review_items(id,user_id,document_id,observation_id,purchase_id,reason,blocking_scope,status,created_at) VALUES('earlier-review',?,'d0',?,NULL,'extraction-review','financial',?,0)",
       )
-      .bind(user, options.review === "observation" ? "o0" : null)
+      .bind(
+        user,
+        options.review === "observation" ? "o0" : null,
+        options.reviewStatus ?? "open",
+      )
       .run();
   const installment = input();
   if (
@@ -1558,4 +1563,25 @@ it("CORE-6 OQ-A pipeline: stored 'paid' without current cash/credit support is r
     record: { paymentEvidence: "unknown", paymentAmount: null },
   });
   expect(await ingest(current)).toBe("partially_paid");
+});
+it.each(["document", "observation"] as const)(
+  "CORE-6 OQ-B pipeline: an open financial review linked only via the earlier entry's %s excludes its cash",
+  async (review) => {
+    const current = await seedEarlierPayment({
+      storedState: "unknown",
+      cashMinor: 600,
+      review,
+    });
+    // 6.00 blocked + 4.00 new of 10.00: not paid.
+    expect(await ingest(current)).toBe("partially_paid");
+  },
+);
+it("CORE-6 OQ-B pipeline adversarial: a resolved review on the earlier document does not exclude its cash", async () => {
+  const current = await seedEarlierPayment({
+    storedState: "unknown",
+    cashMinor: 600,
+    review: "document",
+    reviewStatus: "resolved",
+  });
+  expect(await ingest(current)).toBe("paid");
 });
