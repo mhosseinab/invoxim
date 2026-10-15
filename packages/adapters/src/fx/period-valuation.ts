@@ -55,7 +55,11 @@ export function parseFxEntry(row: OwnedEntry): FxEntry {
 /** Bind a text minor-unit amount to the integer original_minor column. */
 export function minorBinding(value: string): number {
   const minor = Number(value);
-  if (!Number.isSafeInteger(minor) || minor < 0 || BigInt(minor) > ENTRY_MINOR_BOUND)
+  if (
+    !Number.isSafeInteger(minor) ||
+    minor < 0 ||
+    BigInt(minor) > ENTRY_MINOR_BOUND
+  )
     throw new Error("INVALID_FX_INPUT");
   return minor;
 }
