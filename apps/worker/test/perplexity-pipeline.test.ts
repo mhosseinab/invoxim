@@ -345,12 +345,16 @@ it("AI-CLASSIFIER-PROVIDER Perplexity positive decision continues to the selecte
   expect(Math.max(...counts)).toBeLessThanOrEqual(40);
 });
 
-it("AI-CLASSIFIER-PROVIDER Perplexity 429 pauses on budget without financial extraction", async () => {
+it("AI-CLASSIFIER-PROVIDER Perplexity 429 reschedules the job after Retry-After without financial extraction", async () => {
   const fetch = perplexityFetch(
     () => new Response("", { status: 429, headers: { "Retry-After": "5" } }),
   );
   const { pipeline, extract } = service({ perplexityApiKey: KEY });
-  expect(await pipeline.run(lease)).toEqual({ kind: "paused", code: "budget" });
+  expect(await pipeline.run(lease)).toEqual({
+    kind: "retry",
+    code: "transient",
+    retryAfterMs: 5000,
+  });
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(extract).not.toHaveBeenCalled();
 });
@@ -488,15 +492,21 @@ it("AI-CLASSIFIER-PROVIDER 429 is not persisted, releases its reservation and re
       : Response.json(decision(0.02)),
   );
   const { pipeline, extract, counts } = service({ perplexityApiKey: KEY });
-  expect(await pipeline.run(lease)).toEqual({ kind: "paused", code: "budget" });
+  expect(await pipeline.run(lease)).toEqual({
+    kind: "retry",
+    code: "transient",
+    retryAfterMs: 2000,
+  });
   const paused = await classificationState();
   expect(paused.extraction).toEqual([{ result_json: null }]);
   expect(paused.events).toEqual([
     { attempt_number: 1, state: "known", actual_usd_micros: "0" },
   ]);
   expect(paused.reserved).toEqual({ units: 0, micros: 0 });
-  // Inside the Retry-After window nothing is sent.
-  expect(await pipeline.run(lease)).toEqual({ kind: "paused", code: "budget" });
+  // Inside the Retry-After window nothing is sent; the job is rescheduled
+  // for the remaining cooldown.
+  const early = await pipeline.run(lease);
+  expect(early).toMatchObject({ kind: "retry", code: "transient" });
   expect(fetch).toHaveBeenCalledTimes(1);
   const now = Date.now();
   vi.spyOn(Date, "now").mockImplementation(() => now + 5000);
@@ -616,9 +626,8 @@ it.each([
     for (let round = 0; round < 3; round++)
       outcomes.push(await runAt(pipeline, round * 16 * 60 * 1000, round + 1));
     expect(fetch).toHaveBeenCalledTimes(3);
-    if (status === 401)
-      for (const outcome of outcomes)
-        expect(outcome).not.toEqual({ kind: "paused", code: "budget" });
+    for (const outcome of outcomes)
+      expect(outcome).not.toEqual({ kind: "paused", code: "budget" });
     expect(await documentCode()).toEqual({
       parse_state: "needs_review",
       parse_code: code,
@@ -632,7 +641,7 @@ it.each([
   },
 );
 
-it("AI-CLASSIFIER-PROVIDER rejected operator key pauses processing without a per-document outcome or further calls", async () => {
+it("AI-CLASSIFIER-PROVIDER rejected operator key reschedules without a per-document outcome or further calls", async () => {
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
   const fetch = perplexityFetch(() => new Response("", { status: 401 }));
   const { pipeline, extract } = service({ perplexityApiKey: KEY });
@@ -643,8 +652,9 @@ it("AI-CLASSIFIER-PROVIDER rejected operator key pauses processing without a per
     .bind(tenant.userId)
     .first("processing_status");
   expect(await pipeline.run(lease)).toEqual({
-    kind: "paused",
-    code: "handler-unavailable",
+    kind: "retry",
+    code: "transient",
+    retryAfterMs: 15 * 60 * 1000,
   });
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(extract).not.toHaveBeenCalled();
@@ -661,7 +671,7 @@ it("AI-CLASSIFIER-PROVIDER rejected operator key pauses processing without a per
   ).toBe(before);
   // The next document or lease does not call Perplexity with the rejected key.
   const again = await pipeline.run(lease);
-  expect(again.kind).toBe("paused");
+  expect(again).toMatchObject({ kind: "retry", code: "transient" });
   expect(fetch).toHaveBeenCalledTimes(1);
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
@@ -864,4 +874,101 @@ it("AI-CLASSIFIER-PROVIDER classification meter pins the configured provider, no
         config: clef.config,
       }),
     ).toEqual({ status: "stale" });
+});
+
+it("AI-CLASSIFIER-PROVIDER a 429 reschedules the job itself: re-dispatched after Retry-After with no user action, never paused", async () => {
+  const { createJobStore } =
+    await import("../../../packages/adapters/src/jobs/store");
+  const { createJobEngine } = await import("@invoxim/core");
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  let now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+  await db
+    .prepare(
+      "UPDATE jobs SET status='ready',lease_id=NULL,lease_expires_at=NULL,fence=0,retry_count=0,dispatch_at=? WHERE user_id=? AND id=?",
+    )
+    .bind(now, tenant.userId, lease.jobId)
+    .run();
+  let call = 0;
+  const fetch = perplexityFetch(() =>
+    ++call === 1
+      ? new Response("", { status: 429, headers: { "Retry-After": "20" } })
+      : Response.json(decision(0.02)),
+  );
+  const { pipeline } = service({ perplexityApiKey: KEY }, 3);
+  const sent: string[] = [];
+  // One fresh store and engine per invocation, as in the Worker.
+  const invocation = () =>
+    createJobEngine({
+      store: createJobStore(db, {
+        policy: {
+          dispatchLimit: 5,
+          scheduleLimit: 5,
+          tenantConcurrency: 2,
+          globalConcurrency: 2,
+          maxAttempts: 3,
+          leaseMs: 300000,
+          redeliveryMs: 300000,
+          queryLimit: 40,
+        },
+        clock: () => now,
+        processingReview: async (selection) => selection.acceptedDigest,
+      }),
+      queue: {
+        async send(body) {
+          sent.push(body.jobId);
+        },
+      },
+      handler: { run: (current) => pipeline.run(current) },
+      clock: () => now,
+    });
+  const engine = {
+    consume: (body: { schemaVersion: 1; jobId: string }) =>
+      invocation().consume(body),
+    dispatch: () => invocation().dispatch(),
+  };
+  const job = () =>
+    db
+      .prepare(
+        "SELECT status,outcome_code,dispatch_at FROM jobs WHERE user_id=? AND id=?",
+      )
+      .bind(tenant.userId, lease.jobId)
+      .first<{
+        status: string;
+        outcome_code: string | null;
+        dispatch_at: number;
+      }>();
+  // The existing transient-retry contract: the message is not acked, the
+  // durable job waits in retry_wait until the provider's Retry-After.
+  expect(await engine.consume({ schemaVersion: 1, jobId: lease.jobId })).toBe(
+    "retry",
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const waiting = await job();
+  expect(waiting?.status).toBe("retry_wait");
+  expect(waiting?.outcome_code).not.toBe("budget");
+  expect(waiting?.dispatch_at).toBeGreaterThanOrEqual(now + 20000);
+  // Before Retry-After nothing is dispatched and a redelivery cannot claim it.
+  now += 10000;
+  await engine.dispatch();
+  // (Other scheduled work, e.g. an hourly sync, may also be dispatched.)
+  expect(sent.filter((id) => id === lease.jobId)).toEqual([]);
+  expect(await engine.consume({ schemaVersion: 1, jobId: lease.jobId })).toBe(
+    "retry",
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
+  // After Retry-After the scheduler re-dispatches it on its own.
+  now += 15000;
+  await engine.dispatch();
+  expect(sent.filter((id) => id === lease.jobId)).toEqual([lease.jobId]);
+  expect(await engine.consume({ schemaVersion: 1, jobId: lease.jobId })).toBe(
+    "ack",
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect((await job())?.status).toBe("completed");
+  const state = await classificationState();
+  expect(JSON.parse(state.extraction[0]?.result_json ?? "null")).toMatchObject({
+    status: "classified",
+  });
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });

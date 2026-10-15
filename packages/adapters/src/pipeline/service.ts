@@ -385,13 +385,15 @@ export function createPipelineService(
             classification.status === "needs-review" &&
             classification.reason === "uncertain" &&
             classifier.uncertainAction === "extract";
-          // Deferred provider rejections are not document outcomes: a rate
-          // limit waits for its durable Retry-After cooldown; a rejected
-          // operator key makes the classifier unavailable.
+          // Deferred provider rejections are not document outcomes: the job
+          // itself is rescheduled for the provider's cooldown end through the
+          // job store's bounded retry path (never a user-visible budget pause).
           if (classification.status === "deferred")
-            return classification.reason === "invalid-key"
-              ? handlerUnavailable
-              : budgetPaused;
+            return {
+              kind: "retry",
+              code: "transient",
+              retryAfterMs: classification.retryAfterMs,
+            };
           if (
             classification.status !== "classified" &&
             !verifyFinancialDocument
