@@ -575,3 +575,153 @@ it("AI-CLASSIFIER-PROVIDER rejected operator key pauses processing without a per
   expect(fetch).toHaveBeenCalledTimes(1);
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
+
+it("AI-CLASSIFIER-PROVIDER consent accepted under Clef is refused after switching to Perplexity, before any call", async () => {
+  const { aiConfiguration } =
+    await import("../../../packages/adapters/src/ai/configuration");
+  const { createProcessingReviewResolver, createProcessingDiscoveryReadiness } =
+    await import("../../../packages/adapters/src/onboarding/processing-readiness");
+  const { selectedOnboardingConfigurationDigest } =
+    await import("../../../packages/adapters/src/onboarding/configuration");
+  const { createAiProviderFactory } =
+    await import("../../../packages/adapters/src/ai/provider-factory");
+  const registry = [
+    {
+      id: "abacus",
+      endpoint: "https://model.example.invalid/v1/chat/completions",
+      configVersion: "v1",
+      policyVersion: 1,
+      noticeRefs: ["synthetic"],
+      notices: [
+        {
+          id: "synthetic",
+          displayName: "Synthetic financial processor",
+          dataUseSummary: "Synthetic only",
+          retentionSummary: "Synthetic only",
+          privacyUrl: "https://policy.example.invalid",
+        },
+      ],
+      timeoutMs: 1000,
+      maxInputBytes: 24000,
+      maxOutputBytes: 4096,
+      maxOutputTokens: 100,
+      models: [
+        {
+          id: "financial",
+          capabilities: {
+            jsonSchema: false,
+            jsonObject: true,
+            outputLimit: "max_tokens",
+            usage: true,
+            idempotency: false,
+          },
+          pricing: classification.pricing,
+        },
+      ],
+    },
+  ];
+  const common = {
+    AI_ENABLED: "true",
+    AI_HOSTED_DESTINATION: "abacus",
+    AI_HOSTED_MODEL: "financial",
+    AI_HOSTED_KEY: "synthetic-hosted-key",
+    AI_BUDGET_JSON: JSON.stringify(policy),
+    AI_REGISTRY_JSON: JSON.stringify(registry),
+    CREDENTIAL_KEYRING: JSON.stringify({
+      activeVersion: 1,
+      keys: { 1: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+    }),
+  };
+  const run = vi.fn();
+  const clefAi = aiConfiguration({
+    ...common,
+    AI_CLASSIFICATION_JSON: JSON.stringify(clefClassification),
+    AI: { run },
+  });
+  const pplxAi = aiConfiguration({
+    ...common,
+    AI_CLASSIFICATION_JSON: JSON.stringify(classification),
+    AI: { run },
+    PERPLEXITY_API_KEY: KEY,
+  });
+  if (!clefAi || !pplxAi) throw new Error("synthetic configuration missing");
+  const destination = clefAi.destinations[0],
+    model = destination?.models[0];
+  if (!destination || !model) throw new Error("fixture model missing");
+  const clefDigest = await selectedOnboardingConfigurationDigest({
+    mode: "hosted",
+    settingsRevision: 1,
+    destination,
+    model,
+    classification: clefAi.classification,
+  });
+  await db
+    .prepare(
+      "UPDATE processing_consents SET accepted_configuration_digest=? WHERE user_id=?",
+    )
+    .bind(clefDigest, tenant.userId)
+    .run();
+  const selection = {
+    mode: "hosted" as const,
+    settingsRevision: 1,
+    providerId: "abacus",
+    modelId: "financial",
+    configVersion: "v1",
+    policyVersion: 1,
+    acceptedDigest: clefDigest,
+  };
+  // Positive control: the accepted Clef review is valid under Clef.
+  expect(await createProcessingReviewResolver(clefAi)(selection)).toBe(
+    clefDigest,
+  );
+  expect(await createProcessingReviewResolver(pplxAi)(selection)).toBeNull();
+  const discovery = {
+    connectionId: "c",
+    generation: 1,
+    consentId: "consent",
+    disclosureVersion: 1,
+    settingsRevision: 1,
+    queryMode: "archive" as never,
+    processingSelection: selection,
+  };
+  expect(
+    await createProcessingDiscoveryReadiness(clefAi).allow(tenant, discovery),
+  ).toBe(true);
+  expect(
+    await createProcessingDiscoveryReadiness(pplxAi).allow(tenant, discovery),
+  ).toBe(false);
+  // Lease/load: the source-extract work is not loadable under the new digest.
+  expect(
+    await createPipelineRepository(db, {
+      processingDigest: createProcessingReviewResolver(pplxAi),
+    }).load(lease),
+  ).toBeNull();
+  const fetch = vi.spyOn(globalThis, "fetch");
+  const open = vi.fn(async () => {
+    throw new Error("NO_CONTENT_ALLOWED");
+  });
+  const outcome = await createPipelineRuntime({
+    db,
+    content: { open },
+    ai: pplxAi,
+    classificationBinding: { run },
+    perplexityApiKey: KEY,
+    remainingStatements: () => 40,
+  }).run(lease, control);
+  expect(outcome.kind).toBe("paused");
+  // The financial factory also refuses the stale review, so the classifier
+  // factory never receives an authorized selection.
+  await expect(
+    createAiProviderFactory(db, pplxAi, {
+      requireReviewedConfiguration: true,
+    }).open(tenant, {
+      settingsRevision: 1,
+      consentId: "consent",
+      parts: [{ id: "body", text: "Synthetic invoice" }],
+      maxAttempts: 1,
+    }),
+  ).rejects.toThrow();
+  expect(open).not.toHaveBeenCalled();
+  expect(run).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
