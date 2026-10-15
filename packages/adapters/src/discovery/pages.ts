@@ -11,6 +11,7 @@ import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
 import { sourceKey } from "../hash";
 import { activeProfileSql } from "../pipeline/repository-guards";
+import { rateDecision } from "./rate-decision";
 import type { DiscoveryServiceOptions } from "./service";
 import { initialSourceJobAbsentSql, initialSourceJobSql } from "./source-jobs";
 
@@ -359,7 +360,7 @@ export function createDiscoveryPages(
         if (cause.code === "UNAUTHORIZED" || cause.code === "AUTH_REQUIRED")
           return { kind: "paused", code: "auth" };
         if (cause.code === "RATE_LIMITED") {
-          await deferRate(lease, cause.retryAfterMs ?? 30000);
+          await deferRate(lease, cause.retryAfterMs);
           return { kind: "completed" };
         }
       }
@@ -604,7 +605,7 @@ export function createDiscoveryPages(
     guards.charge(statements.length);
     await db.batch(statements);
   }
-  async function deferRate(lease: JobLease, delay: number) {
+  async function deferRate(lease: JobLease, retryAfterMs: number | undefined) {
     guards.charge();
     const state = await db
       .prepare("SELECT * FROM sync_states WHERE user_id=? AND id=?")
@@ -617,8 +618,14 @@ export function createDiscoveryPages(
       consentId: lease.consentId,
       queryMode: state.query_mode,
     });
-    const overCap = delay > 86400000;
-    const paused = state.consecutive_failures >= 4 || overCap;
+    const decision = rateDecision({
+      retryAfterMs,
+      consecutiveFailures: state.consecutive_failures,
+    });
+    const paused = decision.kind === "pause";
+    // An over-day pause records no retry time; a failure-cap pause still
+    // counts the failure through commit's retry delay.
+    const retryDelay = "delayMs" in decision ? decision.delayMs : 0;
     await commit(
       lease,
       state,
@@ -626,7 +633,7 @@ export function createDiscoveryPages(
       [],
       { ...state, stage: paused ? "paused_rate" : state.stage },
       !paused,
-      overCap ? 0 : delay,
+      retryDelay,
       false,
     );
   }

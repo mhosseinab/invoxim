@@ -2,7 +2,10 @@ import type { JobLease, JobOutcome } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import type { OutlookGraphDiscoveryPort } from "./outlook";
 import { createOutlookDeltaRunner } from "./outlook-delta";
-import { createOutlookFolderStore } from "./outlook-state";
+import {
+  createOutlookFolderStore,
+  type OutlookRateContext,
+} from "./outlook-state";
 import { validateOutlookId } from "./outlook-transport";
 
 const excludedAliases = [
@@ -52,11 +55,14 @@ export function createOutlookJobRunner(
           throw new DiscoveryError("UNAVAILABLE");
         return ids;
       };
+      let rate: OutlookRateContext | null = null;
       try {
         if (options.remainingStatements() < 20)
           return { kind: "retry", code: "transient" };
         if (!(await active())) return { kind: "paused", code: "auth" };
-        let next = await store.getNextInventory(lease);
+        let read = await store.readInventory(lease);
+        let next = read.next;
+        rate = read.rate;
         if (next.kind === "stale") return { kind: "paused", code: "auth" };
         if (next.kind === "limit")
           return { kind: "terminal", code: "unsupported" };
@@ -95,7 +101,9 @@ export function createOutlookJobRunner(
         ) {
           if (!(await store.saveExclusions(lease, excludedFolderIds)))
             return { kind: "paused", code: "auth" };
-          next = await store.getNextInventory(lease);
+          read = await store.readInventory(lease);
+          next = read.next;
+          rate = read.rate;
           if (next.kind === "stale") return { kind: "paused", code: "auth" };
           if (next.kind === "limit")
             return { kind: "terminal", code: "unsupported" };
@@ -155,15 +163,15 @@ export function createOutlookJobRunner(
           if (cause.code === "SOURCE_UNAVAILABLE")
             return { kind: "terminal", code: "unsupported" };
           if (cause.code === "RATE_LIMITED") {
-            if (!(await active())) return { kind: "paused", code: "auth" };
-            const longPause =
-              !Number.isFinite(cause.retryAfterMs ?? 30000) ||
-              (cause.retryAfterMs ?? 30000) > 86400000;
-            if (options.remainingStatements() < (longPause ? 5 : 3))
+            if (!(await active()) || !rate)
+              return { kind: "paused", code: "auth" };
+            // One batch whether rateDecision defers or pauses (G4).
+            if (options.remainingStatements() < 3)
               return { kind: "retry", code: "transient" };
             const deferred = await store.deferRate(
               lease,
-              cause.retryAfterMs ?? 30000,
+              cause.retryAfterMs,
+              rate,
             );
             return deferred
               ? { kind: "completed" }

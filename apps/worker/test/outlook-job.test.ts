@@ -1724,3 +1724,165 @@ it("INT-5/G3 Outlook backfill writes folder enumerated/matched/unknown counters 
   ).toEqual({ stage: "discovering_older", discovered_count: 2 });
   expect(parent.executedStatements()).toBeLessThanOrEqual(40);
 });
+
+async function seedPendingInventory(lease: JobLease, nextLink: string) {
+  await env.DB.prepare(
+    "INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id,excluded_folder_ids) VALUES(?,?,?,'root',NULL,1,?,'pending',?,?)",
+  )
+    .bind(
+      lease.context.userId,
+      lease.connectionId,
+      lease.generation,
+      nextLink,
+      crypto.randomUUID(),
+      defaultExcludedFolderIds,
+    )
+    .run();
+}
+
+it("INT-5/G4 consecutive inventory 429s pause rate service at the shared failure cap instead of deferring forever", async () => {
+  let lease = await claimed("g4-inventory-cap", "recent");
+  await seedPendingInventory(
+    lease,
+    "https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=g4-cap",
+  );
+  const outcomes: string[] = [];
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const meter = createInvocationDatabase(env.DB, 40);
+    const runner = createOutlookJobRunner(meter.db, {
+      open: async () =>
+        provider(async () => {
+          throw new DiscoveryError("RATE_LIMITED", 60_000);
+        }),
+      remainingStatements: meter.remainingStatements,
+    });
+    expect(
+      await runner.run(lease, {
+        signal: new AbortController().signal,
+        checkpoint: async () => true,
+      }),
+    ).toEqual({ kind: "completed" });
+    expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+    outcomes.push(
+      (await env.DB.prepare(
+        "SELECT outcome_code FROM jobs WHERE user_id=? AND id=?",
+      )
+        .bind(lease.context.userId, lease.jobId)
+        .first<string>("outcome_code")) ?? "missing",
+    );
+    const continuation = await env.DB.prepare(
+      "SELECT id FROM jobs WHERE user_id=? AND sync_state_id=? AND status='ready' AND id<>?",
+    )
+      .bind(lease.context.userId, lease.syncStateId, lease.jobId)
+      .first<string>("id");
+    if (!continuation) break;
+    await env.DB.prepare(
+      "UPDATE jobs SET dispatch_at=0 WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, continuation)
+      .run();
+    const next = await createJobStore(env.DB, { policy }).claim(continuation);
+    if (!next) throw new Error("Outlook rate continuation lease unavailable");
+    lease = next;
+  }
+  expect(outcomes).toEqual([
+    "rate_deferred",
+    "rate_deferred",
+    "rate_deferred",
+    "rate_deferred",
+    "rate_paused",
+  ]);
+  expect(
+    await env.DB.prepare(
+      "SELECT (SELECT stage FROM sync_states WHERE user_id=?1 AND id='ss-g4-inventory-cap') AS slice,(SELECT stage FROM import_runs WHERE user_id=?1 AND id='run-g4-inventory-cap') AS run,(SELECT COUNT(*) FROM jobs WHERE user_id=?1 AND status='ready') AS ready",
+    )
+      .bind(lease.context.userId)
+      .first(),
+  ).toEqual({ slice: "paused_rate", run: "paused_rate", ready: 0 });
+});
+
+it("INT-5/G4 a folder already at the failure cap pauses on the next 429 without overflowing its counter", async () => {
+  const lease = await claimed("g4-folder-cap");
+  const folderId = "inbox-folder";
+  const stateId = "folder-g4-cap";
+  const prior = `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=g4-cap`;
+  await seedLiveFolder(lease, stateId, folderId, prior);
+  await env.DB.prepare(
+    "UPDATE sync_states SET consecutive_failures=5 WHERE user_id=? AND id=?",
+  )
+    .bind(lease.context.userId, stateId)
+    .run();
+  const meter = createInvocationDatabase(env.DB, 40);
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () => ({
+      ...provider(async () => {
+        throw new Error("Inventory is complete");
+      }),
+      deltaFolder: async () => {
+        throw new DiscoveryError("RATE_LIMITED", 60_000);
+      },
+    }),
+    remainingStatements: meter.remainingStatements,
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,consecutive_failures,history_cursor,retry_at FROM sync_states WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, stateId)
+      .first(),
+  ).toEqual({
+    stage: "paused_rate",
+    consecutive_failures: 5,
+    history_cursor: prior,
+    retry_at: null,
+  });
+  expect(
+    await env.DB.prepare(
+      "SELECT outcome_code FROM jobs WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.jobId)
+      .first("outcome_code"),
+  ).toBe("rate_paused");
+  expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+});
+
+it("INT-5/G4 an over-day inventory Retry-After pauses within the same statement reservation as a short deferral", async () => {
+  const lease = await claimed("g4-long-reservation", "recent");
+  await seedPendingInventory(
+    lease,
+    "https://graph.microsoft.com/v1.0/me/mailFolders?$skiptoken=g4-long",
+  );
+  const meter = createInvocationDatabase(env.DB, 40);
+  let limited = false;
+  const runner = createOutlookJobRunner(meter.db, {
+    open: async () =>
+      provider(async () => {
+        limited = true;
+        throw new DiscoveryError("RATE_LIMITED", 25 * 60 * 60 * 1000);
+      }),
+    // After the 429 only a short deferral's reservation is left.
+    remainingStatements: () =>
+      limited
+        ? Math.min(3, meter.remainingStatements())
+        : meter.remainingStatements(),
+  });
+  expect(
+    await runner.run(lease, {
+      signal: new AbortController().signal,
+      checkpoint: async () => true,
+    }),
+  ).toEqual({ kind: "completed" });
+  expect(
+    await env.DB.prepare(
+      "SELECT outcome_code FROM jobs WHERE user_id=? AND id=?",
+    )
+      .bind(lease.context.userId, lease.jobId)
+      .first("outcome_code"),
+  ).toBe("rate_paused");
+});

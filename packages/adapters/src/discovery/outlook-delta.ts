@@ -8,6 +8,7 @@ import {
   validateOutlookContinuation,
   validateOutlookId,
 } from "./outlook-transport";
+import { rateDecision } from "./rate-decision";
 import { initialSourceJobAbsentSql, initialSourceJobSql } from "./source-jobs";
 
 interface ParentState {
@@ -403,7 +404,7 @@ export function createOutlookDeltaRunner(
     lease: JobLease,
     control: { signal: AbortSignal; checkpoint: () => Promise<boolean> },
     folder: FolderState,
-    delayMs: number,
+    delayMs: number | undefined,
     countFailure = true,
   ): Promise<JobOutcome> {
     if (control.signal.aborted || !(await control.checkpoint()))
@@ -411,14 +412,18 @@ export function createOutlookDeltaRunner(
     if (options.remainingStatements() < 5)
       return { kind: "retry", code: "transient" };
     const now = clock();
-    const delay = Number.isFinite(delayMs) ? Math.max(1000, delayMs) : 86400001;
-    const paused =
-      delay > 86400000 || (countFailure && folder.consecutive_failures >= 4);
-    const retryAt = paused
-      ? null
-      : countFailure
-        ? now + delay
-        : folder.retry_at;
+    const decision = rateDecision({
+      retryAfterMs: delayMs,
+      consecutiveFailures: folder.consecutive_failures,
+      countFailure,
+    });
+    const paused = decision.kind === "pause";
+    const retryAt =
+      decision.kind === "pause"
+        ? null
+        : countFailure
+          ? now + decision.delayMs
+          : folder.retry_at;
     const nonce = crypto.randomUUID();
     const leaseGuard = guard(lease, now);
     const marker =
@@ -433,12 +438,12 @@ export function createOutlookDeltaRunner(
     const statements: D1PreparedStatement[] = [
       db
         .prepare(
-          `UPDATE sync_states SET discovery_version=discovery_version+1,stage=?,retry_at=?,consecutive_failures=consecutive_failures+?,pending_history_id=? WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${leaseGuard.sql}`,
+          `UPDATE sync_states SET discovery_version=discovery_version+1,stage=?,retry_at=?,consecutive_failures=?,pending_history_id=? WHERE user_id=? AND id=? AND connection_id=? AND discovery_version=? AND ${leaseGuard.sql}`,
         )
         .bind(
           paused ? "paused_rate" : folder.stage,
           retryAt,
-          countFailure ? 1 : 0,
+          decision.failures,
           nonce,
           lease.context.userId,
           folder.id,
@@ -596,12 +601,7 @@ export function createOutlookDeltaRunner(
         if (cause instanceof DiscoveryError && cause.code === "HISTORY_EXPIRED")
           return resetExpired(lease, control, folder);
         if (cause instanceof DiscoveryError && cause.code === "RATE_LIMITED")
-          return deferFolderRate(
-            lease,
-            control,
-            folder,
-            cause.retryAfterMs ?? 30000,
-          );
+          return deferFolderRate(lease, control, folder, cause.retryAfterMs);
         throw cause;
       }
       const page = pageSchema.parse(received);
@@ -647,12 +647,7 @@ export function createOutlookDeltaRunner(
           );
         } catch (cause) {
           if (cause instanceof DiscoveryError && cause.code === "RATE_LIMITED")
-            return deferFolderRate(
-              lease,
-              control,
-              folder,
-              cause.retryAfterMs ?? 30000,
-            );
+            return deferFolderRate(lease, control, folder, cause.retryAfterMs);
           throw cause;
         }
         if (value.id !== id) throw new DiscoveryError("UNAVAILABLE");
