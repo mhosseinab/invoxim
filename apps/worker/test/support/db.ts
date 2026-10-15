@@ -25,7 +25,12 @@ const migrations: readonly string[] = [
   m0007,
 ];
 
-const applied = new WeakSet<D1Database>();
+let applied = new WeakSet<D1Database>();
+
+/** Forget which databases have the schema; fresh-d1.ts wipes D1 per test file. */
+export function forgetAppliedSchema(): void {
+  applied = new WeakSet<D1Database>();
+}
 
 function stripComments(sql: string): string {
   return sql

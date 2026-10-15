@@ -24,5 +24,14 @@ export default defineConfig({
       },
     }),
   ],
-  test: { fileParallelism: true },
+  test: {
+    fileParallelism: true,
+    // Files share one workerd runtime per Vitest worker, so the worker module
+    // graph is evaluated once per worker instead of once per file (~7x faster).
+    // test/support/fresh-d1.ts gives every file an empty D1 database and clears
+    // mocks and stubs left by the previous file. A file that vi.mocks an app
+    // module must vi.resetModules() and import the code under test dynamically.
+    isolate: false,
+    setupFiles: ["test/support/fresh-d1.ts"],
+  },
 });

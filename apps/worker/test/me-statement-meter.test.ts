@@ -1,7 +1,6 @@
 import { env } from "cloudflare:workers";
 import type { AuthBindings } from "@invoxim/adapters";
 import { beforeAll, expect, it, vi } from "vitest";
-import { createAuthRoutes } from "../src/auth-routes";
 import { useCurrentSchema } from "./support/db";
 import { statementCounter } from "./support/faults";
 import { seedTenant, signedSession } from "./support/tenant";
@@ -40,11 +39,18 @@ const bindings: AuthBindings = {
   AUTH_ALLOWED_EMAILS: JSON.stringify(["me-meter@example.invalid"]),
 };
 let cookie = "";
+let createAuthRoutes: typeof import("../src/auth-routes").createAuthRoutes;
 beforeAll(async () => {
+  // Test files share a runtime (isolate: false), so the route module may
+  // already be loaded unmocked; reload it so the mock above applies.
+  vi.resetModules();
+  ({ createAuthRoutes } = await import("../src/auth-routes"));
   await useCurrentSchema(db);
   const seeded = await seedTenant(db, { userId: "me-meter" });
   cookie = await signedSession(secret, seeded.sessionToken);
-});
+  // Re-evaluating the route module graph can exceed the default 10 s hook
+  // budget on a loaded host.
+}, 60000);
 
 it("G-40 PATCH /api/me runs guard and update on one shared 40-statement meter", async () => {
   const counted = statementCounter(db);
