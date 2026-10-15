@@ -3,7 +3,10 @@ import type { JobLease, TenantContext } from "@invoxim/core";
 import { expect, it, vi } from "vitest";
 import preset from "../../../config/ai.abacus.production.json";
 import classification from "../../../config/ai.classification.production.json";
-import type { AiBindings } from "../../../packages/adapters/src/ai/configuration";
+import type {
+  AiBindings,
+  AiConfiguration,
+} from "../../../packages/adapters/src/ai/configuration";
 import { aiConfiguration } from "../../../packages/adapters/src/ai/configuration";
 import { createPipelineRuntime } from "../src/pipeline-runtime";
 
@@ -76,7 +79,8 @@ it("production pipeline refuses missing or disabled classification before readin
     attempt: 1,
   };
   for (const ai of [
-    withoutClassifier,
+    // aiConfiguration never yields this shape; the runtime must still fail closed.
+    withoutClassifier as AiConfiguration,
     { ...configured, classification: { ...classifier, enabled: false } },
   ]) {
     const runtime = createPipelineRuntime({
