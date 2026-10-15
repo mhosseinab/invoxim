@@ -651,6 +651,23 @@ it("unblock credit link adversarial: credit from a connection pending deletion o
   expect(await versions(otherUser, "cd")).toEqual([1]);
 });
 
+it("unblock caps: an included, linked purchase the review does not block is neither counted nor bumped", async () => {
+  const session = await owner("unblock-not-blocked");
+  const user = session.tenant.userId;
+  // Four purchases whose cash the review blocks, and a fifth linked through
+  // the same document whose entry has no cash proof (observation still
+  // needs review), so the review does not block it.
+  await evidenceDocument(user, "nb", [
+    ...Array.from({ length: 4 }, () => ({ record: {}, entryMinor: 10000 })),
+    { record: {}, entryMinor: 10000, reviewState: "needs_review" as const },
+  ]);
+  const result = await completeRecord(session, "nb-r", "nb-resolve");
+  expect(result.reviewStatus).toBe("resolved");
+  expect(await versions(user, "nb")).toEqual([2, 2, 2, 2, 1]);
+  expect(await state(user, "nb-0")).toBe("paid");
+  expect(await state(user, "nb-4")).toBe("unknown");
+});
+
 /** A purchase without total, 60.00 supported cash, and a total question on another document. */
 async function missingTotal(user: string, prefix: string, missing: string[]) {
   await purchase(user, prefix, { total: null });
