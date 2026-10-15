@@ -1861,13 +1861,24 @@
         "CLEF-DOCUMENT-ROUTING",
         "AI-CACHE-AUTHORITY"
       ],
-      "localProgressEvidence": [],
+      "localProgressEvidence": [
+        "Implementer scratchpad (outside git, synthetic only): /tmp/claude-0/-home-user-invoxim/d44ec647-8aaa-5316-b313-08c524708243/scratchpad/red1.txt ... red8.txt, verify1.log ... verify4.log",
+        "16542ce refactor: Clef regression 90/90 (6 worker files), clef-eval node 15/15",
+        "dc12bd4 RED perplexity-decider-classifier 8 failed|2 passed (stub) -> GREEN 10/10",
+        "2864b55 RED config/pipeline/disclosure/mandatory 14 failed|9 passed against step-1 code -> GREEN 23/23; clef-eval fail 1 -> 15/15",
+        "pnpm verify on ef0a306: runs 1 and 2 exit 1 (timing flakes outside this change: ai.test.ts AI-06 HTTP-date floor 7198995<7199000; direct-model-native-headroom 20 s timeout; both pass in isolation), run 3 exit 0: worker 2024/2024 in 166 files, core 493/493, contracts 54/54, node tools 63/63, build guard passed, Playwright 122 passed",
+        "Security review fix 1 (1745fff) RED perplexity-pipeline: 429 persisted result_json (expected null) and repeated 429 fetch 1 of 2 -> GREEN 69/69 (perplexity-pipeline, perplexity-decider-classifier, clef-classifier, clef-pipeline); core 493/493",
+        "Security review fix 2 (cc401f1) RED: 401 run returned {kind:'completed'} (expected paused handler-unavailable); transport 401/403 expected zero usage plus cooldown -> GREEN 70/70",
+        "Security review fix 3 (71c2e2d) characterization test; mutation RED (classification removed from digest): resolver returned '19a0da3c...' instead of null -> reverted, GREEN 9/9",
+        "Security review fix 4 (75029d0) RED meter admitted an allowlisted but unconfigured pair: {status:'ready'} expected 'stale' -> GREEN 75/75",
+        "Disclosure follow-up (a4f75ea) RED notice lacked the published API training/ZDR framing -> GREEN 16/16"
+      ],
       "completionEvidence": [],
       "blockedBy": [
         "No live Perplexity Decisions API call: PERPLEXITY_API_KEY not available to the implementer; request acceptance, echoed model, usage, latency and 429 behaviour are proven only against mocked fetch.",
         "pplx-decider calibration unverified: 0.1/0.9 thresholds were tuned on Clef; clef-eval evaluates Clef only.",
         "Operator must set Wrangler secret PERPLEXITY_API_KEY before deploying; every existing processing consent requires renewed Review/Start.",
-        "No independent review recorded yet."
+        "Independent security review (orchestrator-run) found no critical/high; its MEDIUM/LOW/INFO findings are fixed in 1745fff, cc401f1, 71c2e2d, 75029d0, and the disclosure was aligned with Perplexity's Privacy & Security page in a4f75ea; re-review of the fixes is pending."
       ]
     }
   ]
