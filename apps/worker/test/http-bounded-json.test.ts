@@ -213,6 +213,63 @@ it("abort and deadline failures reject as aborted", async () => {
   ).rejects.toMatchObject({ reason: "aborted" });
 });
 
+function stalledBody(): ReadableStream<Uint8Array> {
+  // pull never resolves and cancel never settles: only a raced deadline/abort
+  // can end the read.
+  return new ReadableStream<Uint8Array>({
+    pull() {
+      return new Promise(() => {});
+    },
+    cancel() {
+      return new Promise(() => {});
+    },
+  });
+}
+
+function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("read did not settle")), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+it("a stalled body whose cancel never settles rejects as aborted at the deadline", async () => {
+  const started = Date.now();
+  await expect(
+    within(
+      readJsonResponseBody(new Response(stalledBody()), 1024, {
+        deadline: Date.now() + 50,
+      }),
+      2000,
+    ),
+  ).rejects.toMatchObject({ reason: "aborted" });
+  expect(Date.now() - started).toBeLessThan(2000);
+});
+
+it("a stalled body whose cancel never settles rejects as aborted on signal abort", async () => {
+  const controller = new AbortController();
+  const pending = readJsonResponseBody(new Response(stalledBody()), 1024, {
+    signal: controller.signal,
+    deadline: Date.now() + 60000,
+  });
+  setTimeout(() => controller.abort(), 20);
+  await expect(within(pending, 2000)).rejects.toMatchObject({
+    reason: "aborted",
+  });
+});
+
+it("an already-aborted signal rejects a stalled body without waiting", async () => {
+  await expect(
+    within(
+      readBoundedJson(stalledBody(), 1024, { signal: AbortSignal.abort() }),
+      2000,
+    ),
+  ).rejects.toMatchObject({ reason: "aborted" });
+});
+
 it("readBoundedJson is the shared primitive for request and response reads", async () => {
   await expect(readBoundedJson(jsonStream('{"a":1}'), 1024)).resolves.toEqual({
     a: 1,

@@ -56,7 +56,7 @@ export function createPurchaseRoutes() {
           : provider === "outlook"
             ? outlookConfiguration(c.env)
             : null;
-      if (!configuration) return apiError(503, "source_unavailable");
+      if (!configuration) return apiError(503, "source_not_configured");
       return json(
         await createReviewSourceReader(current.db, configuration).read(
           current.tenant,

@@ -54,7 +54,8 @@
     "privacy.pilot": "Help evaluate the beta with optional, content-free usage events. No receipt values, merchants, email text, or search terms are collected for this measurement.",
     "privacy.pilotDeclined": "Optional usage measurement is off. All product features remain available.",
     "release.unavailable": "This feature is not available in this beta.",
-    "import.reviewNeeded": "Purchase documents were found, but some details need your review. No uncertain payments have been added to spending."
+    "import.reviewNeeded": "Purchase documents were found, but some details need your review. No uncertain payments have been added to spending.",
+    "review.sourcePermanentlyUnavailable": "The source email cannot be shown here, and retrying will not change that. You can still find it in the inbox listed above by its received time."
   },
   "guards": {
     "landing.betaAllowance": "Show only when hosted processing is actually available; place real remaining allowance in authenticated review.",

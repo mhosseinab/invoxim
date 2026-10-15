@@ -827,3 +827,60 @@ it("disconnect after credential reread prevents the pending provider refresh cal
       .first(),
   ).toEqual({ state: "disconnected", credential_ciphertext: null });
 });
+
+it.each([
+  ["token carries another nonce", "attacker-chosen-nonce"],
+  ["token carries no nonce", undefined],
+])(
+  "Gmail authorization-code exchange with nonce '' is rejected (%s)",
+  async (_label, tokenNonce) => {
+    const signed = await signedIdentity("unused", { nonce: tokenNonce });
+    const requests = provider(
+      token({ refresh_token: "synthetic-refresh", id_token: signed.jwt }),
+      {
+        sub: "signed-mailbox-b",
+        email: "signed-mailbox-b@example.invalid",
+        email_verified: true,
+      },
+      200,
+      signed.jwks,
+    );
+    await expect(
+      authorization().exchange({
+        code: "synthetic-code",
+        verifier: "synthetic-verifier",
+        nonce: "",
+        callback: configuration.callback,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_STATE" });
+    // Rejected before the authorization code is redeemed.
+    expect(requests).toEqual([]);
+  },
+);
+
+it("Gmail exchange with the bound nonce accepts the same signed ID token shape", async () => {
+  const signed = await signedIdentity("synthetic-bound-nonce");
+  provider(
+    token({ refresh_token: "synthetic-refresh", id_token: signed.jwt }),
+    {
+      sub: "signed-mailbox-b",
+      email: "signed-mailbox-b@example.invalid",
+      email_verified: true,
+    },
+    200,
+    signed.jwks,
+  );
+  await expect(
+    authorization().exchange({
+      code: "synthetic-code",
+      verifier: "synthetic-verifier",
+      nonce: "synthetic-bound-nonce",
+      callback: configuration.callback,
+    }),
+  ).resolves.toMatchObject({
+    identity: {
+      subject: "signed-mailbox-b",
+      address: "signed-mailbox-b@example.invalid",
+    },
+  });
+});

@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { beforeAll, expect, it } from "vitest";
 import { createAuthRoutes } from "../src/auth-routes";
 import { createFxRoutes } from "../src/fx-routes";
-import { requireTenantContext } from "../src/http/guard";
+import { apiError, requireTenantContext } from "../src/http/guard";
 import { useCurrentSchema } from "./support/db";
 import { seedTenant, signedSession } from "./support/tenant";
 
@@ -95,6 +95,19 @@ it("G3 503 configuration failures are not retryable", async () => {
   expect(body.code).toBe("fx_not_configured");
   expect(body.retryable).toBe(false);
 });
+
+it.each([
+  ["source_not_configured", false],
+  ["source_unreadable", false],
+  ["source_unavailable", true],
+  ["source_changed", true],
+] as const)(
+  "G3 review-source 503 %s has retryable=%s",
+  async (code, retryable) => {
+    const body = errorBody(await apiError(503, code).json());
+    expect(body).toMatchObject({ code, retryable });
+  },
+);
 
 it("G3 auth_not_configured is not retryable", async () => {
   const unconfigured = {

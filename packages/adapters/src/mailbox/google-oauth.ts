@@ -124,12 +124,23 @@ export function createGoogleOAuthClient(options: GoogleOAuthClientOptions) {
     if (!result.success) throw fail("UNAVAILABLE");
     return result.data;
   }
-  /** RS256 only, fixed Google JWKS, exact audience/azp, issued-before-expiry. */
+  /**
+   * RS256 only, fixed Google JWKS, exact audience/azp, issued-before-expiry.
+   * `expectedNonce` is the state-bound nonce for authorization-code exchange
+   * and must be non-empty and equal the token's `nonce` claim; `null` is only
+   * for refresh, whose ID tokens carry no nonce. better-auth skips its own
+   * nonce check for a falsy nonce, so the check is enforced here as well.
+   */
   async function verifyIdToken(
     idToken: string | undefined,
-    nonce?: string,
+    expectedNonce: string | null,
   ): Promise<GoogleIdTokenClaims> {
-    if (!idToken) throw fail("ACCOUNT_MISMATCH");
+    if (
+      !idToken ||
+      (expectedNonce !== null &&
+        (expectedNonce.length === 0 || expectedNonce.length > 256))
+    )
+      throw fail("ACCOUNT_MISMATCH");
     let claims: GoogleIdTokenClaims | undefined;
     let resolverFailure: Error | undefined;
     const verifier = {
@@ -167,6 +178,7 @@ export function createGoogleOAuthClient(options: GoogleOAuthClientOptions) {
           const now = Math.floor(Date.now() / 1000);
           if (
             !result.success ||
+            (expectedNonce !== null && value.nonce !== expectedNonce) ||
             result.data.aud !== clientId ||
             (result.data.azp !== undefined && result.data.azp !== clientId) ||
             result.data.iat > now ||
@@ -179,7 +191,14 @@ export function createGoogleOAuthClient(options: GoogleOAuthClientOptions) {
         },
       },
     };
-    if (!(await verifyProviderIdToken(verifier, idToken, nonce)) || !claims) {
+    if (
+      !(await verifyProviderIdToken(
+        verifier,
+        idToken,
+        expectedNonce ?? undefined,
+      )) ||
+      !claims
+    ) {
       if (resolverFailure) throw resolverFailure;
       throw fail("ACCOUNT_MISMATCH");
     }

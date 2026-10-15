@@ -48,7 +48,25 @@ export async function readBoundedJson(
   const cancelled = () => {
     void reader.cancel().catch(() => undefined);
   };
-  signal?.addEventListener("abort", cancelled, { once: true });
+  // Each read races this promise so a source whose pull never settles (and
+  // whose cancel is ignored) still rejects at the abort or deadline.
+  let reject: (reason: BoundedJsonError) => void = () => undefined;
+  const stopped = new Promise<never>((_, fail) => {
+    reject = fail;
+  });
+  stopped.catch(() => undefined);
+  const stop = () => {
+    cancelled();
+    reject(new BoundedJsonError("aborted"));
+  };
+  signal?.addEventListener("abort", stop, { once: true });
+  const timer =
+    deadline === undefined
+      ? undefined
+      : setTimeout(
+          stop,
+          Math.max(0, Math.min(deadline - Date.now(), 2 ** 31 - 1)),
+        );
   const checkDeadline = () => {
     if (signal?.aborted || (deadline !== undefined && Date.now() >= deadline))
       throw new BoundedJsonError("aborted");
@@ -61,7 +79,7 @@ export async function readBoundedJson(
   try {
     while (true) {
       checkDeadline();
-      const item = await reader.read();
+      const item = await Promise.race([reader.read(), stopped]);
       checkDeadline();
       if (item.done) {
         completed = true;
@@ -97,7 +115,8 @@ export async function readBoundedJson(
       throw new BoundedJsonError("aborted");
     throw new BoundedJsonError("too-large");
   } finally {
-    signal?.removeEventListener("abort", cancelled);
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", stop);
     reader.releaseLock();
   }
 }

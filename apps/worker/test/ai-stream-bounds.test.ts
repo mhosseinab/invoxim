@@ -188,3 +188,27 @@ for (const phase of ["before-read", "after-data", "after-done"] as const) {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 }
+
+it("AI stalled body whose cancel never settles fails as timeout within the destination deadline", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    pull() {
+      return new Promise(() => {});
+    },
+    cancel() {
+      return new Promise(() => {});
+    },
+  });
+  const started = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    call(new Response(body)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("AI read did not settle")),
+        4000,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+  expect(result).toMatchObject({ status: "failed", reason: "timeout" });
+  expect(Date.now() - started).toBeLessThan(4000);
+});

@@ -273,6 +273,7 @@ it.each([
   "wrong-id",
   "missing",
   "revoked",
+  "throttled",
 ] as const)(
   "OUTLOOK-01 %s metadata fails closed without exposing unsolicited data",
   async (failure) => {
@@ -288,6 +289,11 @@ it.each([
         if (failure === "oversized") return new Response("x".repeat(65537));
         if (failure === "missing") return new Response(null, { status: 404 });
         if (failure === "revoked") return new Response(null, { status: 403 });
+        if (failure === "throttled")
+          return new Response(null, {
+            status: 429,
+            headers: { "Retry-After": "1" },
+          });
         if (failure === "wrong-id")
           return Response.json({ id: "other", subject: "private", from: null });
         if (String(input).includes("/attachments?"))
@@ -311,12 +317,24 @@ it.each([
           from: null,
         });
       });
+    // Provider answers that a retry cannot change are permanent; transport
+    // failures that look like network/size trouble stay retryable.
+    const expected = {
+      redirect: "source_unavailable",
+      oversized: "source_unavailable",
+      pagination: "source_unreadable",
+      count: "source_unreadable",
+      "wrong-id": "source_unreadable",
+      missing: "source_unreadable",
+      revoked: "source_unreadable",
+      throttled: "source_unavailable",
+    }[failure];
     await expect(
       createReviewSourceReader(db, f.configuration).read(
         f.current.tenant,
         "review",
       ),
-    ).rejects.toThrow("source_unavailable");
+    ).rejects.toMatchObject({ code: expected });
     expect(network.mock.calls.length).toBeLessThanOrEqual(2);
   },
 );
@@ -373,6 +391,10 @@ it("OUTLOOK-01 actual signed-session Worker source route selects Outlook metadat
     },
   );
   expect(disabled.status).toBe(503);
+  // A missing provider configuration is permanent: clients must not retry it.
+  expect(await disabled.json()).toMatchObject({
+    error: { code: "source_not_configured", retryable: false },
+  });
   expect(network).not.toHaveBeenCalled();
 });
 it.each(["consent", "generation", "credentials", "source"] as const)(
