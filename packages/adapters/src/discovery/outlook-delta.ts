@@ -3,6 +3,7 @@ import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
 import { sourceKey } from "../hash";
 import type { OutlookGraphDiscoveryPort } from "./outlook";
+import { outlookLeaseGuard } from "./outlook-guard";
 import {
   validateOutlookContinuation,
   validateOutlookId,
@@ -59,21 +60,10 @@ function exclusionOwner(lease: JobLease) {
   ];
 }
 function guard(lease: JobLease, now: number) {
-  return {
-    sql: `EXISTS(SELECT 1 FROM jobs j JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN profiles p ON p.user_id=j.user_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id WHERE j.user_id=? AND j.id=? AND j.connection_id=? AND j.consent_id=? AND j.connection_generation=? AND j.sync_state_id=? AND j.status='leased' AND j.lease_id=? AND j.fence=? AND j.lease_expires_at>? AND j.type IN ('discover','sync') AND c.provider='outlook' AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND p.status='active' AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=COALESCE((SELECT a.revision FROM ai_settings a WHERE a.user_id=p.user_id AND a.status='active'),0) AND EXISTS(SELECT 1 FROM json_each(c.scopes) WHERE value='https://graph.microsoft.com/Mail.Read'))`,
-    values: [
-      lease.context.userId,
-      lease.jobId,
-      lease.connectionId,
-      lease.consentId,
-      lease.generation,
-      lease.syncStateId,
-      lease.leaseId,
-      lease.fence,
-      now,
-      now,
-    ],
-  };
+  return outlookLeaseGuard(lease, now, {
+    types: ["discover", "sync"],
+    syncState: true,
+  });
 }
 export function createOutlookDeltaRunner(
   db: D1Database,

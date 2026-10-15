@@ -9,6 +9,7 @@ import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
+import { seedReviewedConsent } from "./outlook-consent-fixture";
 
 installOnboardingQaHooks();
 
@@ -41,11 +42,11 @@ async function claimed(
   )
     .bind(userId)
     .run();
-  await env.DB.prepare(
-    "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,'inventory-mailbox',1,'synthetic','local',0,0,1)",
-  )
-    .bind(`pc-${name}`, userId)
-    .run();
+  await seedReviewedConsent(env.DB, {
+    userId,
+    consentId: `pc-${name}`,
+    connectionId: "inventory-mailbox",
+  });
   await env.DB.prepare(
     "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at) VALUES(?,?,'inventory-mailbox',?,1,'mailbox-backfill',?,'ready',0)",
   )
@@ -274,7 +275,7 @@ it("OUTLOOK-02 processing revision changed while opening credentials stops the n
     remainingStatements: meter.remainingStatements,
     open: async () => {
       await env.DB.prepare(
-        "UPDATE processing_consents SET ai_settings_revision=1 WHERE user_id=? AND id=?",
+        "UPDATE processing_consents SET ai_settings_revision=2 WHERE user_id=? AND id=?",
       )
         .bind(lease.context.userId, lease.consentId)
         .run();

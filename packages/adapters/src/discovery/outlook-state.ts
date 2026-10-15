@@ -1,6 +1,7 @@
 import type { JobLease } from "@invoxim/core";
 import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
+import { outlookLeaseGuard } from "./outlook-guard";
 import {
   validateOutlookContinuation,
   validateOutlookId,
@@ -60,20 +61,9 @@ function parseExcludedIds(value: string | null): string[] | null {
 }
 
 function authorization(lease: JobLease, now: number) {
-  return {
-    sql: `EXISTS(SELECT 1 FROM jobs j JOIN connections c ON c.user_id=j.user_id AND c.id=j.connection_id JOIN profiles p ON p.user_id=j.user_id JOIN processing_consents pc ON pc.user_id=j.user_id AND pc.id=j.consent_id AND pc.connection_id=j.connection_id WHERE j.user_id=? AND j.id=? AND j.connection_id=? AND j.consent_id=? AND j.connection_generation=? AND j.status='leased' AND j.lease_id=? AND j.fence=? AND j.lease_expires_at>? AND j.type IN ('mailbox-backfill','discover','sync') AND c.provider='outlook' AND c.kind='mailbox' AND c.state='connected' AND c.scheduling_state='active' AND c.generation=j.connection_generation AND p.status='active' AND pc.revoked_at IS NULL AND pc.background_authorized=1 AND pc.accepted_at<=? AND pc.ai_settings_revision=COALESCE((SELECT a.revision FROM ai_settings a WHERE a.user_id=p.user_id AND a.status='active'),0) AND EXISTS(SELECT 1 FROM json_each(c.scopes) WHERE value='https://graph.microsoft.com/Mail.Read'))`,
-    values: [
-      lease.context.userId,
-      lease.jobId,
-      lease.connectionId,
-      lease.consentId,
-      lease.generation,
-      lease.leaseId,
-      lease.fence,
-      now,
-      now,
-    ],
-  };
+  return outlookLeaseGuard(lease, now, {
+    types: ["mailbox-backfill", "discover", "sync"],
+  });
 }
 function owner(lease: JobLease) {
   return [lease.context.userId, lease.connectionId, lease.generation];

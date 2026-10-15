@@ -11,6 +11,7 @@ import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
+import { seedReviewedConsent } from "./outlook-consent-fixture";
 import { faultingDatabase } from "./support/faults";
 
 installOnboardingQaHooks();
@@ -52,12 +53,11 @@ async function claimed(name: string) {
     .run();
   const consentId = `pc-${name}`,
     jobId = `j-${name}`;
-  await db
-    .prepare(
-      "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,'inventory-mailbox',1,'synthetic','local',0,0,1)",
-    )
-    .bind(consentId, current.tenant.userId)
-    .run();
+  await seedReviewedConsent(db, {
+    userId: current.tenant.userId,
+    consentId,
+    connectionId: "inventory-mailbox",
+  });
   await db
     .prepare(
       "INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,type,dedupe_key,status,dispatch_at) VALUES(?,?,'inventory-mailbox',?,1,'mailbox-backfill',?,'ready',0)",
@@ -327,7 +327,7 @@ it.each([
   },
   {
     name: "AI-revision",
-    sql: "INSERT INTO ai_settings(user_id,revision) VALUES(?,1)",
+    sql: "UPDATE ai_settings SET revision=revision+1 WHERE user_id=?",
   },
 ])(
   "OUTLOOK-02 stale $name denies inventory reads and writes with zero protected changes",

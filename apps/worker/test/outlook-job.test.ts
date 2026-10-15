@@ -10,6 +10,7 @@ import { createJobStore } from "../../../packages/adapters/src/jobs/store";
 import { OUTLOOK_AUTHORIZATION_SCOPES } from "../../../packages/adapters/src/mailbox/outlook-configuration";
 import { createInvocationDatabase } from "../src/invocation-database";
 import { installOnboardingQaHooks, owner } from "./onboarding-qa-fixture";
+import { seedReviewedConsent } from "./outlook-consent-fixture";
 
 installOnboardingQaHooks();
 
@@ -50,11 +51,11 @@ async function claimed(
   )
     .bind(generation, userId)
     .run();
-  await env.DB.prepare(
-    "INSERT INTO processing_consents(id,user_id,connection_id,disclosure_version,inference_destination,parser_destination,ai_settings_revision,accepted_at,background_authorized) VALUES(?,?,'outlook-mailbox',1,'synthetic','local',0,0,1)",
-  )
-    .bind(`pc-${name}`, userId)
-    .run();
+  await seedReviewedConsent(env.DB, {
+    userId,
+    consentId: `pc-${name}`,
+    connectionId: "outlook-mailbox",
+  });
   await env.DB.prepare(
     "INSERT INTO import_runs(id,user_id,connection_id,consent_id,connection_generation,frozen_start,frozen_cutoff,timezone,request_fingerprint,started_at) VALUES(?,?,'outlook-mailbox',?,?,'2025-10-12T00:00:00.000Z','2026-10-13T00:00:00.000Z','UTC',?,0)",
   )
@@ -1503,3 +1504,121 @@ it("INT-5/G1 rediscovery after reconnect cannot enqueue a second extraction job 
   ).toBe(1);
   expect(meter.executedStatements()).toBeLessThanOrEqual(40);
 });
+
+const reviewedConsentDrift = {
+  "digest-missing":
+    "UPDATE processing_consents SET accepted_configuration_digest=NULL WHERE user_id=?",
+  destination:
+    "UPDATE ai_settings SET provider_id='unreviewed-destination' WHERE user_id=?",
+  disclosure: "UPDATE ai_settings SET consent_version=2 WHERE user_id=?",
+  credential:
+    "UPDATE connections SET credential_ciphertext=NULL,credential_key_version=NULL WHERE user_id=?",
+} as const;
+
+it.each(
+  Object.keys(reviewedConsentDrift) as (keyof typeof reviewedConsentDrift)[],
+)(
+  "INT-5/G2 %s drift before the run stops Outlook discovery before any Graph read",
+  async (drift) => {
+    const lease = await claimed(`g2-before-${drift}`);
+    await seedLiveFolder(lease, `folder-g2-before-${drift}`, "inbox-folder");
+    await env.DB.prepare(reviewedConsentDrift[drift])
+      .bind(lease.context.userId)
+      .run();
+    let reads = 0;
+    const meter = createInvocationDatabase(env.DB, 40);
+    const runner = createOutlookJobRunner(meter.db, {
+      open: async () => ({
+        ...provider(async () => {
+          reads++;
+          return { folders: [] };
+        }),
+        deltaFolder: async () => {
+          reads++;
+          return {
+            ids: [],
+            folderRemovedIds: [],
+            deltaLink:
+              "https://graph.microsoft.com/v1.0/me/mailFolders/inbox-folder/messages/delta?$deltatoken=g2-before",
+          };
+        },
+      }),
+      remainingStatements: meter.remainingStatements,
+    });
+    expect(
+      await runner.run(lease, {
+        signal: new AbortController().signal,
+        checkpoint: async () => true,
+      }),
+    ).toEqual({ kind: "paused", code: "auth" });
+    expect(reads).toBe(0);
+    expect(
+      await env.DB.prepare(
+        "SELECT stage,discovery_version FROM sync_states WHERE user_id=? AND id=?",
+      )
+        .bind(lease.context.userId, `folder-g2-before-${drift}`)
+        .first(),
+    ).toEqual({ stage: "queued", discovery_version: 0 });
+    expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+  },
+);
+
+it.each(
+  Object.keys(reviewedConsentDrift) as (keyof typeof reviewedConsentDrift)[],
+)(
+  "INT-5/G2 %s drift during a Graph delta read cannot stage sources or advance the folder cursor",
+  async (drift) => {
+    const lease = await claimed(`g2-during-${drift}`);
+    const folderId = "inbox-folder";
+    const stateId = `folder-g2-during-${drift}`;
+    await seedLiveFolder(lease, stateId, folderId);
+    const meter = createInvocationDatabase(env.DB, 40);
+    const runner = createOutlookJobRunner(meter.db, {
+      open: async () => ({
+        ...provider(async () => {
+          throw new Error("Inventory is complete");
+        }),
+        deltaFolder: async () => {
+          await env.DB.prepare(reviewedConsentDrift[drift])
+            .bind(lease.context.userId)
+            .run();
+          return {
+            ids: ["g2-message"],
+            folderRemovedIds: [],
+            deltaLink: `https://graph.microsoft.com/v1.0/me/mailFolders/${folderId}/messages/delta?$deltatoken=g2`,
+          };
+        },
+        metadata: async (id) => ({
+          id,
+          parentFolderId: folderId,
+          receivedAtMs: Date.parse("2026-10-12T12:00:00.000Z"),
+          available: true,
+          excluded: false,
+          candidate: "matched",
+        }),
+      }),
+      remainingStatements: meter.remainingStatements,
+    });
+    expect(
+      await runner.run(lease, {
+        signal: new AbortController().signal,
+        checkpoint: async () => true,
+      }),
+    ).not.toEqual({ kind: "completed" });
+    expect(
+      await env.DB.prepare(
+        "SELECT stage,history_cursor,discovery_version FROM sync_states WHERE user_id=? AND id=?",
+      )
+        .bind(lease.context.userId, stateId)
+        .first(),
+    ).toEqual({ stage: "queued", history_cursor: null, discovery_version: 0 });
+    expect(
+      await env.DB.prepare(
+        "SELECT (SELECT COUNT(*) FROM source_messages WHERE user_id=?1) AS sources,(SELECT COUNT(*) FROM jobs WHERE user_id=?1 AND type='source-extract') AS extractions,(SELECT COUNT(*) FROM discovery_seen_refs WHERE user_id=?1) AS refs",
+      )
+        .bind(lease.context.userId)
+        .first(),
+    ).toEqual({ sources: 0, extractions: 0, refs: 0 });
+    expect(meter.executedStatements()).toBeLessThanOrEqual(40);
+  },
+);
