@@ -6,7 +6,8 @@ import { useCurrentSchema } from "./support/db";
 
 const db = env.DB;
 
-// This compatibility case deliberately installs the real pre-Drive schema.
+// Runs on the full current schema. The pre-Drive compatibility case (no
+// archive_settings table yet) lives in historical-upgrade.test.ts.
 beforeAll(async () => {
   await useCurrentSchema(db);
 });

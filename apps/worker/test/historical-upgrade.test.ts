@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
+import { createLoginAuth, loginConfiguration } from "@invoxim/adapters";
 import { beforeAll, expect, it } from "vitest";
 import { cleanupConnection } from "../../../packages/adapters/src/lifecycle/connection-cleanup";
+import worker from "../src/index";
 import { createInvocationDatabase } from "../src/invocation-database";
 import schema from "./baseline-schema.json";
 import migration0 from "./migrations/historical/0001_auth.sql?raw";
@@ -113,8 +115,76 @@ beforeAll(async () => {
   );
   await apply(migrations[13] as string);
   edit01AfterOnboarding = await readEdit01();
-  for (const sql of migrations.slice(14)) await apply(sql);
+  for (const sql of migrations.slice(14, 16)) await apply(sql);
+  // Pre-Drive compatibility: the worker serves /api/connections before the
+  // optional Drive migration (0017) has created archive_settings.
+  preDrive = await preDriveConnections();
+  for (const sql of migrations.slice(16)) await apply(sql);
 });
+
+let preDrive: Awaited<ReturnType<typeof preDriveConnections>> | undefined;
+
+async function preDriveConnections() {
+  const userId = "connections-pre-drive";
+  const loginEmail = `${userId}@example.invalid`;
+  await execute(
+    "INSERT INTO user(id,name,email,emailVerified,createdAt,updatedAt) VALUES(?,?,?,1,0,0)",
+    userId,
+    "Synthetic legacy owner",
+    loginEmail,
+  );
+  await execute(
+    "INSERT INTO profiles(user_id,timezone,reporting_currency,created_at,updated_at) VALUES(?,'Europe/Vienna','EUR',0,0)",
+    userId,
+  );
+  await execute(
+    "INSERT INTO connections(id,user_id,kind,provider,provider_subject,display_address,scopes,credential_ciphertext,credential_key_version,credential_version,scheduling_state) VALUES('mailbox-b',?,'mailbox','gmail','mailbox-b','selected-b@example.invalid',?,'synthetic-encrypted-token',1,1,'awaiting_import')",
+    userId,
+    JSON.stringify(["https://www.googleapis.com/auth/gmail.readonly"]),
+  );
+  const bindings = {
+    DB: env.DB,
+    AUTH_ENABLED: "true",
+    AUTH_ORIGIN: "https://connections-legacy.example.invalid",
+    AUTH_SECRET: "synthetic-legacy-connection-secret-1234567890",
+    AUTH_GOOGLE_CLIENT_ID: "synthetic-login",
+    AUTH_GOOGLE_CLIENT_SECRET: "synthetic-login-secret",
+    AUTH_ALLOWED_EMAILS: JSON.stringify([loginEmail]),
+  };
+  const login = loginConfiguration(bindings);
+  if (!login) throw new Error("Synthetic login fixture unavailable");
+  const auth = await createLoginAuth(db, login).$context;
+  const session = await auth.internalAdapter.createSession(userId, false);
+  if (!session) throw new Error("Synthetic session not created");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(login.secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signed = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(session.token),
+  );
+  const cookie = `__Secure-better-auth.session_token=${encodeURIComponent(`${session.token}.${btoa(String.fromCharCode(...new Uint8Array(signed)))}`)}`;
+  const archiveSettings = await query(
+    "SELECT name FROM sqlite_schema WHERE name='archive_settings'",
+  );
+  const response = await worker.fetch(
+    new Request(`${login.origin}/api/connections`, {
+      headers: { Cookie: cookie },
+    }),
+    bindings,
+  );
+  return {
+    archiveSettings,
+    status: response.status,
+    cacheControl: response.headers.get("cache-control"),
+    body: await response.text(),
+  };
+}
 
 let edit01StagesAfterCorrections: Record<string, unknown>[] = [];
 let edit01AfterOnboarding: Awaited<ReturnType<typeof readEdit01>> | undefined;
@@ -394,4 +464,25 @@ it("LIFECYCLE-04 retained settlement resolves105 questions through at most100 ac
       "SELECT id,amount_minor,eligible FROM ledger_entries WHERE purchase_id='bounded-recompute-purchase'",
     ),
   ).toEqual([{ id: "bounded-recompute-cash", amount_minor: 100, eligible: 1 }]);
+});
+
+it("canonical private metadata works before the optional Drive migration and without OAuth adapters", () => {
+  if (!preDrive) throw new Error("pre-Drive checkpoint did not run");
+  expect(preDrive.archiveSettings).toEqual([]);
+  expect(preDrive.status).toBe(200);
+  expect(preDrive.cacheControl).toBe("no-store");
+  const value = JSON.parse(preDrive.body) as {
+    connections: unknown[];
+    hasMore: boolean;
+  };
+  expect(value.connections).toEqual([
+    expect.objectContaining({
+      id: "mailbox-b",
+      kind: "mailbox",
+      provider: "gmail",
+      configured: true,
+    }),
+  ]);
+  expect(value.hasMore).toBe(false);
+  expect(preDrive.body).not.toContain("synthetic-encrypted-token");
 });
