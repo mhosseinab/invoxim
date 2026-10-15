@@ -454,3 +454,90 @@ it("AI-CLASSIFIER-PROVIDER switching provider changes destination identity, pric
   ).open(lease, work, [], selected);
   expect(other.config.fingerprint).not.toBe(pplx.config.fingerprint);
 });
+
+async function classificationState() {
+  const extraction = await db
+    .prepare(
+      "SELECT result_json FROM ai_extractions WHERE user_id=? AND purpose='extraction' AND extraction_version='email-classification-v1'",
+    )
+    .bind(tenant.userId)
+    .all<{ result_json: string | null }>();
+  const events = await db
+    .prepare(
+      "SELECT attempt_number,state,actual_usd_micros FROM usage_events WHERE user_id=? ORDER BY attempt_number",
+    )
+    .bind(tenant.userId)
+    .all();
+  const reserved = await db
+    .prepare(
+      "SELECT COALESCE(SUM(reserved_units),0) AS units,COALESCE(SUM(reserved_usd_micros),0) AS micros FROM usage_buckets WHERE user_id=? OR scope='global'",
+    )
+    .bind(tenant.userId)
+    .first<{ units: number; micros: number }>();
+  return { extraction: extraction.results, events: events.results, reserved };
+}
+
+it("AI-CLASSIFIER-PROVIDER 429 is not persisted, releases its reservation and retries after Retry-After", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  let calls = 0;
+  const fetch = perplexityFetch(() =>
+    ++calls === 1
+      ? new Response("", { status: 429, headers: { "Retry-After": "2" } })
+      : Response.json(decision(0.02)),
+  );
+  const { pipeline, extract, counts } = service({ perplexityApiKey: KEY });
+  expect(await pipeline.run(lease)).toEqual({ kind: "paused", code: "budget" });
+  const paused = await classificationState();
+  expect(paused.extraction).toEqual([{ result_json: null }]);
+  expect(paused.events).toEqual([
+    { attempt_number: 1, state: "known", actual_usd_micros: "0" },
+  ]);
+  expect(paused.reserved).toEqual({ units: 0, micros: 0 });
+  // Inside the Retry-After window nothing is sent.
+  expect(await pipeline.run(lease)).toEqual({ kind: "paused", code: "budget" });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const now = Date.now();
+  vi.spyOn(Date, "now").mockImplementation(() => now + 5000);
+  expect(await pipeline.run(lease)).toEqual({ kind: "completed" });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(extract).not.toHaveBeenCalled();
+  expect(Math.max(...counts)).toBeLessThanOrEqual(40);
+  const done = await classificationState();
+  expect(done.extraction).toHaveLength(1);
+  expect(JSON.parse(done.extraction[0]?.result_json ?? "null")).toEqual({
+    status: "classified",
+    isReceipt: false,
+    category: "software",
+  });
+  expect(done.events).toEqual([
+    { attempt_number: 1, state: "known", actual_usd_micros: "0" },
+    { attempt_number: 2, state: "known", actual_usd_micros: "20" },
+  ]);
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+});
+
+it("AI-CLASSIFIER-PROVIDER repeated 429 stays bounded: after the retry cap the document becomes reviewable, not stuck", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  const fetch = perplexityFetch(
+    () => new Response("", { status: 429, headers: { "Retry-After": "1" } }),
+  );
+  const { pipeline } = service({ perplexityApiKey: KEY });
+  const start = Date.now();
+  const outcomes = [];
+  for (let round = 0; round < 4; round++) {
+    vi.spyOn(Date, "now").mockImplementation(() => start + round * 5000);
+    outcomes.push(await pipeline.run(lease));
+  }
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(outcomes[0]).toEqual({ kind: "paused", code: "budget" });
+  expect(outcomes[1]).not.toEqual({ kind: "paused", code: "budget" });
+  expect(
+    await db
+      .prepare(
+        "SELECT processing_status FROM source_messages WHERE user_id=? AND id='s'",
+      )
+      .bind(tenant.userId)
+      .first("processing_status"),
+  ).not.toBe("pending");
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+});

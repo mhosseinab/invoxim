@@ -379,12 +379,15 @@ export function createPipelineService(
             classification.status === "needs-review" &&
             classification.reason === "uncertain" &&
             classifier.uncertainAction === "extract";
+          // A deferred rate limit is not a document outcome: it waits for its
+          // durable Retry-After cooldown and is retried once.
+          if (classification.status === "deferred") return budgetPaused;
           if (
             classification.status !== "classified" &&
             !verifyFinancialDocument
           ) {
             if (
-              ["budget", "in-progress", "rate-limit"].includes(
+              ["budget", "in-progress"].includes(
                 classification.status === "needs-review"
                   ? classification.reason
                   : "schema",

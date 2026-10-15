@@ -93,7 +93,9 @@ export function createReceiptClassifierFactory(
         maxInputBytes: configuration.maxInputBytes,
         maxOutputBytes: 4096,
         maxOutputTokens: 1,
-        maxAttempts: 1,
+        // One retry for a deferred provider rejection (rate limit) after its
+        // Retry-After; outages and timeouts are still final for the document.
+        maxAttempts: 2,
         reservationUnits: configuration.maxInputBytes + 4096,
       };
       const price: AiPriceSnapshot = {

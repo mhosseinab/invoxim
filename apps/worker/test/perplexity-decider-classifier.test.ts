@@ -168,10 +168,11 @@ it("AI-CLASSIFIER-PROVIDER 429 returns rate-limit with Retry-After and does not 
         headers: { "Retry-After": "7" },
       }),
   );
+  // Rejected before processing: zero reported usage releases the reservation.
   expect(await classifier().classify(parts, config)).toEqual({
     status: "failed",
     reason: "rate-limit",
-    usage: null,
+    usage: { input: 0, output: 0, other: 0, source: "reported" },
     retryAfterMs: 7000,
   });
   expect(fetch).toHaveBeenCalledTimes(1);

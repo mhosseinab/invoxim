@@ -47,12 +47,25 @@ const failed = (reason: DecisionFailure["reason"]): DecisionFailure => ({
   reason,
   usage: null,
 });
+/**
+ * A 429 is rejected before any decision is computed, so it settles as
+ * zero reported usage (releasing the reservation) instead of an uncertain
+ * possibly-billed attempt. 5xx, timeouts and unreadable bodies stay uncertain.
+ */
+const NOT_PROCESSED = {
+  input: 0,
+  output: 0,
+  other: 0,
+  source: "reported",
+} as const;
 function statusFailure(response: Response): DecisionFailure | null {
   const { status } = response;
   if (status === 401 || status === 403) return failed("invalid-key");
   if (status === 429)
     return {
-      ...failed("rate-limit"),
+      status: "failed",
+      reason: "rate-limit",
+      usage: NOT_PROCESSED,
       retryAfterMs:
         parseRetryAfter(response.headers.get("retry-after")) ??
         DEFAULT_RATE_LIMIT_MS,
