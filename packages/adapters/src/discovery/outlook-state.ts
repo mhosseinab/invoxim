@@ -7,6 +7,12 @@ import {
   validateOutlookId,
 } from "./outlook-transport";
 import { rateDecision } from "./rate-decision";
+import {
+  completeStagedJob,
+  stageAndSettle,
+  stageContinuation,
+  stageGuard,
+} from "./stage-and-settle";
 
 const id = z.string().refine((value) => Boolean(validateOutlookId(value)));
 const pageSchema = z.strictObject({
@@ -257,55 +263,33 @@ export function createOutlookFolderStore(db: D1Database) {
       "EXISTS(SELECT 1 FROM outlook_inventory_states root WHERE root.user_id=? AND root.connection_id=? AND root.generation=? AND root.scope_key='root' AND root.commit_id=? AND root.excluded_folder_ids=?)";
     const markerValues = [...owner(lease), nonce, JSON.stringify(exclusions)];
     const dedupeKey = `outlook:inventory:${lease.jobId}`;
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id,excluded_folder_ids) SELECT ?,?,?,'root',NULL,1,NULL,'pending',?,? WHERE ${guard.sql} ON CONFLICT(user_id,connection_id,generation,scope_key) DO NOTHING`,
-        )
-        .bind(
-          ...owner(lease),
-          nonce,
-          JSON.stringify(exclusions),
-          ...guard.values,
-        ),
-      db
-        .prepare(
-          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${marker} AND ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-        )
-        .bind(
-          continuation.jobId,
-          lease.context.userId,
-          lease.connectionId,
-          lease.consentId,
-          lease.generation,
-          lease.syncStateId,
-          lease.type,
+    const staged = stageGuard({ sql: marker, values: markerValues }, guard);
+    return stageAndSettle(
+      db,
+      lease,
+      [
+        db
+          .prepare(
+            `INSERT INTO outlook_inventory_states(user_id,connection_id,generation,scope_key,parent_folder_id,version,next_link,state,commit_id,excluded_folder_ids) SELECT ?,?,?,'root',NULL,1,NULL,'pending',?,? WHERE ${guard.sql} ON CONFLICT(user_id,connection_id,generation,scope_key) DO NOTHING`,
+          )
+          .bind(
+            ...owner(lease),
+            nonce,
+            JSON.stringify(exclusions),
+            ...guard.values,
+          ),
+        stageContinuation(db, lease, staged, {
+          id: continuation.jobId,
           dedupeKey,
-          continuation.dispatchAt,
-          continuation.priority,
-          ...markerValues,
-          ...guard.values,
-        ),
-      db
-        .prepare(
-          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
-        )
-        .bind(
-          lease.context.userId,
-          lease.jobId,
-          ...markerValues,
-          ...guard.values,
-          lease.context.userId,
-          dedupeKey,
-        ),
-    ]);
-    return Boolean(
-      await db
-        .prepare(
-          "SELECT 1 FROM jobs WHERE user_id=? AND id=? AND status='completed'",
-        )
-        .bind(lease.context.userId, lease.jobId)
-        .first(),
+          dispatchAt: continuation.dispatchAt,
+          priority: continuation.priority,
+        }),
+        completeStagedJob(db, lease, staged, {
+          outcome: "discovery_staged",
+          continuationKey: dedupeKey,
+        }),
+      ],
+      "read",
     );
   }
 
@@ -365,56 +349,42 @@ export function createOutlookFolderStore(db: D1Database) {
             ),
         );
       statements.push(
-        db
-          .prepare(
-            `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='rate_paused' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql}${rate.importRunId ? " AND EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.id=? AND r.stage='paused_rate')" : ""}`,
-          )
-          .bind(
-            lease.context.userId,
-            lease.jobId,
-            ...markerValues,
-            ...guard.values,
+        completeStagedJob(
+          db,
+          lease,
+          stageGuard({ sql: marker, values: markerValues }, guard),
+          {
+            outcome: "rate_paused",
             ...(rate.importRunId
-              ? [lease.context.userId, rate.importRunId]
-              : []),
-          ),
+              ? {
+                  also: {
+                    sql: "EXISTS(SELECT 1 FROM import_runs r WHERE r.user_id=? AND r.id=? AND r.stage='paused_rate')",
+                    values: [lease.context.userId, rate.importRunId],
+                  },
+                }
+              : {}),
+          },
+        ),
       );
-      const results = await db.batch(statements);
-      return results.at(-1)?.meta.changes === 1;
+      return stageAndSettle(db, lease, statements, "last-change");
     }
-    const dispatchAt = Date.now() + decision.delayMs;
     const dedupeKey = `outlook:rate:${decision.failures}:${lease.jobId}`;
-    const results = await db.batch([
-      db
-        .prepare(
-          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          lease.context.userId,
-          lease.connectionId,
-          lease.consentId,
-          lease.generation,
-          lease.syncStateId,
-          lease.type,
+    return stageAndSettle(
+      db,
+      lease,
+      [
+        stageContinuation(db, lease, guard, {
           dedupeKey,
-          dispatchAt,
-          lease.type === "sync" ? 0 : 1,
-          ...guard.values,
-        ),
-      db
-        .prepare(
-          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='rate_deferred' WHERE user_id=? AND id=? AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
-        )
-        .bind(
-          lease.context.userId,
-          lease.jobId,
-          ...guard.values,
-          lease.context.userId,
-          dedupeKey,
-        ),
-    ]);
-    return results.at(-1)?.meta.changes === 1;
+          dispatchAt: Date.now() + decision.delayMs,
+          priority: lease.type === "sync" ? 0 : 1,
+        }),
+        completeStagedJob(db, lease, guard, {
+          outcome: "rate_deferred",
+          continuationKey: dedupeKey,
+        }),
+      ],
+      "last-change",
+    );
   }
 
   async function commitInventoryPage(
@@ -499,37 +469,18 @@ export function createOutlookFolderStore(db: D1Database) {
     ];
     if (continuation) {
       const dedupeKey = `outlook:inventory:${lease.jobId}`;
+      const staged = stageGuard({ sql: marker, values: markerValues }, guard);
       statements.push(
-        db
-          .prepare(
-            `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${marker} AND ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-          )
-          .bind(
-            continuation.jobId,
-            lease.context.userId,
-            lease.connectionId,
-            lease.consentId,
-            lease.generation,
-            lease.syncStateId,
-            lease.type,
-            dedupeKey,
-            continuation.dispatchAt,
-            continuation.priority,
-            ...markerValues,
-            ...guard.values,
-          ),
-        db
-          .prepare(
-            `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
-          )
-          .bind(
-            lease.context.userId,
-            lease.jobId,
-            ...markerValues,
-            ...guard.values,
-            lease.context.userId,
-            dedupeKey,
-          ),
+        stageContinuation(db, lease, staged, {
+          id: continuation.jobId,
+          dedupeKey,
+          dispatchAt: continuation.dispatchAt,
+          priority: continuation.priority,
+        }),
+        completeStagedJob(db, lease, staged, {
+          outcome: "discovery_staged",
+          continuationKey: dedupeKey,
+        }),
       );
     }
     await db.batch(statements);
@@ -564,58 +515,50 @@ export function createOutlookFolderStore(db: D1Database) {
       "EXISTS(SELECT 1 FROM sync_states parent WHERE parent.user_id=? AND parent.id=? AND parent.pending_history_id=? AND parent.stage='queued')";
     const values = [lease.context.userId, lease.syncStateId, nonce];
     const dedupe = `outlook:refresh:${lease.jobId}`;
-    const results = await db.batch([
-      db
-        .prepare(
-          `UPDATE sync_states SET stage='queued',pending_history_id=? WHERE user_id=? AND id=? AND stage='idle' AND ${guard.sql}`,
-        )
-        .bind(nonce, lease.context.userId, lease.syncStateId, ...guard.values),
-      db
-        .prepare(
-          `UPDATE outlook_inventory_states SET state='pending',next_link=NULL,version=version+1 WHERE user_id=? AND connection_id=? AND generation=? AND ${marker} AND ${guard.sql}`,
-        )
-        .bind(...owner(lease), ...values, ...guard.values),
-      db
-        .prepare(
-          `UPDATE sync_states SET stage='queued' WHERE user_id=? AND connection_id=? AND scope_key LIKE ? AND sync_kind='incremental' AND run_key='live' AND slice_key='live' AND stage='idle' AND ${marker} AND ${guard.sql}`,
-        )
-        .bind(
-          lease.context.userId,
-          lease.connectionId,
-          `outlook:${lease.generation}:%`,
-          ...values,
-          ...guard.values,
-        ),
-      db
-        .prepare(
-          `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,'sync',?,'ready',?,0 WHERE ${marker} AND ${guard.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          lease.context.userId,
-          lease.connectionId,
-          lease.consentId,
-          lease.generation,
-          lease.syncStateId,
-          dedupe,
+    const staged = stageGuard({ sql: marker, values }, guard);
+    // O9: the 5-statement refresh batch settles through the same tail.
+    return stageAndSettle(
+      db,
+      lease,
+      [
+        db
+          .prepare(
+            `UPDATE sync_states SET stage='queued',pending_history_id=? WHERE user_id=? AND id=? AND stage='idle' AND ${guard.sql}`,
+          )
+          .bind(
+            nonce,
+            lease.context.userId,
+            lease.syncStateId,
+            ...guard.values,
+          ),
+        db
+          .prepare(
+            `UPDATE outlook_inventory_states SET state='pending',next_link=NULL,version=version+1 WHERE user_id=? AND connection_id=? AND generation=? AND ${staged.sql}`,
+          )
+          .bind(...owner(lease), ...staged.values),
+        db
+          .prepare(
+            `UPDATE sync_states SET stage='queued' WHERE user_id=? AND connection_id=? AND scope_key LIKE ? AND sync_kind='incremental' AND run_key='live' AND slice_key='live' AND stage='idle' AND ${staged.sql}`,
+          )
+          .bind(
+            lease.context.userId,
+            lease.connectionId,
+            `outlook:${lease.generation}:%`,
+            ...staged.values,
+          ),
+        stageContinuation(db, lease, staged, {
+          type: "sync",
+          dedupeKey: dedupe,
           dispatchAt,
-          ...values,
-          ...guard.values,
-        ),
-      db
-        .prepare(
-          `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${marker} AND ${guard.sql} AND EXISTS(SELECT 1 FROM jobs continuation WHERE continuation.user_id=? AND continuation.dedupe_key=? AND continuation.status='ready')`,
-        )
-        .bind(
-          lease.context.userId,
-          lease.jobId,
-          ...values,
-          ...guard.values,
-          lease.context.userId,
-          dedupe,
-        ),
-    ]);
-    return results.at(-1)?.meta.changes === 1;
+          priority: 0,
+        }),
+        completeStagedJob(db, lease, staged, {
+          outcome: "discovery_staged",
+          continuationKey: dedupe,
+        }),
+      ],
+      "last-change",
+    );
   }
   return {
     refreshInventory,

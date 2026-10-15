@@ -10,10 +10,11 @@ import type {
 import { DiscoveryError } from "@invoxim/core";
 import { z } from "zod";
 import { sourceKey } from "../hash";
-import { activeProfileSql } from "../pipeline/repository-guards";
+import { readImportProgress } from "./import-progress";
 import { rateDecision } from "./rate-decision";
 import type { DiscoveryServiceOptions } from "./service";
 import { initialSourceJobAbsentSql, initialSourceJobSql } from "./source-jobs";
+import { completeStagedJob, stageContinuation } from "./stage-and-settle";
 
 interface State {
   id: string;
@@ -517,20 +518,14 @@ export function createDiscoveryPages(
         );
     }
     if (continuePage)
-      add(
-        `INSERT INTO jobs(id,user_id,connection_id,consent_id,connection_generation,sync_state_id,type,dedupe_key,status,dispatch_at,priority) SELECT ?,?,?,?,?,?,?,?,'ready',?,? WHERE ${check.sql} ON CONFLICT(user_id,dedupe_key) DO NOTHING`,
-        [
-          crypto.randomUUID(),
-          lease.context.userId,
-          lease.connectionId,
-          lease.consentId,
-          lease.generation,
-          state.id,
-          state.sync_kind === "incremental" ? "sync" : "discover",
-          `discover:${state.id}:${state.discovery_version + 1}`,
-          clock() + retryDelay,
-          state.slice_key === "older" ? 2 : 0,
-        ],
+      statements.push(
+        stageContinuation(db, lease, check, {
+          syncStateId: state.id,
+          type: state.sync_kind === "incremental" ? "sync" : "discover",
+          dedupeKey: `discover:${state.id}:${state.discovery_version + 1}`,
+          dispatchAt: clock() + retryDelay,
+          priority: state.slice_key === "older" ? 2 : 0,
+        }),
       );
     if (state.slice_key === "recent" && next.stage === "discovery_complete") {
       add(
@@ -597,10 +592,13 @@ export function createDiscoveryPages(
         ],
         state.discovery_version + 1,
       );
-    add(
-      `UPDATE jobs SET status='completed',lease_id=NULL,lease_expires_at=NULL,outcome_code='discovery_staged' WHERE user_id=? AND id=? AND ${newer.sql}`,
-      [lease.context.userId, lease.jobId],
-      state.discovery_version + 1,
+    statements.push(
+      completeStagedJob(
+        db,
+        lease,
+        guard(lease, state, accepted, state.discovery_version + 1),
+        { outcome: "discovery_staged" },
+      ),
     );
     guards.charge(statements.length);
     await db.batch(statements);
@@ -638,77 +636,7 @@ export function createDiscoveryPages(
     );
   }
   async function progress(context: TenantContext, importRunId: string) {
-    guards.charge();
-    const parent = await db
-      .prepare(
-        `SELECT id,stage,frozen_start,frozen_cutoff,query_mode,first_usable_at FROM import_runs WHERE user_id=? AND id=? AND ${activeProfileSql}`,
-      )
-      .bind(context.userId, importRunId, context.userId)
-      .first();
-    if (!parent) throw new DiscoveryError("UNAUTHORIZED");
-    guards.charge();
-    const slices = await db
-      .prepare(
-        "SELECT slice_key,stage,enumerated_count,matched_count,unknown_count,coverage_code,history_reset_count FROM sync_states WHERE user_id=? AND import_run_id=? ORDER BY CASE slice_key WHEN 'recent' THEN 0 ELSE 1 END",
-      )
-      .bind(context.userId, importRunId)
-      .all<{
-        slice_key: string;
-        stage: string;
-        enumerated_count: number;
-        matched_count: number;
-        unknown_count: number;
-        coverage_code: string;
-        history_reset_count: number;
-      }>();
-    guards.charge();
-    const counts = await db
-      .prepare(
-        "SELECT COUNT(*) AS candidates,SUM(CASE WHEN s.processing_status='processed' THEN 1 ELSE 0 END) AS processed,SUM(CASE WHEN s.processing_status='unsupported' THEN 1 ELSE 0 END) AS unsupported,SUM(CASE WHEN s.processing_status='failed' THEN 1 ELSE 0 END) AS failed,SUM(CASE WHEN s.processing_status='review' THEN 1 ELSE 0 END) AS review FROM discovery_run_sources r JOIN source_messages s ON s.user_id=r.user_id AND s.id=r.source_message_id WHERE r.user_id=? AND r.import_run_id=?",
-      )
-      .bind(context.userId, importRunId)
-      .first<{
-        candidates: number;
-        processed: number | null;
-        unsupported: number | null;
-        failed: number | null;
-        review: number | null;
-      }>();
-    const discoveryComplete =
-      slices.results.length > 0 &&
-      slices.results.every((slice) => slice.stage === "discovery_complete");
-    const processed = counts?.processed ?? 0,
-      unsupported = counts?.unsupported ?? 0,
-      failed = counts?.failed ?? 0,
-      review = counts?.review ?? 0;
-    const processingComplete =
-      discoveryComplete &&
-      (counts?.candidates ?? 0) === processed + unsupported;
-    return {
-      importRunId,
-      parent,
-      slices: slices.results,
-      discoveryComplete,
-      processingComplete,
-      counts: {
-        enumerated: slices.results.reduce(
-          (total, slice) => total + slice.enumerated_count,
-          0,
-        ),
-        matched: slices.results.reduce(
-          (total, slice) => total + slice.matched_count,
-          0,
-        ),
-        unknown: slices.results.reduce(
-          (total, slice) => total + slice.unknown_count,
-          0,
-        ),
-        processed,
-        unsupported,
-        failed,
-        review,
-      },
-    };
+    return readImportProgress(db, () => guards.charge(), context, importRunId);
   }
   return { runPage, progress };
 }
