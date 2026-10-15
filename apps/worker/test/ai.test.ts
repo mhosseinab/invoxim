@@ -717,7 +717,10 @@ it("AI-06 ordinary numeric and HTTP-date Retry-After floors retain their full tw
   });
   expect(dated.status).toBe("failed");
   if (dated.status !== "failed") throw new Error("Expected rate-limit");
-  expect(dated.retryAfterMs).toBeGreaterThanOrEqual(7199000);
+  // An HTTP-date has one-second resolution, so the header names the start of
+  // that second; the floor is that instant minus the time elapsed since.
+  const headerInstant = Math.floor((start + 7200000) / 1000) * 1000;
+  expect(dated.retryAfterMs).toBeGreaterThanOrEqual(headerInstant - Date.now());
   expect(dated.retryAfterMs).toBeLessThanOrEqual(7200000);
 });
 it("AI-06 non-HTTP-date Retry-After uses the shared G5 fallback instead of loose Date.parse", async () => {
