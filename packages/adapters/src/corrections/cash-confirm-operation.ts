@@ -22,6 +22,7 @@ import {
   reviews,
   reviewVersion,
 } from "./data";
+import { planReviewUnblock, unblockedEntries } from "./review-unblock";
 import type { VersionCheck } from "./transaction";
 import { correctionTransaction } from "./transaction";
 
@@ -70,13 +71,36 @@ export async function executeCashConfirm(
   };
   const eligible =
     row.record_status === "active" && restorationEligibility(fact, remaining);
+  const confirmed = { ...fact, eligible };
+  // Resolving the addressed question re-enables the cash it alone kept
+  // ineligible after a re-include, here and on other linked purchases.
+  const resolving =
+    addressed && addressed.reason !== "payment-allocation-review"
+      ? addressed
+      : null;
+  const reenabled =
+    resolving && row.record_status === "active"
+      ? unblockedEntries([...all, confirmed], warnings, resolving.id)
+      : [];
+  const linked = resolving
+    ? await planReviewUnblock(db, user, resolving, { skip: row.id })
+    : null;
+  if (linked) checks.push(...linked.checks);
   const settlement = evaluateCorrectionSettlement(
     {
       currency: row.currency,
       totalMinor: row.total_minor === null ? null : String(row.total_minor),
       paymentState: row.payment_state,
     },
-    settlementEvents([...all, { ...fact, eligible }], remaining),
+    settlementEvents(
+      [
+        ...all.map((entry) =>
+          reenabled.includes(entry.id) ? { ...entry, eligible: true } : entry,
+        ),
+        confirmed,
+      ],
+      remaining,
+    ),
     await creditProofs(db, user, row.id),
   );
   const allocations = planAllocations(row, settlement, warnings);
@@ -133,6 +157,12 @@ export async function executeCashConfirm(
     kind: command.entryKind,
   });
   writeAllocations(tx, user, row.id, allocations, clock);
+  if (reenabled.length)
+    tx.add(
+      `UPDATE ledger_entries SET eligible=1 WHERE user_id=? AND purchase_id=? AND eligible=0 AND id IN(SELECT value FROM json_each(?)) AND ${tx.guard}`,
+      [user, row.id, JSON.stringify(reenabled), ...tx.guardValues],
+    );
+  linked?.write(tx, clock);
   if (addressed && !allocationAddressed) {
     tx.add(
       `UPDATE review_items SET status='resolved',version=version+1 WHERE user_id=? AND id=? AND ${tx.guard}`,

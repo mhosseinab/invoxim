@@ -109,11 +109,12 @@ async function review(
     documentId: string | null;
     observationId?: string | null;
     reason: string;
+    missingFields?: string[];
   },
 ) {
   await db
     .prepare(
-      "INSERT INTO review_items(id,user_id,document_id,observation_id,purchase_id,reason,blocking_scope,status,created_at) VALUES(?,?,?,?,?,?,'financial','open',0)",
+      "INSERT INTO review_items(id,user_id,document_id,observation_id,purchase_id,reason,blocking_scope,status,created_at,missing_fields_json) VALUES(?,?,?,?,?,?,'financial','open',0,?)",
     )
     .bind(
       id,
@@ -122,6 +123,7 @@ async function review(
       values.observationId ?? null,
       values.purchaseId,
       values.reason,
+      values.missingFields ? JSON.stringify(values.missingFields) : null,
     )
     .run();
 }
@@ -314,4 +316,239 @@ it("reviewer P2 unmerge adversarial: a superset review on the other side's cash 
     { id: "uo-source", payment_state: "unknown", record_status: "active" },
     { id: "uo-target", payment_state: "paid", record_status: "active" },
   ]);
+});
+
+type Session = Awaited<ReturnType<typeof owner>>;
+/** Exclude then re-include `id` while its cash is blocked by an open review. */
+async function excludeAndInclude(session: Session, id: string) {
+  const store = createCorrectionStore(db);
+  const user = session.tenant.userId;
+  await store.execute(
+    session,
+    {
+      kind: "exclude",
+      purchaseId: id,
+      request: { version: await version(user, id), reason: "other" },
+    },
+    `${id}-exclude`,
+  );
+  await store.execute(
+    session,
+    {
+      kind: "restore",
+      purchaseId: id,
+      request: { version: await version(user, id) },
+    },
+    `${id}-restore`,
+  );
+}
+async function cashState(user: string, purchaseId: string) {
+  return db
+    .prepare(
+      "SELECT p.payment_state AS state,p.record_status AS status,(SELECT group_concat(id||':'||eligible) FROM (SELECT id,eligible FROM ledger_entries WHERE user_id=p.user_id AND purchase_id=p.id ORDER BY id)) AS entries FROM purchases p WHERE p.user_id=? AND p.id=?",
+    )
+    .bind(user, purchaseId)
+    .first();
+}
+
+it("reviewer P2 resolve after re-include: correct-missing-fields re-enables the cash it alone blocked and recomputes payment state", async () => {
+  const session = await owner("unblock-missing");
+  const user = session.tenant.userId;
+  await purchase(user, "mf-p");
+  await sourcePayment(user, "mf-p", "mf-cash", 10000);
+  await review(user, "mf-r", {
+    purchaseId: "mf-p",
+    documentId: "mf-cash-doc",
+    reason: "extraction-review",
+    missingFields: ["merchant"],
+  });
+  await excludeAndInclude(session, "mf-p");
+  expect(await cashState(user, "mf-p")).toEqual({
+    state: "unknown",
+    status: "active",
+    entries: "mf-cash-entry:0",
+  });
+  const result = await createCorrectionStore(db).execute(
+    session,
+    {
+      kind: "review-resolve",
+      reviewId: "mf-r",
+      request: {
+        version: 1,
+        action: "correct-missing-fields",
+        purchaseVersion: await version(user, "mf-p"),
+        changes: { merchant: "Synthetic fixed" },
+      },
+    },
+    "mf-resolve",
+  );
+  expect(result.reviewStatus).toBe("resolved");
+  expect(await cashState(user, "mf-p")).toEqual({
+    state: "paid",
+    status: "active",
+    entries: "mf-cash-entry:1",
+  });
+  expect(await version(user, "mf-p")).toBe(result.version);
+});
+
+it("reviewer P2 resolve after re-include: completing an unlinked document review re-enables the other purchase's cash from that document", async () => {
+  const session = await owner("unblock-complete");
+  const user = session.tenant.userId;
+  await purchase(user, "cr-p");
+  await sourcePayment(user, "cr-p", "cr-cash", 10000);
+  await review(user, "cr-r", {
+    purchaseId: null,
+    documentId: "cr-cash-doc",
+    reason: "extraction-review",
+  });
+  await excludeAndInclude(session, "cr-p");
+  expect(await cashState(user, "cr-p")).toMatchObject({
+    entries: "cr-cash-entry:0",
+  });
+  const store = createCorrectionStore(db);
+  expect(
+    (await store.readReview(session.tenant, "cr-r"))?.review.actions,
+  ).toContain("complete-record");
+  const result = await store.execute(
+    session,
+    {
+      kind: "review-resolve",
+      reviewId: "cr-r",
+      request: {
+        version: 1,
+        action: "complete-record",
+        record: {
+          merchant: "Synthetic other",
+          documentDate: "2026-01-11",
+          currency: "EUR",
+          totalMinor: "500",
+          category: "other",
+        },
+      },
+    },
+    "cr-resolve",
+  );
+  expect(result.reviewStatus).toBe("resolved");
+  expect(await cashState(user, "cr-p")).toEqual({
+    state: "paid",
+    status: "active",
+    entries: "cr-cash-entry:1",
+  });
+  expect(await version(user, "cr-p")).toBe(4);
+});
+
+it("reviewer P2 resolve after re-include: confirming payment for the blocking question re-enables its cash in the same batch", async () => {
+  const session = await owner("unblock-cash");
+  const user = session.tenant.userId;
+  await purchase(user, "cc-p");
+  await sourcePayment(user, "cc-p", "cc-cash", 6000);
+  await review(user, "cc-r", {
+    purchaseId: "cc-p",
+    documentId: "cc-cash-doc",
+    reason: "unknown-payment",
+  });
+  await excludeAndInclude(session, "cc-p");
+  expect(await cashState(user, "cc-p")).toMatchObject({
+    entries: "cc-cash-entry:0",
+  });
+  await createCorrectionStore(db).execute(
+    session,
+    {
+      kind: "cash-confirm",
+      purchaseId: "cc-p",
+      entryKind: "payment",
+      request: {
+        version: await version(user, "cc-p"),
+        confirmed: true,
+        amountMinor: "4000",
+        currency: "EUR",
+        eventDate: "2026-01-12",
+        review: { id: "cc-r", version: 1 },
+      },
+    },
+    "cc-confirm",
+  );
+  // 6000 re-enabled source cash + 4000 confirmed of 10000.
+  expect(await cashState(user, "cc-p")).toMatchObject({
+    state: "paid",
+    status: "active",
+  });
+  expect(
+    (
+      await db
+        .prepare(
+          "SELECT origin,amount_minor,eligible FROM ledger_entries WHERE user_id=? ORDER BY origin",
+        )
+        .bind(user)
+        .all()
+    ).results,
+  ).toEqual([
+    { origin: "source", amount_minor: 6000, eligible: 1 },
+    { origin: "user-confirmed", amount_minor: 4000, eligible: 1 },
+  ]);
+});
+
+it("reviewer P2 resolve adversarial: cash still blocked by another open review, or on an excluded purchase, stays ineligible", async () => {
+  const session = await owner("unblock-adversarial");
+  const user = session.tenant.userId;
+  await purchase(user, "ad-p");
+  await sourcePayment(user, "ad-p", "ad-cash", 10000);
+  await review(user, "ad-r1", {
+    purchaseId: "ad-p",
+    documentId: "ad-cash-doc",
+    reason: "extraction-review",
+    missingFields: ["merchant"],
+  });
+  await review(user, "ad-r2", {
+    purchaseId: null,
+    documentId: "ad-cash-doc",
+    reason: "extraction-review",
+  });
+  await purchase(user, "ad-excluded");
+  await sourcePayment(user, "ad-excluded", "ad-ex-cash", 10000);
+  await review(user, "ad-ex-r", {
+    purchaseId: "ad-excluded",
+    documentId: "ad-ex-cash-doc",
+    reason: "extraction-review",
+    missingFields: ["merchant"],
+  });
+  await excludeAndInclude(session, "ad-p");
+  const store = createCorrectionStore(db);
+  await store.execute(
+    session,
+    {
+      kind: "exclude",
+      purchaseId: "ad-excluded",
+      request: { version: 1, reason: "other" },
+    },
+    "ad-excluded-exclude",
+  );
+  for (const [reviewId, purchaseId] of [
+    ["ad-r1", "ad-p"],
+    ["ad-ex-r", "ad-excluded"],
+  ] as const)
+    await store.execute(
+      session,
+      {
+        kind: "review-resolve",
+        reviewId,
+        request: {
+          version: 1,
+          action: "correct-missing-fields",
+          purchaseVersion: await version(user, purchaseId),
+          changes: { merchant: "Synthetic fixed" },
+        },
+      },
+      `${reviewId}-resolve`,
+    );
+  expect(await cashState(user, "ad-p")).toEqual({
+    state: "unknown",
+    status: "active",
+    entries: "ad-cash-entry:0",
+  });
+  expect(await cashState(user, "ad-excluded")).toEqual({
+    state: "unknown",
+    status: "excluded",
+    entries: "ad-ex-cash-entry:0",
+  });
 });
