@@ -247,3 +247,85 @@ test("FOUND-03 CLI rejects import types, import-equals and declared external inf
     await rm(root, { recursive: true, force: true });
   }
 });
+
+async function boundaryFixture(files, run) {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { spawnSync } = await import("node:child_process");
+  const path = await import("node:path");
+  const root = await mkdtemp(path.join(tmpdir(), "invoxim-boundaries-"));
+  try {
+    for (const [name, content] of Object.entries(files)) {
+      await mkdir(path.dirname(path.join(root, name)), { recursive: true });
+      await writeFile(path.join(root, name), content);
+    }
+    const result = spawnSync(
+      process.execPath,
+      ["tools/implementation/check-boundaries.mjs", root],
+      { encoding: "utf8" },
+    );
+    await run(result);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+const corePackage = {
+  "packages/core/package.json": JSON.stringify({ name: "@invoxim/core" }),
+};
+const adaptersPackage = {
+  "packages/adapters/package.json": JSON.stringify({
+    name: "@invoxim/adapters",
+    dependencies: { "@invoxim/core": "workspace:*" },
+  }),
+};
+
+test("SW-2 CLI rejects src relative code imports that resolve outside every package", () =>
+  boundaryFixture(
+    {
+      ...corePackage,
+      "tools/helper.ts": "export const helper = 1;\n",
+      "packages/core/src/index.ts":
+        'import { helper } from "../../../tools/helper";\nexport const core = helper;\n',
+    },
+    (result) => {
+      assert.equal(result.status, 1);
+      assert.match(
+        result.stderr,
+        /relative import \.\.\/\.\.\/\.\.\/tools\/helper resolves outside every workspace package/,
+      );
+    },
+  ));
+
+test("SW-2 CLI allows src relative imports of repository-root JSON data (contracts/, config/)", () =>
+  boundaryFixture(
+    {
+      ...corePackage,
+      "contracts/ux-copy.en.json": "{}\n",
+      "packages/core/src/index.ts":
+        'import copy from "../../../contracts/ux-copy.en.json";\nexport const core = copy;\n',
+    },
+    (result) => {
+      assert.equal(result.stderr, "");
+      assert.equal(result.status, 0);
+    },
+  ));
+
+test("SW-2 CLI does not boundary-check test directories or test/spec/config files", () =>
+  boundaryFixture(
+    {
+      ...corePackage,
+      ...adaptersPackage,
+      "packages/core/src/index.ts": "export const core = 1;\n",
+      "packages/adapters/src/index.ts": "export const adapter = 1;\n",
+      "packages/adapters/test/deep.ts":
+        'import { core } from "../../core/src/index";\nimport "../../../tools/helper";\nexport const value = core;\n',
+      "packages/adapters/src/deep.test.ts":
+        'import { core } from "../../core/src/index";\nexport const value = core;\n',
+      "packages/adapters/vitest.config.ts":
+        'import { core } from "../core/src/index";\nexport default core;\n',
+    },
+    (result) => {
+      assert.equal(result.stderr, "");
+      assert.equal(result.status, 0);
+    },
+  ));

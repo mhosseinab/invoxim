@@ -47,7 +47,7 @@ For a focused native test:
 pnpm --filter @invoxim/worker exec vitest run test/auth-deployment-readiness.test.ts
 ```
 
-`pnpm test:mutation`, `pnpm test:eval:live` and `pnpm verify:release` are explicit unimplemented gates. Their presence is not release evidence. GitHub Actions runs verification, dependency auditing and security tests; this repository's workflow does not deploy or synchronize D1.
+Mutation testing, live model evaluation and a broader release verification gate are not implemented; there are no scripts for them, and passing the commands above is not release evidence. `pnpm test:eval:clef` runs the synthetic Clef classifier evaluation (dry run by default) described in [tools/implementation/clef-eval.md](tools/implementation/clef-eval.md). GitHub Actions runs verification, dependency auditing and security tests; this repository's workflow does not deploy or synchronize D1.
 
 ## Database commands
 

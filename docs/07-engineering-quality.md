@@ -23,13 +23,13 @@ For each behavioral task:
 
 For an empty project, an initial missing export can establish the first RED, but follow it with an assertion-level failure before claiming the behavioral contract is exercised. Config/docs-only tasks use schema/build/link validation rather than meaningless tests.
 
-## Required implementation scripts
+## Implementation scripts
 
-The application build must create these scripts; they do not exist in this blueprint yet:
+The root `package.json` defines these scripts. `tools/implementation/documented-scripts.test.mjs` fails when a `pnpm` script named in `README.md` or `docs/*.md` does not exist:
 
 ```text
 pnpm format:check
-pnpm lint
+pnpm lint                # alias for pnpm lint:biome
 pnpm typecheck
 pnpm test:unit
 pnpm test:integration
@@ -37,17 +37,19 @@ pnpm test:contracts
 pnpm test:security
 pnpm test:e2e
 pnpm test:a11y
-pnpm test:mutation
 pnpm test:eval:offline
-pnpm test:eval:live        # explicit opt-in, configured synthetic data only
+pnpm test:eval:clef      # synthetic Clef classifier evaluation; dry run by default
 pnpm check:boundaries
 pnpm check:secrets
+pnpm check:dependency-policy
 pnpm check:deps
+pnpm check:production    # requires a completed build
 pnpm db:check
 pnpm build
 pnpm verify              # deterministic required merge gate
-pnpm verify:release      # broader staging, recovery, compatibility evidence
 ```
+
+Mutation testing, an explicit opt-in live model evaluation (configured synthetic data only) and a broader release verification (staging, recovery, compatibility evidence) remain required gates without scripts. Do not describe them as implemented until a script exists and has run.
 
 Use Vitest for pure-domain tests and Cloudflare’s Vitest integration for real workerd behavior/bindings. [S23] Plain Node mocks cannot establish that D1, Web Crypto, service bindings, queues, or the chosen auth package work in Workers. Use Playwright for real browser flows, and an accessibility checker plus manual keyboard review.
 

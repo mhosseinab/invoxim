@@ -30,6 +30,8 @@ type MutationOptions<T> = {
   expectedUserId: string;
   getWorkspaceToken: () => string;
   onSuccess: () => void;
+  /** Runs only after a confirmed successful write, before `onSuccess`. */
+  onSaved?: () => void;
   messages: MutationMessages;
   actions: MutationActions;
   confirmAfter?: boolean;
@@ -82,6 +84,7 @@ export function useRetryableMutation<T>(options: MutationOptions<T>) {
       if (options.confirmAfter)
         await assertPrivateIdentity(options.expectedUserId, request.signal);
       if (request.signal.aborted) return;
+      options.onSaved?.();
       options.onSuccess();
     } catch (error) {
       if (request.signal.aborted) return;
@@ -178,12 +181,14 @@ export function useCorrectionMutation(
   onReload: () => void,
   expectedUserId: string,
   mutationToken: string,
+  onSaved?: () => void,
 ) {
   return useRetryableMutation({
     schema: correctionResultSchema,
     expectedUserId,
     getWorkspaceToken: () => mutationToken,
     onSuccess: onReload,
+    ...(onSaved ? { onSaved } : {}),
     messages: {
       conflict:
         "These changes were not saved because the record changed or an unresolved issue blocks this action. Your entries are still here. Reload the latest version before continuing.",

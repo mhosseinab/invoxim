@@ -15,27 +15,25 @@ interface ConnectionRow {
   scheduling_state: string;
   archiving_enabled: number;
 }
+const archivingEnabledExists =
+  "EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=c.user_id AND a.enabled=1 AND a.connection_id=c.id AND a.connection_generation=c.generation)";
 /**
- * S11: the archive_settings probe is stable for a database handle, so it is
- * memoized instead of running on every `list` call.
+ * S11: once archive_settings exists it stays (migrations never drop it), so a
+ * positive probe is memoized per database handle. A missing table or a failed
+ * probe is not cached: a later migration or a transient D1 error must not
+ * stick for the lifetime of the isolate.
  */
-const archivingSqlByDb = new WeakMap<D1Database, Promise<string>>();
-function archivingEnabledSql(db: D1Database) {
-  let cached = archivingSqlByDb.get(db);
-  if (!cached) {
-    cached = db
-      .prepare(
-        "SELECT name FROM sqlite_schema WHERE type='table' AND name='archive_settings' LIMIT 1",
-      )
-      .first()
-      .then((storageSchema) =>
-        storageSchema
-          ? "EXISTS(SELECT 1 FROM archive_settings a WHERE a.user_id=c.user_id AND a.enabled=1 AND a.connection_id=c.id AND a.connection_generation=c.generation)"
-          : "0",
-      );
-    archivingSqlByDb.set(db, cached);
-  }
-  return cached;
+const archivingTableSeen = new WeakSet<D1Database>();
+async function archivingEnabledSql(db: D1Database) {
+  if (archivingTableSeen.has(db)) return archivingEnabledExists;
+  const storageSchema = await db
+    .prepare(
+      "SELECT name FROM sqlite_schema WHERE type='table' AND name='archive_settings' LIMIT 1",
+    )
+    .first();
+  if (!storageSchema) return "0";
+  archivingTableSeen.add(db);
+  return archivingEnabledExists;
 }
 /** Current tenant metadata only; viewing or unlinking a grant does not require a provider to be enabled. */
 export function createConnectionsViewRepository(db: D1Database) {

@@ -69,6 +69,22 @@ test("generated dependencies skipped, evidence and untracked implementation reta
     await writeFile(path.join(root, "implementation.ts"), token);
     assert.equal((await scanSecrets(root)).findings.length, 1);
   }));
+test("other agents' .claude/worktrees checkouts are skipped; the rest of .claude is scanned", async () =>
+  temporary(async (root) => {
+    await mkdir(path.join(root, ".claude", "worktrees", "agent-a"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, ".claude", "worktrees", "agent-a", "copy.ts"),
+      token,
+    );
+    await mkdir(path.join(root, ".claude", "agents"));
+    await writeFile(path.join(root, ".claude", "agents", "role.md"), token);
+    await mkdir(path.join(root, "apps", "worktrees"), { recursive: true });
+    await writeFile(path.join(root, "apps", "worktrees", "source.ts"), token);
+    const { findings } = await scanSecrets(root);
+    assert.equal(findings.length, 2);
+  }));
 const manifests = [
   {
     folder: ".",

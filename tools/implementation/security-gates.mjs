@@ -51,6 +51,8 @@ const ignored = new Set([
   "test-results",
   "__pycache__",
 ]);
+// Root-relative paths: other agents' Claude Code worktrees are full checkouts.
+const ignoredPaths = new Set([".claude/worktrees"]);
 function recognizedBinary(name, header) {
   const extension = path.extname(name).toLowerCase();
   const starts = (bytes) =>
@@ -138,6 +140,12 @@ export async function scanSecrets(root, limits = {}) {
       if (++nodes > bound.files) throw new Error("scan-file-limit");
       if (ignored.has(item.name)) continue;
       const absolute = path.join(directory, item.name);
+      if (
+        ignoredPaths.has(
+          path.relative(root, absolute).split(path.sep).join("/"),
+        )
+      )
+        continue;
       const stat = await lstat(absolute);
       if (stat.isSymbolicLink()) throw new Error("scan-symlink");
       if (stat.isDirectory()) {

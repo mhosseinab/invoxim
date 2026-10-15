@@ -68,3 +68,4 @@ evidence/implementation/
 # Private production bundle inventories
 .production/
 .worktrees/
+/.claude/worktrees/

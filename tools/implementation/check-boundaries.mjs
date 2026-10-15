@@ -73,7 +73,12 @@ async function scan(folder, entry) {
             `${full}: deep relative import ${value} must go through package root ${owner.name}`,
           );
           entry.imports.push(owner.name);
-        }
+        } else if (!owner && !/\.json$/.test(resolved.replace(/\?.*$/, "")))
+          // Repository-root JSON data (contracts/, config/) is shared by
+          // design; code outside every package would bypass the graph.
+          violations.push(
+            `${full}: relative import ${value} resolves outside every workspace package`,
+          );
       } else if (value.startsWith("@invoxim/")) {
         const packageName = value.split("/").slice(0, 2).join("/");
         if (value !== packageName)
