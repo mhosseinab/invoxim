@@ -62,7 +62,11 @@ export type UsageStore<T> = {
   >;
   reserve(input: StoreAttempt): Promise<"reserved" | "budget" | "existing">;
   authorize(input: StoreAttempt): Promise<boolean>;
-  settle(input: StoreAttempt, settlement: Settlement): Promise<void>;
+  settle(
+    input: StoreAttempt,
+    settlement: Settlement,
+    value?: unknown,
+  ): Promise<boolean>;
   complete(input: StoreInput, value: unknown): Promise<boolean>;
   cooldownUntil(input: StoreInput): Promise<number | null>;
 };
@@ -115,10 +119,16 @@ export function createUsageStore<T>(params: {
         const run = await toAttemptRun(input);
         return run !== null && meter.authorize(run);
       }),
-    settle: (input, settlement) =>
+    settle: (input, settlement, value) =>
       wrap(async () => {
         const run = await toAttemptRun(input);
-        if (run) await meter.settle(run, settlement);
+        if (!run) return false;
+        if (value === undefined) return meter.settle(run, settlement);
+        const result = validate(value);
+        // An invalid result still settles usage; it is just not persisted.
+        return result === null
+          ? (await meter.settle(run, settlement)) && false
+          : meter.settle(run, settlement, result);
       }),
     complete: (input, value) =>
       wrap(async () => {
@@ -134,13 +144,19 @@ export function createAiUsageStore(
   db: D1Database,
   options: AiBudgetOptions,
 ): AiUsageStore {
-  return createUsageStore<PersistableAiResult>({
+  const store = createUsageStore<PersistableAiResult>({
     db,
     owner: { kind: "extraction", lease: options.lease },
     options,
     validate: validatePersistableAiResult,
     wrap: budgetOperation,
   });
+  return {
+    ...store,
+    async settle(input, settlement) {
+      await store.settle(input, settlement);
+    },
+  };
 }
 
 export function createClassificationUsageStore(
@@ -166,11 +182,17 @@ export function createAiProbeUsageStore(
   db: D1Database,
   options: AiProbeBudgetOptions,
 ): AiProbeUsageStore {
-  return createUsageStore<AiProbeResult>({
+  const store = createUsageStore<AiProbeResult>({
     db,
     owner: { kind: "synthetic-test", session: options.session },
     options,
     validate: validateProbe,
     wrap: budgetOperation,
   });
+  return {
+    ...store,
+    async settle(input, settlement) {
+      await store.settle(input, settlement);
+    },
+  };
 }

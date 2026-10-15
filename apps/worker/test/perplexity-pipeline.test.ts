@@ -228,6 +228,7 @@ const control = {
 function service(
   sources: Parameters<typeof createReceiptClassifierFactory>[2],
   maxJobAttempts?: number,
+  database: D1Database = db,
 ) {
   const extract = vi.fn(async () => ({
     status: "ok" as const,
@@ -238,7 +239,7 @@ function service(
   const counts: number[] = [];
   const pipeline = {
     async run(current: JobLease) {
-      const meter = createInvocationDatabase(db, 40);
+      const meter = createInvocationDatabase(database, 40);
       const handler = createPipelineService(meter.db, {
         repository: createPipelineRepository(meter.db, {
           processingDigest: async () => expectedDigest,
@@ -1000,4 +1001,81 @@ it("AI-CLASSIFIER-PROVIDER a 403 is a per-document unsupported outcome without a
       .bind(tenant.userId)
       .first("n"),
   ).toBe(0);
+});
+
+/**
+ * Synthetic crash: the first D1 operation (statement or batch) whose SQL
+ * writes a classification result fails as if the Worker died there.
+ */
+function crashOnResultWrite(base: D1Database) {
+  let crashed = false;
+  const sqlOf = new WeakMap<object, string>();
+  const real = new WeakMap<object, D1PreparedStatement>();
+  const matches = (sql: string | undefined) =>
+    !crashed && !!sql?.includes("SET result_json");
+  const wrap = (statement: D1PreparedStatement, sql: string) => {
+    const proxy: D1PreparedStatement = new Proxy(statement, {
+      get(target, property) {
+        if (property === "bind")
+          return (...values: unknown[]) => wrap(target.bind(...values), sql);
+        if (["run", "first", "all", "raw"].includes(String(property)))
+          return async (...args: unknown[]) => {
+            if (matches(sql)) {
+              crashed = true;
+              throw new Error("SYNTHETIC_CRASH");
+            }
+            return (
+              target[property as "run"] as (...a: unknown[]) => unknown
+            ).apply(target, args);
+          };
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    sqlOf.set(proxy, sql);
+    real.set(proxy, statement);
+    return proxy;
+  };
+  const database = new Proxy(base, {
+    get(target, property) {
+      if (property === "prepare")
+        return (sql: string) => wrap(target.prepare(sql), sql);
+      if (property === "batch")
+        return async (statements: D1PreparedStatement[]) => {
+          if (statements.some((statement) => matches(sqlOf.get(statement)))) {
+            crashed = true;
+            throw new Error("SYNTHETIC_CRASH");
+          }
+          return target.batch(
+            statements.map((statement) => real.get(statement) ?? statement),
+          );
+        };
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { database, crashed: () => crashed };
+}
+
+it("AI-CLASSIFIER-PROVIDER a crash after a billed decision never makes a second paid call; the decision is reused or nothing is re-sent", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  const fetch = perplexityFetch(() => Response.json(decision(0.02)));
+  const crash = crashOnResultWrite(db);
+  const first = service({ perplexityApiKey: KEY }, 3, crash.database);
+  const outcome = await first.pipeline.run(lease);
+  expect(crash.crashed()).toBe(true);
+  expect(outcome).toMatchObject({ kind: "retry" });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  // The next lease (no crash) must not pay for a second decision.
+  const second = service({ perplexityApiKey: KEY }, 3);
+  await second.pipeline.run(lease);
+  await second.pipeline.run(lease);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const billed = await db
+    .prepare(
+      "SELECT COUNT(*) AS n FROM usage_events WHERE user_id=? AND CAST(COALESCE(actual_units,'0') AS INTEGER)>0",
+    )
+    .bind(tenant.userId)
+    .first("n");
+  expect(billed).toBeLessThanOrEqual(1);
 });

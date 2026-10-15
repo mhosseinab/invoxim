@@ -39,7 +39,11 @@ export type Meter = {
   >;
   reserve(input: RunInput): Promise<"reserved" | "budget" | "existing">;
   authorize(input: RunInput): Promise<boolean>;
-  settle(input: RunInput, settlement: Settlement): Promise<void>;
+  settle(
+    input: RunInput,
+    settlement: Settlement,
+    result?: unknown,
+  ): Promise<boolean>;
   complete(input: RunInput, result: unknown): Promise<boolean>;
   cooldownUntil(input: RunInput): Promise<number | null>;
   normal(input: AiCheckpoint, attemptNumber?: number): Promise<RunInput>;
@@ -450,12 +454,22 @@ export function createMeter(
       .run();
     return result.meta.changes === 1;
   }
+  /**
+   * Settles one attempt. With `result`, the completed result is written in the
+   * same D1 batch, so a crash can never leave a settled billed attempt
+   * without its result (which a later lease would pay for again). Returns
+   * whether the result was persisted (true when none was given and settled).
+   */
   async function settle(
     input: RunInput,
     settlement: Settlement,
-  ): Promise<void> {
+    result?: unknown,
+  ): Promise<boolean> {
     const prepared = await prepare(input);
-    if (!prepared) return;
+    if (!prepared) return false;
+    const json = result === undefined ? null : JSON.stringify(result);
+    if (json !== null && new TextEncoder().encode(json).byteLength > 65536)
+      result = undefined;
     const attempt = attemptId(input.runKey, input.attemptNumber);
     const event = await db
       .prepare(
@@ -471,7 +485,7 @@ export function createMeter(
         month_start: string;
       }>();
     if (!event || !["reserved", "sent", "uncertain"].includes(event.state))
-      return;
+      return false;
     const price = JSON.parse(event.price_snapshot) as AiPriceSnapshot;
     const observed = measured(settlement.usage, price);
     const actualCost =
@@ -521,7 +535,7 @@ export function createMeter(
           ? 253402300799999
           : now + settlement.retryAfterMs
         : null;
-    await db.batch([
+    const settled = await db.batch([
       db
         .prepare(
           `UPDATE usage_events SET state=?,actual_units=?,actual_usd_micros=?,usage_json=?,settled_at=?,settlement_nonce=?,cooldown_until=MAX(COALESCE(cooldown_until,0),COALESCE(?,0)) WHERE user_id=? AND attempt_id=? AND state=? AND EXISTS(${prepared.live.text})`,
@@ -577,7 +591,32 @@ export function createMeter(
           nonce,
           ...prepared.live.values,
         ),
+      ...(result === undefined || json === null
+        ? []
+        : [
+            db
+              .prepare(
+                `UPDATE ai_extractions SET result_json=?,completed_at=? WHERE user_id=? AND run_key=? AND result_json IS NULL AND generation=? AND credential_version=? AND EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.attempt_id=? AND ev.settlement_nonce=? AND ev.state IN ('known','uncertain')) AND NOT EXISTS(SELECT 1 FROM usage_events ev WHERE ev.user_id=? AND ev.run_key=? AND ev.state IN ('reserved','sent','overrun')) AND EXISTS(${prepared.live.text})`,
+              )
+              .bind(
+                json,
+                now,
+                userId,
+                input.runKey,
+                prepared.binding.generation,
+                prepared.binding.credential_version,
+                userId,
+                attempt,
+                nonce,
+                userId,
+                input.runKey,
+                ...prepared.live.values,
+              ),
+          ]),
     ]);
+    return result === undefined
+      ? (settled[0]?.meta.changes ?? 0) === 1
+      : (settled[3]?.meta.changes ?? 0) === 1;
   }
   async function complete(input: RunInput, result: unknown): Promise<boolean> {
     const prepared = await prepare(input);

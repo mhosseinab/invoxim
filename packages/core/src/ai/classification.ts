@@ -2,10 +2,12 @@ import { type Extraction, extractionSchema } from "@invoxim/contracts";
 import type { TenantContext } from "../tenant-context";
 import { aiRunIdentityKey } from "./engine";
 import type {
+  AiAttemptIdentity,
   AiCheckpoint,
   AiResponse,
   AiRunIdentity,
   AiTextPart,
+  AiUsage,
   AiUsageStore,
   ApprovedAiConfig,
 } from "./types";
@@ -59,8 +61,21 @@ export interface EmailClassifier {
 }
 export interface ClassificationUsageStore extends Omit<
   AiUsageStore,
-  "checkpoint" | "complete"
+  "checkpoint" | "complete" | "settle"
 > {
+  /**
+   * Settles an attempt; with `result` the completed classification is
+   * persisted atomically with the settlement. Returns whether it was.
+   */
+  settle(
+    input: AiAttemptIdentity,
+    settlement: {
+      readonly state: "known" | "uncertain" | "not-sent";
+      readonly usage: AiUsage | null;
+      readonly retryAfterMs?: number;
+    },
+    result?: EmailClassification,
+  ): Promise<boolean | undefined>;
   checkpoint(
     input: AiCheckpoint,
   ): Promise<
@@ -139,10 +154,9 @@ export function createClassificationEngine(dependencies: {
         return { status: "needs-review", reason: "settings-changed" };
       const prefix = await aiRunIdentityKey(checkpoint);
       const { store } = dependencies;
-      let result: EmailClassification | null = null;
       // `config.maxAttempts` slots bound billed calls. The meter re-arms a slot
       // whose only use was a zero-cost rejection after its cooldown ended.
-      for (let number = 1; number <= config.maxAttempts && !result; number++) {
+      for (let number = 1; number <= config.maxAttempts; number++) {
         const attempt = {
           ...checkpoint,
           attemptId: `${prefix}:${number}`,
@@ -201,20 +215,26 @@ export function createClassificationEngine(dependencies: {
           response.retryAfterMs >= 0
             ? response.retryAfterMs
             : undefined;
-        await store.settle(attempt, {
-          state: known ? "known" : "uncertain",
+        const settlement = {
+          state: known ? ("known" as const) : ("uncertain" as const),
           usage: validUsage ? usage : null,
           ...(floor === undefined ? {} : { retryAfterMs: floor }),
-        });
-        if (exceeded) return { status: "needs-review", reason: "budget" };
-        if (rejection && !options.finalAttempt)
+        };
+        if (exceeded) {
+          await store.settle(attempt, settlement);
+          return { status: "needs-review", reason: "budget" };
+        }
+        if (rejection && !options.finalAttempt) {
+          await store.settle(attempt, settlement);
           return {
             status: "deferred",
             reason: rejection,
             retryAfterMs: Math.min(floor ?? 30000, 86400000),
           };
+        }
+        let outcome: EmailClassification;
         if (response.status === "failed")
-          result = {
+          outcome = {
             status: "needs-review",
             reason:
               response.reason === "timeout" ||
@@ -235,16 +255,20 @@ export function createClassificationEngine(dependencies: {
           } catch {
             parsed = null;
           }
-          result = validateEmailClassification(parsed) ?? {
+          outcome = validateEmailClassification(parsed) ?? {
             status: "needs-review",
             reason: "schema",
           };
         }
+        // One D1 batch settles usage and stores the result: a crash cannot
+        // leave a billed attempt without its result for another lease to
+        // pay for again.
+        return (await store.settle(attempt, settlement, outcome))
+          ? outcome
+          : { status: "needs-review", reason: "settings-changed" };
       }
-      if (!result) return { status: "needs-review", reason: "in-progress" };
-      return (await dependencies.store.complete(checkpoint, result))
-        ? result
-        : { status: "needs-review", reason: "settings-changed" };
+      // Every slot holds a billed, unfinished or cooling-down attempt.
+      return { status: "needs-review", reason: "in-progress" };
     },
   };
 }
