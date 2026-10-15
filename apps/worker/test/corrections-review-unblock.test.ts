@@ -379,3 +379,131 @@ it("unblock concurrency: two resolutions of reviews that both block E fence X, s
       .first(),
   ).toEqual({ eligible: 1, state: "paid", reviews: "resolved,resolved" });
 });
+
+/**
+ * One source document whose segment i is the accepted observation of
+ * purchase `${prefix}-${i}` with a re-include-ineligible 50.00 payment; the
+ * purchases were stored 'paid' so each recompute also opens a remainder
+ * question (the largest per-purchase write set).
+ */
+async function sharedDocument(user: string, prefix: string, count: number) {
+  await db
+    .prepare(
+      "INSERT INTO source_messages(id,user_id,connection_id,provider_message_id,received_at,generation) VALUES(?,?,'mail',?,0,1)",
+    )
+    .bind(`${prefix}-msg`, user, `${prefix}-msg`)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES(?,?,?,'body',?,'text/plain',10)",
+    )
+    .bind(`${prefix}-doc`, user, `${prefix}-msg`, `hash-${prefix}`)
+    .run();
+  for (let index = 0; index < count; index++) {
+    const id = `${prefix}-${index}`;
+    await purchase(user, id);
+    await db
+      .prepare(
+        "UPDATE purchases SET payment_state='paid' WHERE user_id=? AND id=?",
+      )
+      .bind(user, id)
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO observations(id,user_id,document_id,segment_index,extraction_fingerprint,extraction_version,evidence_code,normalized_fields,review_state) VALUES(?,?,?,?,'v1',1,'explicitly-paid','{\"schemaVersion\":1}','accepted')",
+      )
+      .bind(`${id}-obs`, user, `${prefix}-doc`, index)
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO ledger_entries(id,user_id,purchase_id,observation_id,business_event_key,kind,amount_minor,currency,event_date,date_basis,eligible,origin) VALUES(?,?,?,?,?,'payment',5000,'EUR','2026-01-10','explicit-event-date',0,'source')",
+      )
+      .bind(`${id}-entry`, user, id, `${id}-obs`, `key-${id}`)
+      .run();
+  }
+  await review(user, `${prefix}-r`, {
+    purchaseId: null,
+    documentId: `${prefix}-doc`,
+    reason: "extraction-review",
+  });
+}
+const sevenFields = {
+  invoiceReference: "INV-SEVEN",
+  orderReference: "ORD-SEVEN",
+};
+
+it("unblock caps: 5 linked purchases with 4 recomputable resolve a 7-field complete-record within the batch cap", async () => {
+  const session = await owner("unblock-caps");
+  const user = session.tenant.userId;
+  await sharedDocument(user, "cap", 5);
+  await db
+    .prepare(
+      "UPDATE purchases SET record_status='excluded' WHERE user_id=? AND id='cap-4'",
+    )
+    .bind(user)
+    .run();
+  const result = await completeRecord(
+    session,
+    "cap-r",
+    "cap-resolve",
+    sevenFields,
+  );
+  expect(result.reviewStatus).toBe("resolved");
+  expect(
+    (
+      await db
+        .prepare(
+          "SELECT p.id,p.payment_state AS state,p.version,(SELECT eligible FROM ledger_entries l WHERE l.user_id=p.user_id AND l.purchase_id=p.id) AS eligible,(SELECT COUNT(*) FROM review_items r WHERE r.user_id=p.user_id AND r.purchase_id=p.id AND r.reason='payment-allocation-review' AND r.status='open') AS remainder FROM purchases p WHERE p.user_id=? AND p.id LIKE 'cap-%' ORDER BY p.id",
+        )
+        .bind(user)
+        .all()
+    ).results,
+  ).toEqual([
+    ...[0, 1, 2, 3].map((index) => ({
+      id: `cap-${index}`,
+      state: "partially_paid",
+      version: 2,
+      eligible: 1,
+      remainder: 1,
+    })),
+    { id: "cap-4", state: "paid", version: 1, eligible: 0, remainder: 0 },
+  ]);
+});
+
+it("unblock caps: 4 recomputed purchases with remainder questions plus a 7-field complete-record stay within the 32-statement batch", async () => {
+  const session = await owner("unblock-caps-four");
+  const user = session.tenant.userId;
+  await sharedDocument(user, "four", 4);
+  const result = await completeRecord(
+    session,
+    "four-r",
+    "four-resolve",
+    sevenFields,
+  );
+  expect(result.reviewStatus).toBe("resolved");
+  expect(
+    await db
+      .prepare(
+        "SELECT (SELECT SUM(eligible) FROM ledger_entries WHERE user_id=?) AS eligible,(SELECT COUNT(*) FROM review_items WHERE user_id=? AND reason='payment-allocation-review' AND status='open') AS remainders,(SELECT COUNT(*) FROM correction_audit WHERE user_id=? AND action IN('review-resolution-recomputed','payment-allocation-recomputed')) AS audits",
+      )
+      .bind(user, user, user)
+      .first(),
+  ).toEqual({ eligible: 4, remainders: 4, audits: 8 });
+});
+
+it("unblock caps: more than 4 recomputable purchases is the documented TOO_LARGE limit and writes nothing", async () => {
+  const session = await owner("unblock-caps-over");
+  const user = session.tenant.userId;
+  await sharedDocument(user, "over", 5);
+  await expect(
+    completeRecord(session, "over-r", "over-resolve", sevenFields),
+  ).rejects.toMatchObject({ code: "TOO_LARGE" });
+  expect(
+    await db
+      .prepare(
+        "SELECT (SELECT status FROM review_items WHERE user_id=? AND id='over-r') AS review,(SELECT COUNT(*) FROM purchases WHERE user_id=?) AS purchases,(SELECT SUM(eligible) FROM ledger_entries WHERE user_id=?) AS eligible",
+      )
+      .bind(user, user, user)
+      .first(),
+  ).toEqual({ review: "open", purchases: 5, eligible: 0 });
+});
