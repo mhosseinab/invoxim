@@ -383,14 +383,34 @@ it.each([
     async () => new Response(null, { status: 401 }),
   ],
   [
-    "provider 403 without a reason",
-    "source_reauthorization_required",
+    "provider 403 without a reason (not proven fixable by reconnecting)",
+    "source_unreadable",
     async () => new Response(null, { status: 403 }),
   ],
   [
     "provider 403 insufficientPermissions",
     "source_reauthorization_required",
     async () => gmailError(403, "insufficientPermissions"),
+  ],
+  [
+    "provider 403 authError",
+    "source_reauthorization_required",
+    async () => gmailError(403, "authError"),
+  ],
+  [
+    "provider 403 accessNotConfigured (operator API setup)",
+    "source_unreadable",
+    async () => gmailError(403, "accessNotConfigured"),
+  ],
+  [
+    "provider 403 forbidden",
+    "source_unreadable",
+    async () => gmailError(403, "forbidden"),
+  ],
+  [
+    "provider 403 unknown reason",
+    "source_unreadable",
+    async () => gmailError(403, "someFutureReason"),
   ],
   [
     "provider 403 userRateLimitExceeded",
@@ -414,7 +434,7 @@ it.each([
   ],
   [
     "provider 403 rate-limit reason beyond the bounded error read",
-    "source_reauthorization_required",
+    "source_unreadable",
     async () =>
       Response.json(
         {
@@ -439,7 +459,7 @@ it.each([
   ],
   [
     "provider 403 with a non-JSON body",
-    "source_reauthorization_required",
+    "source_unreadable",
     async () => new Response("rateLimitExceeded", { status: 403 }),
   ],
   [
