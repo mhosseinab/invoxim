@@ -13,12 +13,16 @@ import { test } from "node:test";
  * - only tracked *.md files outside `.agents/` (backlog history lives there);
  * - only file paths with an extension, or markdown link targets, so prose
  *   such as "evidence/ledger entries" is not a path;
- * - the plan's historical appendix (`# Appendix` onward) is skipped.
+ * - the plan's historical appendix (`# Appendix` onward) is skipped;
+ * - the block `turbo` injects into AGENTS.md is skipped: its paths name files
+ *   inside the installed turbo package, not this repository.
  */
 const root = new URL("../../", import.meta.url).pathname;
 const historicalFrom = new Map([
   ["docs/code-quality-refactor-plan.md", /^# Appendix\b/m],
 ]);
+const turboAgentRules =
+  /<!-- BEGIN:turborepo-agent-rules -->[\s\S]*?<!-- END:turborepo-agent-rules -->/g;
 const prefix = String.raw`(?:\.\.\/)*(?:docs|evidence)\/`;
 const linkTarget = new RegExp(String.raw`\]\((${prefix}[^)\s#]*)`, "g");
 const filePath = new RegExp(
@@ -29,7 +33,10 @@ const filePath = new RegExp(
 /** Repository path references in one markdown text, in source order. */
 export function docPathReferences(markdown, file = "") {
   const cut = historicalFrom.get(file)?.exec(markdown);
-  const text = cut ? markdown.slice(0, cut.index) : markdown;
+  const text = (cut ? markdown.slice(0, cut.index) : markdown).replace(
+    turboAgentRules,
+    "",
+  );
   const found = new Set();
   for (const pattern of [linkTarget, filePath])
     for (const match of text.matchAll(pattern))
@@ -115,4 +122,14 @@ test("prose, other prefixes and the plan's historical appendix are not flagged",
     "docs/02-architecture.md",
     "evidence/implementation/old.md",
   ]);
+});
+
+test("the turbo-managed AGENTS.md block is not treated as repository paths", () => {
+  assert.deepEqual(
+    docPathReferences(
+      "See `docs/02-architecture.md`.\n<!-- BEGIN:turborepo-agent-rules -->\nRead `docs/README.md` inside that installed package.\n<!-- END:turborepo-agent-rules -->\n",
+      "AGENTS.md",
+    ),
+    ["docs/02-architecture.md"],
+  );
 });
