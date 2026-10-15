@@ -1697,3 +1697,35 @@ it.each([
     });
   },
 );
+it.each(["reviews", "decisions"] as const)(
+  "reviewer P3 snapshot: more than 1000 %s is the bounded PIPELINE_LIMIT error, not an unexpected ZodError",
+  async (kind) => {
+    const user = "pipeline-a";
+    if (kind === "reviews")
+      await db
+        .prepare(
+          "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<1001) INSERT INTO review_items(id,user_id,document_id,observation_id,purchase_id,reason,blocking_scope,status,created_at) SELECT 'bulk-review-'||i,?,'d',NULL,NULL,'extraction-review','financial','open',0 FROM n",
+        )
+        .bind(user)
+        .run();
+    else {
+      await db
+        .prepare(
+          "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<1001) INSERT INTO purchases(id,user_id,merchant_raw,merchant_normalized,document_date,total_minor,currency,payment_state) SELECT 'bulk-purchase-'||i,?,'Bulk','bulk','2026-01-01',1,'EUR','unknown' FROM n",
+        )
+        .bind(user)
+        .run();
+      await db
+        .prepare(
+          "INSERT INTO ledger_match_decisions(user_id,content_hash,segment_index,purchase_id,decision) SELECT user_id,?,0,id,'different-purchase' FROM purchases WHERE user_id=? AND id LIKE 'bulk-purchase-%'",
+        )
+        .bind("a".repeat(64), user)
+        .run();
+    }
+    const repo = createPipelineRepository(db, repoOptions());
+    await expect(repo.loadSnapshot(lease(), input())).rejects.toMatchObject({
+      name: "PipelinePersistenceError",
+      code: "PIPELINE_LIMIT",
+    });
+  },
+);

@@ -83,6 +83,15 @@ const cashProofSchema = z.strictObject({
   accepted: z.union([z.literal(0), z.literal(1)]),
   connectionDeletionPending: z.union([z.literal(0), z.literal(1)]),
 });
+/**
+ * The SQL reads one row past each bound; more rows than the bound is the
+ * bounded PIPELINE_LIMIT outcome, checked before the schema's own `.max()`.
+ */
+function bounded(value: unknown, max: number): unknown {
+  if (Array.isArray(value) && value.length > max)
+    throw new PipelinePersistenceError("PIPELINE_LIMIT");
+  return value;
+}
 /** Corrections events() facts: no observation means no source proof. */
 function cashProof(encoded: string | null): LedgerCashProof {
   if (encoded === null)
@@ -242,7 +251,7 @@ export async function loadLedgerSnapshot(
         ]),
       )
       .max(20)
-      .parse(safeJson(purchase.overrides_json))
+      .parse(bounded(safeJson(purchase.overrides_json), 20))
       .map((field) => (field === "invoiceReference" ? "invoiceNumber" : field)),
   }));
   // OQ-A: payment state counts current cash plus credit, so load the same
@@ -385,7 +394,7 @@ export async function loadLedgerSnapshot(
       }),
     )
     .max(1000)
-    .parse(safeJson(authorized.decisions));
+    .parse(bounded(safeJson(authorized.decisions), 1000));
   const manualEvidence = z
     .array(
       z.strictObject({
@@ -394,7 +403,7 @@ export async function loadLedgerSnapshot(
       }),
     )
     .max(100)
-    .parse(safeJson(authorized.manual_evidence));
+    .parse(bounded(safeJson(authorized.manual_evidence), 100));
   // OQ-B: the open financial reviews corrections would apply to this cash
   // (purchase-scoped, entry observation/document, or the current document).
   const reviews: LedgerCashReview[] = z
@@ -408,7 +417,7 @@ export async function loadLedgerSnapshot(
       }),
     )
     .max(1000)
-    .parse(safeJson(authorized.reviews));
+    .parse(bounded(safeJson(authorized.reviews), 1000));
   return {
     observations,
     purchases,
