@@ -94,6 +94,7 @@ export function createMailboxRuntime(options: {
           ai,
           classificationBinding: bindings.AI,
           perplexityApiKey: bindings.PERPLEXITY_API_KEY,
+          maxJobAttempts: jobConfiguration(bindings)?.maxAttempts,
           remainingStatements,
         })
       : null;

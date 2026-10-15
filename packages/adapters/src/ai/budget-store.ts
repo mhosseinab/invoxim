@@ -64,6 +64,7 @@ export type UsageStore<T> = {
   authorize(input: StoreAttempt): Promise<boolean>;
   settle(input: StoreAttempt, settlement: Settlement): Promise<void>;
   complete(input: StoreInput, value: unknown): Promise<boolean>;
+  cooldownUntil(input: StoreInput): Promise<number | null>;
 };
 
 /**
@@ -124,6 +125,8 @@ export function createUsageStore<T>(params: {
         const result = validate(value);
         return result !== null && meter.complete(await toRun(input), result);
       }),
+    cooldownUntil: (input) =>
+      wrap(async () => meter.cooldownUntil(await toRun(input))),
   };
 }
 

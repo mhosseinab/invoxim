@@ -23,6 +23,8 @@ export function createPipelineRuntime(options: {
   classificationBinding?: ClefBinding | undefined;
   /** Wrangler secret used only when the configured provider is perplexity-decider. */
   perplexityApiKey?: string | undefined;
+  /** Job policy lease limit; bounds classifier rejection retries. */
+  maxJobAttempts?: number | undefined;
   remainingStatements: () => number;
 }): JobHandler {
   // Not a readiness rule: mailboxProcessingConfiguration decides what is
@@ -71,6 +73,9 @@ export function createPipelineRuntime(options: {
       classification,
       transportSources,
     ),
+    ...(options.maxJobAttempts === undefined
+      ? {}
+      : { maxJobAttempts: options.maxJobAttempts }),
     budget: options.ai.budget,
     remainingStatements: options.remainingStatements,
   });

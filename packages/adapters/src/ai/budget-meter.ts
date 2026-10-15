@@ -41,6 +41,7 @@ export type Meter = {
   authorize(input: RunInput): Promise<boolean>;
   settle(input: RunInput, settlement: Settlement): Promise<void>;
   complete(input: RunInput, result: unknown): Promise<boolean>;
+  cooldownUntil(input: RunInput): Promise<number | null>;
   normal(input: AiCheckpoint, attemptNumber?: number): Promise<RunInput>;
   probe(config: ApprovedAiConfig): Promise<RunInput>;
 };
@@ -279,13 +280,33 @@ export function createMeter(
     )
       return "budget";
     const attempt = attemptId(input.runKey, input.attemptNumber);
+    const checkedAt = clock();
+    // Classification only: a slot whose sole use was a zero-cost provider
+    // rejection (settled known at 0 units with a provider floor) is re-armed
+    // once that floor has passed, so rejections never strand a document.
+    // Billed, uncertain, in-flight or still-cooling attempts keep their slot.
+    const rearmable = `state='known' AND actual_units='0' AND actual_usd_micros='0' AND cooldown_until IS NOT NULL AND cooldown_until<=?`;
     const old = await db
       .prepare(
-        `SELECT state FROM usage_events WHERE user_id=? AND attempt_id=? AND EXISTS(${prepared.live.text})`,
+        `SELECT state,${options.classificationAuthorization ? `(${rearmable})` : "0"} AS rearm FROM usage_events WHERE user_id=? AND attempt_id=? AND EXISTS(${prepared.live.text})`,
       )
-      .bind(userId, attempt, ...prepared.live.values)
-      .first();
-    if (old) return "existing";
+      .bind(
+        ...(options.classificationAuthorization ? [checkedAt] : []),
+        userId,
+        attempt,
+        ...prepared.live.values,
+      )
+      .first<{ state: string; rearm: number }>();
+    if (old && !old.rearm) return "existing";
+    const rearm = old
+      ? [
+          db
+            .prepare(
+              `DELETE FROM usage_events WHERE user_id=? AND attempt_id=? AND ${rearmable} AND EXISTS(${prepared.live.text})`,
+            )
+            .bind(userId, attempt, checkedAt, ...prepared.live.values),
+        ]
+      : [];
     const now = clock(),
       day = new Date(now).toISOString().slice(0, 10),
       month = day.slice(0, 7),
@@ -310,6 +331,7 @@ export function createMeter(
     const admitted = `${livePredicate} AND ${cap.text} AND ${previous.text}`;
     const conditionValues = [...live.values, ...cap.values, ...previous.values];
     await db.batch([
+      ...rearm,
       db
         .prepare(
           `INSERT INTO usage_buckets(scope,owner_key,user_id,period_kind,period_start) SELECT scope,owner_key,user_id,period_kind,period_start FROM (SELECT 'tenant' AS scope,? AS owner_key,? AS user_id,'day' AS period_kind,? AS period_start UNION ALL SELECT 'tenant',?,?,'month',? UNION ALL SELECT 'global','operator',NULL,'day',? UNION ALL SELECT 'global','operator',NULL,'month',?) WHERE ${livePredicate} ON CONFLICT DO NOTHING`,
@@ -628,5 +650,33 @@ export function createMeter(
     probeInputs.set(config.fingerprint, input);
     return input;
   }
-  return { checkpoint, reserve, authorize, settle, complete, normal, probe };
+  /** Active cooldown end for this tenant's or the shared hosted destination/model. */
+  async function cooldownUntil(input: RunInput): Promise<number | null> {
+    const row = await db
+      .prepare(
+        "SELECT MAX(until) AS until FROM (SELECT MAX(cooldown_until) AS until FROM usage_events WHERE user_id=? AND destination_id=? AND model_id=? AND cooldown_until>? UNION ALL SELECT cooldown_until FROM hosted_ai_cooldowns WHERE destination_id=? AND model_id=? AND cooldown_until>? AND ?='hosted')",
+      )
+      .bind(
+        userId,
+        input.config.destinationId,
+        input.config.modelId,
+        clock(),
+        input.config.destinationId,
+        input.config.modelId,
+        clock(),
+        input.config.mode,
+      )
+      .first<{ until: number | null }>();
+    return typeof row?.until === "number" ? row.until : null;
+  }
+  return {
+    checkpoint,
+    reserve,
+    authorize,
+    settle,
+    complete,
+    cooldownUntil,
+    normal,
+    probe,
+  };
 }

@@ -1,6 +1,6 @@
 import { type Extraction, extractionSchema } from "@invoxim/contracts";
 import type { TenantContext } from "../tenant-context";
-import { aiRunIdentityKey, settleReservedAttempt } from "./engine";
+import { aiRunIdentityKey } from "./engine";
 import type {
   AiCheckpoint,
   AiResponse,
@@ -22,8 +22,10 @@ export const EMAIL_CLASSIFICATION_REASONS = [
   "settings-changed",
   "timeout",
   "rate-limit",
+  "invalid-key",
   "outage",
 ] as const;
+
 export type EmailClassificationReason =
   (typeof EMAIL_CLASSIFICATION_REASONS)[number];
 export type EmailClassification =
@@ -42,7 +44,10 @@ export type EmailClassification =
  */
 export type DeferredClassification = {
   readonly status: "deferred";
-  readonly reason: "rate-limit" | "invalid-key";
+  /** `cooldown`: a durable provider cooldown blocks the call before HTTP. */
+  readonly reason: "rate-limit" | "invalid-key" | "cooldown";
+  /** When the job may retry; bounded to one day. */
+  readonly retryAfterMs: number;
 };
 export interface EmailClassifier {
   classify(
@@ -63,6 +68,8 @@ export interface ClassificationUsageStore extends Omit<
     | { status: "completed"; result: EmailClassification }
   >;
   complete(input: AiCheckpoint, result: EmailClassification): Promise<boolean>;
+  /** End of an active provider cooldown for this destination/model, if any. */
+  cooldownUntil(input: AiCheckpoint): Promise<number | null>;
 }
 export function validateEmailClassification(
   value: unknown,
@@ -105,6 +112,12 @@ export function createClassificationEngine(dependencies: {
       parts: readonly AiTextPart[],
       config: ApprovedAiConfig,
       signal?: AbortSignal,
+      /**
+       * True on the job's last permitted lease: a provider rejection then
+       * becomes a persisted, reviewable outcome instead of another deferral.
+       * Rejection retries are therefore bounded by the job retry policy.
+       */
+      options: { readonly finalAttempt?: boolean } = {},
     ): Promise<EmailClassification | DeferredClassification> {
       if (
         config.promptVersion !== EMAIL_CLASSIFICATION_VERSION ||
@@ -124,44 +137,92 @@ export function createClassificationEngine(dependencies: {
       if (state.status !== "ready" || signal?.aborted)
         return { status: "needs-review", reason: "settings-changed" };
       const prefix = await aiRunIdentityKey(checkpoint);
-      let result: EmailClassification = {
-        status: "needs-review",
-        reason: "schema",
-      };
-      for (let number = 1; number <= config.maxAttempts; number++) {
-        const final = number === config.maxAttempts;
-        const reserved = await settleReservedAttempt(
-          dependencies.store,
-          {
-            ...checkpoint,
-            attemptId: `${prefix}:${number}`,
-            attemptNumber: number,
-          },
-          () => dependencies.classifier.classify(parts, config, signal),
-        );
-        if (reserved.status === "needs-review") {
-          // An earlier lease already used this attempt for a deferred (not
-          // persisted) provider rejection; the meter admits the next attempt
-          // only after that one settled as known.
-          if (reserved.reason === "in-progress" && !final) continue;
-          return reserved;
+      const { store } = dependencies;
+      let result: EmailClassification | null = null;
+      // `config.maxAttempts` slots bound billed calls. The meter re-arms a slot
+      // whose only use was a zero-cost rejection after its cooldown ended.
+      for (let number = 1; number <= config.maxAttempts && !result; number++) {
+        const attempt = {
+          ...checkpoint,
+          attemptId: `${prefix}:${number}`,
+          attemptNumber: number,
+        };
+        const reservation = await store.reserve(attempt);
+        // A slot still holding a billed, unfinished or cooling-down attempt
+        // is skipped; the meter refuses to follow an unfinished one.
+        if (reservation === "existing") continue;
+        if (reservation !== "reserved") {
+          const until = await store.cooldownUntil(checkpoint);
+          const wait = until === null ? 0 : until - Date.now();
+          return wait > 0
+            ? {
+                status: "deferred",
+                reason: "cooldown",
+                retryAfterMs: Math.min(wait, 86400000),
+              }
+            : { status: "needs-review", reason: "budget" };
         }
-        const { response } = reserved;
-        if (response.status === "failed") {
-          // Operator credential rejected: never a per-document outcome.
-          if (response.reason === "invalid-key")
-            return { status: "deferred", reason: "invalid-key" };
-          // Rate limit: retry after Retry-After, bounded by maxAttempts.
-          if (response.reason === "rate-limit" && !final)
-            return { status: "deferred", reason: "rate-limit" };
+        if (!(await store.authorize(attempt)))
+          return { status: "needs-review", reason: "settings-changed" };
+        let response: AiResponse;
+        try {
+          response = await dependencies.classifier.classify(
+            parts,
+            config,
+            signal,
+          );
+        } catch {
+          await store.settle(attempt, { state: "uncertain", usage: null });
+          return { status: "needs-review", reason: "outage" };
+        }
+        const usage = response.usage;
+        const validUsage =
+          usage !== null &&
+          [usage.input, usage.output, usage.other].every(
+            (value) => Number.isSafeInteger(value) && value >= 0,
+          );
+        const exceeded =
+          validUsage &&
+          BigInt(usage.input) + BigInt(usage.output) + BigInt(usage.other) >
+            BigInt(config.reservationUnits);
+        const known = validUsage && usage.source === "reported" && !exceeded;
+        const rejection =
+          response.status === "failed" &&
+          (response.reason === "rate-limit" ||
+            response.reason === "invalid-key")
+            ? response.reason
+            : null;
+        const floor =
+          response.status === "failed" &&
+          rejection &&
+          response.retryAfterMs !== undefined &&
+          Number.isSafeInteger(response.retryAfterMs) &&
+          response.retryAfterMs >= 0
+            ? response.retryAfterMs
+            : undefined;
+        await store.settle(attempt, {
+          state: known ? "known" : "uncertain",
+          usage: validUsage ? usage : null,
+          ...(floor === undefined ? {} : { retryAfterMs: floor }),
+        });
+        if (exceeded) return { status: "needs-review", reason: "budget" };
+        if (rejection && !options.finalAttempt)
+          return {
+            status: "deferred",
+            reason: rejection,
+            retryAfterMs: Math.min(floor ?? 30000, 86400000),
+          };
+        if (response.status === "failed")
           result = {
             status: "needs-review",
             reason:
-              response.reason === "timeout" || response.reason === "rate-limit"
+              response.reason === "timeout" ||
+              response.reason === "rate-limit" ||
+              response.reason === "invalid-key"
                 ? response.reason
                 : "outage",
           };
-        } else {
+        else {
           let parsed: unknown;
           try {
             parsed =
@@ -177,8 +238,8 @@ export function createClassificationEngine(dependencies: {
             reason: "schema",
           };
         }
-        break;
       }
+      if (!result) return { status: "needs-review", reason: "in-progress" };
       return (await dependencies.store.complete(checkpoint, result))
         ? result
         : { status: "needs-review", reason: "settings-changed" };

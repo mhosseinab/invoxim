@@ -60,6 +60,11 @@ export interface PipelineServiceOptions {
   readonly directModelInputs?: boolean;
   readonly inference: PipelineInferenceFactory;
   readonly classification?: PipelineClassificationFactory;
+  /**
+   * The job policy's lease limit. On the last lease a classifier rejection is
+   * a reviewable document outcome rather than another deferral.
+   */
+  readonly maxJobAttempts?: number;
   readonly budget: AiBudgetPolicy;
   readonly remainingStatements: () => number;
 }

@@ -369,6 +369,9 @@ it("K3 classification settle forwards rate-limit retryAfterMs like extraction", 
     async complete() {
       return true;
     },
+    async cooldownUntil() {
+      return null;
+    },
   };
   const classifier: EmailClassifier = {
     async classify() {
@@ -392,7 +395,8 @@ it("K3 classification settle forwards rate-limit retryAfterMs like extraction", 
       [{ id: "body", text: "synthetic" }],
       classificationConfig,
     ),
-  ).toEqual({ status: "needs-review", reason: "rate-limit" });
+    // A non-final rate limit is deferred (never persisted) with its floor.
+  ).toEqual({ status: "deferred", reason: "rate-limit", retryAfterMs: 90_000 });
   expect(settled).toEqual({
     state: "uncertain",
     usage: null,

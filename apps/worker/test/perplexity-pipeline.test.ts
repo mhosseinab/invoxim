@@ -227,6 +227,7 @@ const control = {
 };
 function service(
   sources: Parameters<typeof createReceiptClassifierFactory>[2],
+  maxJobAttempts?: number,
 ) {
   const extract = vi.fn(async () => ({
     status: "ok" as const,
@@ -260,6 +261,7 @@ function service(
           classification,
           sources,
         ),
+        ...(maxJobAttempts === undefined ? {} : { maxJobAttempts }),
         budget: policy,
         remainingStatements: () => 40 - meter.executedStatements(),
       });
@@ -509,38 +511,126 @@ it("AI-CLASSIFIER-PROVIDER 429 is not persisted, releases its reservation and re
     isReceipt: false,
     category: "software",
   });
+  // The zero-cost 429 slot was re-armed after Retry-After.
   expect(done.events).toEqual([
-    { attempt_number: 1, state: "known", actual_usd_micros: "0" },
-    { attempt_number: 2, state: "known", actual_usd_micros: "20" },
+    { attempt_number: 1, state: "known", actual_usd_micros: "20" },
   ]);
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
 
-it("AI-CLASSIFIER-PROVIDER repeated 429 stays bounded: after the retry cap the document becomes reviewable, not stuck", async () => {
-  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
-  const fetch = perplexityFetch(
-    () => new Response("", { status: 429, headers: { "Retry-After": "1" } }),
-  );
-  const { pipeline } = service({ perplexityApiKey: KEY });
-  const start = Date.now();
-  const outcomes = [];
-  for (let round = 0; round < 4; round++) {
-    vi.spyOn(Date, "now").mockImplementation(() => start + round * 5000);
-    outcomes.push(await pipeline.run(lease));
+async function documentCode() {
+  return db
+    .prepare(
+      "SELECT parse_state,parse_code FROM documents WHERE user_id=? AND id='d'",
+    )
+    .bind(tenant.userId)
+    .first<{ parse_state: string; parse_code: string | null }>();
+}
+/** Runs one lease with Date.now() moved `offset` ms past the real clock. */
+async function runAt(
+  pipeline: ReturnType<typeof service>["pipeline"],
+  offset: number,
+  attempt = 1,
+) {
+  const real = Date.now;
+  const base = real.call(Date);
+  const expiresAt = base + offset + 300000;
+  await db
+    .prepare("UPDATE jobs SET lease_expires_at=? WHERE user_id=? AND id=?")
+    .bind(expiresAt, tenant.userId, lease.jobId)
+    .run();
+  const spy = vi.spyOn(Date, "now").mockImplementation(() => base + offset);
+  try {
+    return await pipeline.run({ ...lease, expiresAt, attempt });
+  } finally {
+    spy.mockRestore();
   }
-  expect(fetch).toHaveBeenCalledTimes(2);
-  expect(outcomes[0]).toEqual({ kind: "paused", code: "budget" });
-  expect(outcomes[1]).not.toEqual({ kind: "paused", code: "budget" });
-  expect(
-    await db
-      .prepare(
-        "SELECT processing_status FROM source_messages WHERE user_id=? AND id='s'",
-      )
-      .bind(tenant.userId)
-      .first("processing_status"),
-  ).not.toBe("pending");
+}
+
+it("AI-CLASSIFIER-PROVIDER zero-cost rejections do not strand a document: 401, 401 after cooldown, then a fixed key classifies it", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  const statuses = [401, 401, 200];
+  let call = 0;
+  const fetch = perplexityFetch(() => {
+    const status = statuses[call++] ?? 200;
+    return status === 200
+      ? Response.json(decision(0.02))
+      : new Response("", { status });
+  });
+  const { pipeline, counts } = service({ perplexityApiKey: KEY });
+  const outcomes = [];
+  // Each lease starts after the previous 15-minute operator-key cooldown.
+  for (let round = 0; round < 3; round++)
+    outcomes.push(await runAt(pipeline, round * 16 * 60 * 1000));
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(outcomes[2]).toEqual({ kind: "completed" });
+  for (const outcome of outcomes)
+    expect(outcome).not.toEqual({ kind: "paused", code: "budget" });
+  const state = await classificationState();
+  expect(JSON.parse(state.extraction[0]?.result_json ?? "null")).toEqual({
+    status: "classified",
+    isReceipt: false,
+    category: "software",
+  });
+  // Each zero-cost rejection's slot was re-armed after its cooldown; only
+  // the billed decision remains.
+  expect(state.events).toEqual([
+    { attempt_number: 1, state: "known", actual_usd_micros: "20" },
+  ]);
+  expect(Math.max(...counts)).toBeLessThanOrEqual(40);
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
+
+it("AI-CLASSIFIER-PROVIDER a 429 followed by a 401 still leaves room for the corrected call", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  const responses = [
+    () => new Response("", { status: 429, headers: { "Retry-After": "2" } }),
+    () => new Response("", { status: 401 }),
+    () => Response.json(decision(0.02)),
+  ];
+  let call = 0;
+  const fetch = perplexityFetch(() =>
+    (responses[call++] ?? (() => Response.json(decision(0.02))))(),
+  );
+  const { pipeline } = service({ perplexityApiKey: KEY });
+  expect((await runAt(pipeline, 0)).kind).not.toBe("completed");
+  expect((await runAt(pipeline, 5000)).kind).not.toBe("completed");
+  expect(await runAt(pipeline, 20 * 60 * 1000)).toEqual({ kind: "completed" });
+  expect(fetch).toHaveBeenCalledTimes(3);
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+});
+
+it.each([
+  [401, "classification-invalid-key"],
+  [429, "classification-rate-limit"],
+] as const)(
+  "AI-CLASSIFIER-PROVIDER rejections are bounded by the job policy: the final %i is a reviewable %s, never a budget pause",
+  async (status, code) => {
+    await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+    const fetch = perplexityFetch(
+      () => new Response("", { status, headers: { "Retry-After": "1" } }),
+    );
+    // Job policy of three leases: the third rejection is final.
+    const { pipeline } = service({ perplexityApiKey: KEY }, 3);
+    const outcomes = [];
+    for (let round = 0; round < 3; round++)
+      outcomes.push(await runAt(pipeline, round * 16 * 60 * 1000, round + 1));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    if (status === 401)
+      for (const outcome of outcomes)
+        expect(outcome).not.toEqual({ kind: "paused", code: "budget" });
+    expect(await documentCode()).toEqual({
+      parse_state: "needs_review",
+      parse_code: code,
+    });
+    // Billed bound: every rejection settled at zero cost.
+    const state = await classificationState();
+    expect(state.reserved).toEqual({ units: 0, micros: 0 });
+    for (const event of state.events)
+      expect(event).toMatchObject({ state: "known", actual_usd_micros: "0" });
+    await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  },
+);
 
 it("AI-CLASSIFIER-PROVIDER rejected operator key pauses processing without a per-document outcome or further calls", async () => {
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();

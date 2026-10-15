@@ -375,6 +375,11 @@ export function createPipelineService(
             classificationParts,
             classifier.config,
             control.signal,
+            {
+              finalAttempt:
+                options.maxJobAttempts !== undefined &&
+                lease.attempt >= options.maxJobAttempts,
+            },
           );
           verifyFinancialDocument =
             classification.status === "needs-review" &&
@@ -384,9 +389,9 @@ export function createPipelineService(
           // limit waits for its durable Retry-After cooldown; a rejected
           // operator key makes the classifier unavailable.
           if (classification.status === "deferred")
-            return classification.reason === "rate-limit"
-              ? budgetPaused
-              : handlerUnavailable;
+            return classification.reason === "invalid-key"
+              ? handlerUnavailable
+              : budgetPaused;
           if (
             classification.status !== "classified" &&
             !verifyFinancialDocument
