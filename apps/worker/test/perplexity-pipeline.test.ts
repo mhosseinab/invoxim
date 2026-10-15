@@ -972,3 +972,32 @@ it("AI-CLASSIFIER-PROVIDER a 429 reschedules the job itself: re-dispatched after
   });
   await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
 });
+
+it("AI-CLASSIFIER-PROVIDER a 403 is a per-document unsupported outcome without a shared operator cooldown", async () => {
+  await db.prepare("DELETE FROM hosted_ai_cooldowns").run();
+  const fetch = perplexityFetch(() => new Response("", { status: 403 }));
+  const { pipeline } = service({ perplexityApiKey: KEY });
+  const outcome = await pipeline.run(lease);
+  expect(outcome).not.toMatchObject({ kind: "retry" });
+  expect(outcome).not.toMatchObject({ kind: "paused" });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(await documentCode()).toEqual({
+    parse_state: "needs_review",
+    parse_code: "classification-unsupported",
+  });
+  expect(
+    await db
+      .prepare("SELECT COUNT(*) AS n FROM hosted_ai_cooldowns")
+      .first("n"),
+  ).toBe(0);
+  const state = await classificationState();
+  expect(state.reserved).toEqual({ units: 0, micros: 0 });
+  expect(
+    await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM usage_events WHERE user_id=? AND cooldown_until>0",
+      )
+      .bind(tenant.userId)
+      .first("n"),
+  ).toBe(0);
+});

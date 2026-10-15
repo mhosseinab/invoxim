@@ -23,6 +23,7 @@ export const EMAIL_CLASSIFICATION_REASONS = [
   "timeout",
   "rate-limit",
   "invalid-key",
+  "unsupported",
   "outage",
 ] as const;
 
@@ -218,7 +219,8 @@ export function createClassificationEngine(dependencies: {
             reason:
               response.reason === "timeout" ||
               response.reason === "rate-limit" ||
-              response.reason === "invalid-key"
+              response.reason === "invalid-key" ||
+              response.reason === "unsupported"
                 ? response.reason
                 : "outage",
           };

@@ -62,13 +62,18 @@ const NOT_PROCESSED = {
 export const PERPLEXITY_INVALID_KEY_COOLDOWN_MS = 15 * 60 * 1000;
 function statusFailure(response: Response): DecisionFailure | null {
   const { status } = response;
-  if (status === 401 || status === 403)
+  // Only 401 means the operator credential was rejected: shared cooldown.
+  if (status === 401)
     return {
       status: "failed",
       reason: "invalid-key",
       usage: NOT_PROCESSED,
       retryAfterMs: PERPLEXITY_INVALID_KEY_COOLDOWN_MS,
     };
+  // A 403 may come from an edge layer reacting to this request's content, so
+  // it is a per-document unsupported outcome with no global cooldown.
+  if (status === 403)
+    return { status: "failed", reason: "unsupported", usage: NOT_PROCESSED };
   if (status === 429)
     return {
       status: "failed",

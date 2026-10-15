@@ -195,7 +195,7 @@ it("AI-CLASSIFIER-PROVIDER status codes map to typed failures without reading or
   });
   for (const [status, reason] of [
     [401, "invalid-key"],
-    [403, "invalid-key"],
+    [403, "unsupported"],
     [400, "unsupported"],
     [404, "unsupported"],
     [405, "unsupported"],
@@ -226,7 +226,14 @@ it("AI-CLASSIFIER-PROVIDER status codes map to typed failures without reading or
             usage: { input: 0, output: 0, other: 0, source: "reported" },
             retryAfterMs: 15 * 60 * 1000,
           }
-        : { status: "failed", reason, usage: null },
+        : status === 403
+          ? {
+              // Edge-layer refusal: per-document, zero usage, no cooldown.
+              status: "failed",
+              reason,
+              usage: { input: 0, output: 0, other: 0, source: "reported" },
+            }
+          : { status: "failed", reason, usage: null },
     );
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();

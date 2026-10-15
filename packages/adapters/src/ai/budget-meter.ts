@@ -285,7 +285,7 @@ export function createMeter(
     // rejection (settled known at 0 units with a provider floor) is re-armed
     // once that floor has passed, so rejections never strand a document.
     // Billed, uncertain, in-flight or still-cooling attempts keep their slot.
-    const rearmable = `state='known' AND actual_units='0' AND actual_usd_micros='0' AND cooldown_until IS NOT NULL AND cooldown_until<=?`;
+    const rearmable = `state='known' AND actual_units='0' AND actual_usd_micros='0' AND cooldown_until>0 AND cooldown_until<=?`;
     const old = await db
       .prepare(
         `SELECT state,${options.classificationAuthorization ? `(${rearmable})` : "0"} AS rearm FROM usage_events WHERE user_id=? AND attempt_id=? AND EXISTS(${prepared.live.text})`,
