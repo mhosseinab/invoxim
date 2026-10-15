@@ -6,12 +6,17 @@
 
 import { env } from "cloudflare:workers";
 import {
-  type CorrectionEventFact,
   type CorrectionReviewFact,
   evaluateCorrectionSettlement,
   settlementEvents,
 } from "@invoxim/core";
 import { beforeAll, expect, it } from "vitest";
+import { creditProofs } from "../../../packages/adapters/src/corrections/allocation";
+import {
+  events,
+  reviewFact,
+  reviews,
+} from "../../../packages/adapters/src/corrections/data";
 import { recomputeConnectionPurchase } from "../../../packages/adapters/src/lifecycle/connection-recompute";
 import { useCurrentSchema } from "./support/db";
 
@@ -54,13 +59,6 @@ interface Case {
   entries: Entry[];
   reviews?: Review[];
   expected: PaymentState;
-  /**
-   * Known loader gap, reported to the PIPE lane: corrections/data.ts reviews()
-   * loads only reviews with purchase_id = the purchase, so a review linked only
-   * through the entry's observation/document is invisible to corrections. The
-   * recompute keeps the stricter superset; this records what corrections sees.
-   */
-  correctionsLoaderState?: PaymentState;
 }
 
 const cases: Case[] = [
@@ -172,7 +170,6 @@ const cases: Case[] = [
     ],
     reviews: [{ reason: "event-conflict", link: { observationOf: 0 } }],
     expected: "unknown",
-    correctionsLoaderState: "paid",
   },
   {
     name: "document-matched review without observation still blocks the entry",
@@ -193,7 +190,6 @@ const cases: Case[] = [
     ],
     reviews: [{ reason: "extraction-review", link: { documentOf: 0 } }],
     expected: "unknown",
-    correctionsLoaderState: "paid",
   },
   {
     name: "source cash from a connection with pending deletion is unsupported",
@@ -387,52 +383,25 @@ beforeAll(async () => {
   }
 });
 
-/** The corrections TS path over the same facts (mirrors corrections/data.ts). */
-function correctionsState(caseIndex: number, testCase: Case): PaymentState {
-  const facts: CorrectionEventFact[] = testCase.entries.map(
-    (entry, entryIndex) => ({
-      id: ids(caseIndex, entryIndex).entry,
-      observationId: entry.source
-        ? ids(caseIndex, entryIndex).observation
-        : null,
-      documentId: entry.source ? ids(caseIndex, entryIndex).document : null,
-      kind: entry.kind,
-      amountMinor: String(entry.amountMinor),
-      currency: "EUR",
-      eventDate: "2026-01-01",
-      origin: entry.origin,
-      eligible: entry.eligible,
-      accepted:
-        entry.source?.accepted === true &&
-        entry.source.connection !== "mail-deleted",
-      evidenceCode: entry.source?.evidenceCode ?? null,
-    }),
-  );
-  // data.ts reviews() is purchase-scoped (WHERE purchase_id=?).
-  const reviews: CorrectionReviewFact[] = (testCase.reviews ?? []).flatMap(
-    (review, reviewIndex) => {
-      const link = review.link;
-      if (link !== "purchase") return [];
-      return {
-        id: `c${caseIndex}-r${reviewIndex}`,
-        observationId: null,
-        documentId: "doc-unrelated",
-        reason: review.reason,
-        blockingScope: "financial",
-        status: "open",
-        missingFields: [],
-        purchaseId: purchaseId(caseIndex),
-      };
-    },
-  );
+/** The corrections path over the same facts, through the real corrections/data.ts loaders. */
+async function correctionsState(
+  caseIndex: number,
+  testCase: Case,
+): Promise<PaymentState> {
+  const id = purchaseId(caseIndex);
+  const [entries, reviewRows, credits] = await Promise.all([
+    events(db, user, id),
+    reviews(db, user, id),
+    creditProofs(db, user, id),
+  ]);
   return evaluateCorrectionSettlement(
     {
       currency: "EUR",
       totalMinor: "10000",
       paymentState: testCase.paymentState,
     },
-    settlementEvents(facts, reviews),
-    [],
+    settlementEvents(entries, reviewRows.map(reviewFact)),
+    credits,
   ).paymentState;
 }
 
@@ -452,7 +421,24 @@ for (const [caseIndex, testCase] of cases.entries())
       payment_state: testCase.expected,
       lifecycle_recompute_connection_id: null,
     });
-    expect(correctionsState(caseIndex, testCase)).toBe(
-      testCase.correctionsLoaderState ?? testCase.expected,
-    );
+    expect(await correctionsState(caseIndex, testCase)).toBe(testCase.expected);
   });
+
+it("corrections reviews() adversarial: the superset never loads another purchase's entry-linked or document-linked review", async () => {
+  // Rows not owned by the purchase are the superset additions; each must be
+  // linked to this case's own entry.
+  const additions = async (caseIndex: number) =>
+    (await reviews(db, user, purchaseId(caseIndex)))
+      .filter((row) => row.purchase_id !== purchaseId(caseIndex))
+      .map((row) => row.id);
+  const linked = cases.flatMap((testCase, caseIndex) =>
+    (testCase.reviews ?? []).some((review) => review.link !== "purchase")
+      ? [caseIndex]
+      : [],
+  );
+  expect(linked.length).toBe(2);
+  for (const [caseIndex] of cases.entries())
+    expect(await additions(caseIndex)).toEqual(
+      linked.includes(caseIndex) ? [`c${caseIndex}-r0`] : [],
+    );
+});
