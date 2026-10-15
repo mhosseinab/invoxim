@@ -146,7 +146,7 @@ Additions:
 - **OD-6: untracked.** Evidence records stay outside git (fe99887 removed `evidence/`; b2a2a88 ignores `evidence/implementation/`). TOOL-4 is superseded.
 - **OD-11: the recommended default.** Keep each provider's budget-shortfall outcome.
 - **OD-12: freeze lifted** ("continue implementing the rest"). G-T17 no longer blocks any card.
-- **PIPE-1 rule:** a committed source is processed; unsupported siblings stay visible as unsupported parts; the progress review count equals the open review items.
+- **PIPE-1 rule (final, 2026-10-15):** keep the current flow. An unsupported sibling (e.g. a ZIP) is failed by the service into `needs_review`/`unsupported_type` with one operational `document-review` item, so the source is `review` and the progress review count equals the open review items. Pinned end-to-end in `pipeline-adversarial.test.ts` ("PIPE-1 receipt with an unsupported ZIP sibling…"). The earlier "processed + note" answer was withdrawn after it was found to require removing those review items.
 
 ---
 
@@ -269,7 +269,7 @@ graph LR
 
 | ID | Task (refs) | Write-set | Depends / OD | Size |
 |---|---|---|---|---|
-| PIPE-1 [$] | **P0.5 divergence.** RED test: for a `parse_state` that is not ready/extracted, `commit` (repository.ts:1154) and `skipDocument` (:1232) return different `processing_status`. Write the intended rule into the test, then extract one SQL CASE fragment. **Owner rule (2026-10-15):** a committed source is processed; unsupported siblings stay visible as unsupported parts; the progress review count equals the open review items. **G7 applies**: keep the statement prefix. | repository.ts, pipeline test | — (G7) | S |
+| PIPE-1 [$] | **P0.5 divergence.** RED test: for a `parse_state` that is not ready/extracted, `commit` (repository.ts:1154) and `skipDocument` (:1232) return different `processing_status`. Write the intended rule into the test, then extract one SQL CASE fragment. **Owner rule (final, 2026-10-15):** keep the current flow; progress review count equals open review items (see owner answers). **G7 applies**: keep the statement prefix. | repository.ts, pipeline test | — (G7) | S |
 | PIPE-2 [T] | **P0.9 unverified.** Make `processingDigest` required in the prod interface (P7). Tests pass it explicitly. | repository.ts types, tests | after PIPE-1 | S |
 | PIPE-3 [T] | **P1.5a** connection/consent "live" fragment (~10×, drifted: store.ts:315, repository-guards.ts:33). Consent-review lookup with one Zod schema (P1, 4×). Lives in `pipeline/repository-guards.ts`. | repository-guards.ts, repository.ts, jobs/store.ts, onboarding-recovery.ts | QA-1, QA-2 | M |
 | PIPE-4 [T] | **P1.5b** `leaseLive({alias, extras})` (repository-guards.ts:29, jobs/store.ts:179, sources.ts:145). Export it for INT-5. (G2, ext#12) | repository-guards.ts, jobs/store.ts | PIPE-3 | S |
