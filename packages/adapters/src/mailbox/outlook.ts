@@ -1,3 +1,4 @@
+import { oauthTokenResponseSchema } from "@invoxim/contracts";
 import type {
   MailboxAuthorizationPort,
   MailboxCredentials,
@@ -11,6 +12,7 @@ import {
   OUTLOOK_AUTHORIZATION_SCOPES,
   outlookAuthoritySchema,
 } from "./outlook-configuration";
+import { mailboxProviderJson } from "./provider-json";
 
 const origin = "https://login.microsoftonline.com";
 const consumerTenant = "9188040d-6c67-4c5b-b112-36a304b66dad";
@@ -22,19 +24,6 @@ const subject = z
   .min(1)
   .max(160)
   .regex(/^[A-Za-z0-9_-]+$/);
-const tokenText = z
-  .string()
-  .min(1)
-  .max(8192)
-  .regex(/^[\x21-\x7e]+$/);
-const tokensSchema = z.object({
-  access_token: tokenText,
-  refresh_token: tokenText.optional(),
-  expires_in: z.number().int().min(1).max(86400),
-  token_type: z.string().refine((value) => value.toLowerCase() === "bearer"),
-  scope: z.string().max(4096).optional(),
-  id_token: z.string().min(1).max(16384).optional(),
-});
 const claimsSchema = z.object({
   iss: z.string().max(120),
   tid: uuid,
@@ -106,90 +95,13 @@ export function validateOutlookReadScopes(
   )
     throw new MailboxError("MISSING_PERMISSION");
 }
-async function providerJson(url: string, init: RequestInit): Promise<unknown> {
-  const signal = AbortSignal.timeout(10000);
-  const deadline = Date.now() + 10000;
-  let response: Response;
-  try {
-    response = await fetch(url, { ...init, redirect: "manual", signal });
-  } catch {
-    throw new MailboxError("UNAVAILABLE");
-  }
-  if (
-    (response.status >= 300 && response.status < 400) ||
-    Number(response.headers.get("content-length")) > 65536
-  )
-    throw new MailboxError("UNAVAILABLE");
-  const reader = response.body?.getReader();
-  if (!reader) throw new MailboxError("UNAVAILABLE");
-  let abort: (() => void) | undefined;
-  const stopped = new Promise<never>((_, reject) => {
-    abort = () => reject(new MailboxError("UNAVAILABLE"));
-    signal.addEventListener("abort", abort, { once: true });
-    if (signal.aborted) abort();
-  });
-  const bytes = new Uint8Array(65536);
-  let length = 0;
-  let dataChunks = 0;
-  let emptyChunks = 0;
-  function checkDeadline() {
-    if (signal.aborted || Date.now() >= deadline)
-      throw new MailboxError("UNAVAILABLE");
-  }
-  try {
-    while (true) {
-      checkDeadline();
-      const chunk = await Promise.race([reader.read(), stopped]);
-      checkDeadline();
-      if (chunk.done) break;
-      if (chunk.value.byteLength === 0) {
-        if (++emptyChunks > 32) throw new MailboxError("UNAVAILABLE");
-        continue;
-      }
-      if (++dataChunks > 4096 || length + chunk.value.byteLength > bytes.length)
-        throw new MailboxError("UNAVAILABLE");
-      bytes.set(chunk.value, length);
-      length += chunk.value.byteLength;
-    }
-  } catch {
-    void reader.cancel().catch(() => {});
-    throw new MailboxError("UNAVAILABLE");
-  } finally {
-    if (abort) signal.removeEventListener("abort", abort);
-    reader.releaseLock();
-  }
-  let body: unknown;
-  try {
-    body = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
-        bytes.subarray(0, length),
-      ),
-    );
-  } catch {
-    throw new MailboxError("UNAVAILABLE");
-  }
-  if (!response.ok) {
-    if (
-      response.status === 400 &&
-      z.object({ error: z.literal("invalid_grant") }).safeParse(body).success
-    )
-      throw new MailboxError("RECONNECT_REQUIRED");
-    if (
-      response.status === 400 &&
-      z
-        .object({
-          error: z.enum([
-            "invalid_scope",
-            "consent_required",
-            "interaction_required",
-          ]),
-        })
-        .safeParse(body).success
-    )
-      throw new MailboxError("MISSING_PERMISSION");
-    throw new MailboxError("UNAVAILABLE");
-  }
-  return body;
+const permissionErrors = [
+  "invalid_scope",
+  "consent_required",
+  "interaction_required",
+] as const;
+function providerJson(url: string, init: RequestInit): Promise<unknown> {
+  return mailboxProviderJson(url, init, permissionErrors);
 }
 export function createOutlookAuthorization(configuration: {
   clientId: string;
@@ -211,7 +123,7 @@ export function createOutlookAuthorization(configuration: {
     prompt: "select_account",
   });
   async function token(parameters: Record<string, string>) {
-    const result = tokensSchema.safeParse(
+    const result = oauthTokenResponseSchema.safeParse(
       await providerJson(`${origin}/${authority}/oauth2/v2.0/token`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -290,7 +202,7 @@ export function createOutlookAuthorization(configuration: {
     return result.data;
   }
   function credentials(
-    result: z.infer<typeof tokensSchema>,
+    result: z.infer<typeof oauthTokenResponseSchema>,
   ): MailboxCredentials {
     return {
       accessToken: result.access_token,
