@@ -104,9 +104,14 @@ const triggerEntry = (currency: string): CashFact => ({
   documentId: "doc-trigger",
 });
 
+/**
+ * The corrections loader (adapters corrections/data.ts events()) sets
+ * accepted = review_state accepted AND no pending deletion of the source connection.
+ */
 function toCorrectionEventFact(
   entry: CashFact,
   index: number,
+  connectionDeletionPending = false,
 ): CorrectionEventFact {
   return {
     id: `entry-${index}`,
@@ -118,7 +123,7 @@ function toCorrectionEventFact(
     eventDate: "2026-01-01",
     origin: entry.origin,
     eligible: entry.eligible,
-    accepted: entry.accepted,
+    accepted: entry.accepted && !connectionDeletionPending,
     evidenceCode: entry.evidenceCode,
   };
 }
@@ -174,7 +179,13 @@ function scenarioEntries(scenario: Scenario): CashFact[] {
 }
 
 function runTsSettlement(scenario: Scenario): CorrectionSettlement {
-  const facts = scenarioEntries(scenario).map(toCorrectionEventFact);
+  const facts = scenarioEntries(scenario).map((entry, index) =>
+    toCorrectionEventFact(
+      entry,
+      index,
+      scenario.connectionDeletionPending ?? false,
+    ),
+  );
   const reviews = (scenario.reviews ?? []).map(toReviewFact);
   return evaluateCorrectionSettlement(
     {
@@ -442,7 +453,7 @@ const scenarios: Scenario[] = [
     correctionsExpected: "unknown",
   },
   {
-    name: "connection deletion pending unsupports SQL cash but not the TS rule",
+    name: "cash from a connection pending deletion is unsupported in corrections; planner has no deletion input",
     purchase: { currency: "EUR", totalMinor: "10000", paymentState: "unknown" },
     entries: [
       {
@@ -464,6 +475,7 @@ const scenarios: Scenario[] = [
     // later cleanup stage than the lifecycle_deletions insert.
     openQuestion:
       "OQ-C: confirm ingestion must treat cash from a connection with a pending lifecycle deletion as unsupported; needs a deletion-pending fact in LedgerSnapshot (PIPE lane).",
+    correctionsExpected: "unknown",
   },
   {
     name: "already-paid purchase with zero remaining cash stays paid in plan but unknown in settlement",
@@ -533,8 +545,12 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       documentId: "doc-x",
     };
     const clean: ReviewFact[] = [];
-    const tsSupportedFlag = (entry: CashFact, reviews: ReviewFact[]) => {
-      const fact = toCorrectionEventFact(entry, 0);
+    const tsSupportedFlag = (
+      entry: CashFact,
+      reviews: ReviewFact[],
+      connectionDeletionPending = false,
+    ) => {
+      const fact = toCorrectionEventFact(entry, 0, connectionDeletionPending);
       return (
         hasCashProof(fact) &&
         restorationEligibility(fact, reviews.map(toReviewFact))
@@ -569,9 +585,10 @@ describe("CORE-1 payment-state parity fork (ext#2, C1)", () => {
       false,
     );
     expect(tsSupportedFlag(confirmedRefund, refundBlockReview)).toBe(false);
-    // Connection deletion only exists in the SQL rule.
+    // Pending connection deletion unsupports source cash on both paths
+    // (corrections/data.ts folds it into `accepted`, like the recompute SQL).
     expect(sqlSupportedCash(shared, clean, true)).toBe(false);
-    expect(tsSupportedFlag(shared, clean)).toBe(true);
+    expect(tsSupportedFlag(shared, clean, true)).toBe(false);
     // A document-matched review without observation blocks source cash on both paths.
     const fallbackReview: ReviewFact[] = [
       {
