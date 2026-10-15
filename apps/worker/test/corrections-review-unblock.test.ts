@@ -507,3 +507,80 @@ it("unblock caps: more than 4 recomputable purchases is the documented TOO_LARGE
       .first(),
   ).toEqual({ review: "open", purchases: 5, eligible: 0 });
 });
+
+/** A purchase without total, 60.00 supported cash, and a total question on another document. */
+async function missingTotal(user: string, prefix: string, missing: string[]) {
+  await purchase(user, prefix, { total: null });
+  await source(
+    user,
+    prefix,
+    `${prefix}-src`,
+    { total: "60.00", paymentAmount: "60.00" },
+    6000,
+  );
+  await db
+    .prepare(
+      "INSERT INTO documents(id,user_id,source_message_id,part_key,content_hash,mime,byte_length) VALUES(?,?,?,'attachment',?,'text/plain',10)",
+    )
+    .bind(
+      `${prefix}-other-doc`,
+      user,
+      `${prefix}-src-msg`,
+      `hash-${prefix}-other`,
+    )
+    .run();
+  await review(user, `${prefix}-r`, {
+    purchaseId: prefix,
+    documentId: `${prefix}-other-doc`,
+    reason: "extraction-review",
+    missingFields: missing,
+  });
+}
+const correctMissing = async (
+  session: Session,
+  purchaseId: string,
+  changes: Record<string, string>,
+) =>
+  createCorrectionStore(db).execute(
+    session,
+    {
+      kind: "review-resolve",
+      reviewId: `${purchaseId}-r`,
+      request: {
+        version: 1,
+        action: "correct-missing-fields",
+        purchaseVersion: await version(session.tenant.userId, purchaseId),
+        changes,
+      },
+    },
+    `${purchaseId}-correct`,
+  );
+
+it("correct-missing-fields: correcting the total recomputes payment state although nothing unblocks", async () => {
+  const session = await owner("missing-total");
+  const user = session.tenant.userId;
+  await missingTotal(user, "mt", ["total"]);
+  expect(await state(user, "mt")).toBe("unknown");
+  const result = await correctMissing(session, "mt", { totalMinor: "6000" });
+  expect(result.reviewStatus).toBe("resolved");
+  expect(await state(user, "mt")).toBe("paid");
+  expect(await version(user, "mt")).toBe(result.version);
+  expect(await recomputed(user, "mt")).toBe("paid");
+});
+
+it("correct-missing-fields: a total correction that leaves the question open still recomputes payment state", async () => {
+  const session = await owner("missing-total-open");
+  const user = session.tenant.userId;
+  await missingTotal(user, "mo", ["total", "merchant"]);
+  const result = await correctMissing(session, "mo", { totalMinor: "10000" });
+  expect(result.reviewStatus).toBe("open");
+  expect(await state(user, "mo")).toBe("partially_paid");
+});
+
+it("correct-missing-fields adversarial: a merchant-only correction with nothing unblocked leaves payment state alone", async () => {
+  const session = await owner("missing-merchant");
+  const user = session.tenant.userId;
+  await missingTotal(user, "mm", ["merchant"]);
+  await correctMissing(session, "mm", { merchant: "Synthetic fixed" });
+  expect(await state(user, "mm")).toBe("unknown");
+});

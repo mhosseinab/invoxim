@@ -98,37 +98,50 @@ const purchaseColumns =
  *
  * `owned` is the purchase the resolving operation already fences and
  * versions (its row as the operation leaves it); `skip` is a purchase the
- * operation recomputes itself.
+ * operation recomputes itself. `recomputeOwned` recomputes `owned` even
+ * when nothing unblocks (its total or currency changed); with
+ * `keepOpen` the review stays open, so only that recompute runs and the
+ * review still counts.
  */
 export async function planReviewUnblock(
   db: D1Database,
   user: string,
   resolved: ReviewRow,
-  options: { owned?: PurchaseRow | null; skip?: string } = {},
+  options: {
+    owned?: PurchaseRow | null;
+    skip?: string;
+    recomputeOwned?: boolean;
+    keepOpen?: boolean;
+  } = {},
 ): Promise<ReviewUnblock> {
   const none: ReviewUnblock = { checks: [], write() {} };
-  if (
-    resolved.status !== "open" ||
-    resolved.blocking_scope !== "financial" ||
-    resolved.reason === "payment-allocation-review"
-  )
-    return none;
+  const closing =
+    !options.keepOpen &&
+    resolved.status === "open" &&
+    resolved.blocking_scope === "financial" &&
+    resolved.reason !== "payment-allocation-review";
+  const forced = options.recomputeOwned ? (options.owned?.id ?? null) : null;
+  if (!closing && forced === null) return none;
+  const link = closing ? resolved : null;
+  const closed = closing ? resolved.id : undefined;
   // `credit` marks an accepted explicitly-paid evidence observation the
   // review blocks (creditProofSql), so credit-only purchases are recomputed.
   const linked = await db
     .prepare(
-      `SELECT ${purchaseColumns},MAX(linked.credit) AS credit FROM (SELECT l.purchase_id AS id,0 AS credit FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) UNION ALL SELECT pe.purchase_id,1 FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id WHERE pe.user_id=? AND (o.id=? OR (? IS NULL AND o.document_id=?)) AND o.review_state='accepted' AND o.evidence_code='explicitly-paid') linked JOIN purchases p ON p.user_id=? AND p.id=linked.id WHERE p.record_status='active' AND p.lifecycle_delete_connection_id IS NULL AND p.lifecycle_recompute_connection_id IS NULL AND p.id IS NOT ? GROUP BY p.id ORDER BY p.id LIMIT ?`,
+      `SELECT ${purchaseColumns},MAX(linked.credit) AS credit FROM (SELECT l.purchase_id AS id,0 AS credit FROM ledger_entries l LEFT JOIN observations o ON o.user_id=l.user_id AND o.id=l.observation_id WHERE l.user_id=? AND l.purchase_id IS NOT NULL AND (l.purchase_id=? OR l.observation_id=? OR (? IS NULL AND o.document_id=?)) UNION ALL SELECT pe.purchase_id,1 FROM purchase_evidence pe JOIN observations o ON o.user_id=pe.user_id AND o.id=pe.observation_id WHERE pe.user_id=? AND (o.id=? OR (? IS NULL AND o.document_id=?)) AND o.review_state='accepted' AND o.evidence_code='explicitly-paid' UNION ALL SELECT ?,0 WHERE ? IS NOT NULL) linked JOIN purchases p ON p.user_id=? AND p.id=linked.id WHERE p.record_status='active' AND p.lifecycle_delete_connection_id IS NULL AND p.lifecycle_recompute_connection_id IS NULL AND p.id IS NOT ? GROUP BY p.id ORDER BY p.id LIMIT ?`,
     )
     .bind(
       user,
-      resolved.purchase_id,
-      resolved.observation_id,
-      resolved.observation_id,
-      resolved.document_id,
+      link?.purchase_id ?? null,
+      link?.observation_id ?? null,
+      link?.observation_id ?? null,
+      link?.document_id ?? null,
       user,
-      resolved.observation_id,
-      resolved.observation_id,
-      resolved.document_id,
+      link?.observation_id ?? null,
+      link?.observation_id ?? null,
+      link?.document_id ?? null,
+      forced,
+      forced,
       user,
       options.skip ?? null,
       MAX_LINKED_PURCHASES + 1,
@@ -148,6 +161,7 @@ export async function planReviewUnblock(
     // a concurrent resolution of that other review then conflicts instead of
     // both skipping the purchase and leaving its cash ineligible.
     if (
+      stored.id !== forced &&
       credit !== 1 &&
       !entries.some(
         (entry) =>
@@ -158,8 +172,8 @@ export async function planReviewUnblock(
     if (plans.length === MAX_UNBLOCKED_PURCHASES)
       throw new CorrectionError("TOO_LARGE");
     const warnings = await reviews(db, user, row.id);
-    const remainingRows = warnings.filter((item) => item.id !== resolved.id);
-    const entryIds = unblockedEntries(entries, warnings, resolved.id);
+    const remainingRows = warnings.filter((item) => item.id !== closed);
+    const entryIds = closed ? unblockedEntries(entries, warnings, closed) : [];
     const settlement = evaluateCorrectionSettlement(
       {
         currency: row.currency,
@@ -172,7 +186,7 @@ export async function planReviewUnblock(
         ),
         remainingRows.map(reviewFact),
       ),
-      await creditProofs(db, user, row.id, undefined, resolved.id),
+      await creditProofs(db, user, row.id, undefined, closed),
     );
     const allocations = planAllocations(row, settlement, remainingRows);
     if (!owned) checks.push(purchaseVersion(user, row, row.version));
