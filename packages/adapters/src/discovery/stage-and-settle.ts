@@ -104,7 +104,10 @@ export function completeStagedJob(
  * Runs the staged batch and settles it in one of the two existing ways:
  * `"last-change"` reads the completion's own change count (no statement);
  * `"read"` re-reads the leased job afterwards (one statement, reserved by the
- * caller's OUTLOOK_STATEMENTS entry).
+ * caller's OUTLOOK_STATEMENTS entry). The read also matches this lease's
+ * fence: completion clears `lease_id` but keeps the fence, and every newer
+ * claim increments it, so a job completed by a newer lease after this one
+ * expired never settles this batch.
  */
 export async function stageAndSettle(
   db: D1Database,
@@ -117,9 +120,9 @@ export async function stageAndSettle(
   return Boolean(
     await db
       .prepare(
-        "SELECT status FROM jobs WHERE user_id=? AND id=? AND status='completed'",
+        "SELECT status FROM jobs WHERE user_id=? AND id=? AND status='completed' AND fence=?",
       )
-      .bind(lease.context.userId, lease.jobId)
+      .bind(lease.context.userId, lease.jobId, lease.fence)
       .first(),
   );
 }
