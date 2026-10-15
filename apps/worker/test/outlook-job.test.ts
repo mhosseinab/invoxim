@@ -2023,3 +2023,47 @@ it("INT-5/O5 a persistent Outlook statement shortfall exhausts the job at the re
       .first("n"),
   ).toBe(0);
 });
+
+it("INT-5/G2 a revision-0 consent with no active AI selection cannot start Outlook discovery (pinned stricter guard)", async () => {
+  const lease = await claimed("g2-revision-zero");
+  await seedLiveFolder(lease, "folder-g2-revision-zero", "inbox-folder");
+  // The pre-INT-5 guard accepted ai_settings_revision=COALESCE(active,0).
+  await env.DB.prepare("DELETE FROM ai_settings WHERE user_id=?")
+    .bind(lease.context.userId)
+    .run();
+  await env.DB.prepare(
+    "UPDATE processing_consents SET ai_settings_revision=0 WHERE user_id=? AND id=?",
+  )
+    .bind(lease.context.userId, lease.consentId)
+    .run();
+  let opens = 0;
+  const meter = createInvocationDatabase(env.DB, 40);
+  const outcome = await createOutlookJobRunner(meter.db, {
+    open: async () => {
+      opens++;
+      throw new Error(
+        "A consent without a reviewed AI selection must not open Graph",
+      );
+    },
+    remainingStatements: meter.remainingStatements,
+  }).run(lease, {
+    signal: new AbortController().signal,
+    checkpoint: async () => true,
+  });
+  expect(outcome).toEqual({ kind: "paused", code: "auth" });
+  expect(opens).toBe(0);
+  expect(
+    await env.DB.prepare(
+      "SELECT stage,discovery_version,history_cursor FROM sync_states WHERE user_id=? AND id='folder-g2-revision-zero'",
+    )
+      .bind(lease.context.userId)
+      .first(),
+  ).toEqual({ stage: "queued", discovery_version: 0, history_cursor: null });
+  expect(
+    await env.DB.prepare(
+      "SELECT COUNT(*) n FROM jobs WHERE user_id=? AND status='ready'",
+    )
+      .bind(lease.context.userId)
+      .first("n"),
+  ).toBe(0);
+});
