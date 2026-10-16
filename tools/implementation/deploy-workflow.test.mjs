@@ -81,6 +81,8 @@ test("only main history and strict vX.Y.Z tags can deploy", () => {
       '[[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$ ]]',
     ),
   );
+  // The peeled commit, not the raw ref, identifies the deploy.
+  assert.ok(script.includes(`version="main-\${commit:0:7}"`));
 });
 
 test("deployment credentials reach only the wrangler steps", () => {
@@ -112,6 +114,12 @@ test("the API Worker deploys before the Pages frontend", () => {
   assert.ok(
     deploy.includes(
       "exec wrangler pages deploy dist --project-name invoxim-web --branch main --commit-hash",
+    ),
+  );
+  // The deployed commit is the peeled one resolved by the version step.
+  assert.ok(
+    deploy.includes(
+      `exec wrangler pages deploy dist --project-name invoxim-web --branch main --commit-hash "\${{ steps.version.outputs.commit }}"`,
     ),
   );
 });
