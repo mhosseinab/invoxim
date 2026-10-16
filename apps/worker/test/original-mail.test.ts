@@ -455,30 +455,54 @@ it("late HTTP response after caller abort is observed and its body canceled", as
   expect(canceled).toBe(true);
 });
 it("aggregate deadline spans Graph metadata and original reads and cancels late body", async () => {
-  let calls = 0;
-  let canceled = false;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 60));
-    if (++calls === 1) return Response.json({ id });
-    return new Response(
-      new ReadableStream<Uint8Array>({
-        cancel() {
-          canceled = true;
-        },
-      }),
-      { headers: { "content-type": "message/rfc822" } },
-    );
-  });
-  const caller = new AbortController();
-  await expect(
-    reader("outlook", { maxOriginalBytes: 4096, deadlineMs: 100 }).read(
-      inputFor("outlook", caller.signal),
-    ),
-  ).rejects.toMatchObject({ code: "UNAVAILABLE" });
-  await new Promise<void>((resolve) => setTimeout(resolve, 50));
-  expect(calls).toBe(2);
-  expect(canceled).toBe(true);
-  expect(caller.signal.aborted).toBe(false);
+  // Fake clock: the 100 ms deadline must cover the metadata call and the
+  // original read together. Real sleeps raced the runner (a slow first call
+  // alone could pass 100 ms), so time is advanced explicitly instead.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  try {
+    let calls = 0;
+    let canceled = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      if (++calls === 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 60));
+        return Response.json({ id });
+      }
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            canceled = true;
+          },
+        }),
+        { headers: { "content-type": "message/rfc822" } },
+      );
+    });
+    const caller = new AbortController();
+    let settled = false;
+    const read = reader("outlook", {
+      maxOriginalBytes: 4096,
+      deadlineMs: 100,
+    })
+      .read(inputFor("outlook", caller.signal))
+      .finally(() => {
+        settled = true;
+      });
+    const rejected = expect(read).rejects.toMatchObject({
+      code: "UNAVAILABLE",
+    });
+    await vi.advanceTimersByTimeAsync(60);
+    expect(calls).toBe(2);
+    // 99 ms after the start: still inside the one aggregate deadline.
+    await vi.advanceTimersByTimeAsync(39);
+    expect(settled).toBe(false);
+    // 100 ms: a per-request deadline would allow the original read until
+    // 160 ms; the aggregate one ends the read and cancels the late body now.
+    await vi.advanceTimersByTimeAsync(1);
+    await rejected;
+    expect(canceled).toBe(true);
+    expect(caller.signal.aborted).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 function fragmented(body: Uint8Array, chunkSize: number, emptyChunks = 0) {
   let offset = 0,
