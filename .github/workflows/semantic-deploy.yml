@@ -31,7 +31,7 @@ jobs:
     # the wrangler and project-check steps below receive.
     environment:
       name: production
-      url: https://invoxim-web.pages.dev/
+      url: ${{ vars.PAGES_URL || format('https://{0}.pages.dev/', vars.PAGES_PROJECT_NAME) }}
     outputs:
       version: ${{ steps.version.outputs.version }}
       commit: ${{ steps.version.outputs.commit }}
@@ -39,13 +39,14 @@ jobs:
       CI: "true"
       TURBO_TELEMETRY_DISABLED: "1"
       WRANGLER_SEND_METRICS: "false"
-      # Deploy targets and the production branch come from repository or
-      # environment Actions variables (M15); defaults match the checked-in
-      # wrangler configs so an unset variable is not a guess.
-      WORKER_NAME: ${{ vars.WORKER_NAME || 'invoxim-api' }}
-      PAGES_PROJECT_NAME: ${{ vars.PAGES_PROJECT_NAME || 'invoxim-web' }}
-      PAGES_PRODUCTION_BRANCH: ${{ vars.PAGES_PRODUCTION_BRANCH || 'main' }}
-      D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME || 'invoxim-db' }}
+      # Every Cloudflare resource name and the deploy branch come from
+      # repository or environment Actions variables (M15). Nothing names a
+      # resource in this file: a missing variable fails the preflight below
+      # instead of guessing a deployment target.
+      WORKER_NAME: ${{ vars.WORKER_NAME }}
+      PAGES_PROJECT_NAME: ${{ vars.PAGES_PROJECT_NAME }}
+      PAGES_PRODUCTION_BRANCH: ${{ vars.PAGES_PRODUCTION_BRANCH }}
+      D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -80,6 +81,28 @@ jobs:
             echo "- Version: \`$version\`"
             echo "- Commit: \`$commit\`"
             echo "- Ref: \`$GITHUB_REF\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      # No resource name is hardcoded in this workflow: each target comes from
+      # an Actions variable, so an unset one must fail before any work rather
+      # than deploy to a guessed target.
+      - name: Require deploy configuration
+        id: config
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in WORKER_NAME PAGES_PROJECT_NAME PAGES_PRODUCTION_BRANCH D1_DATABASE_NAME; do
+            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing Actions variables:$missing. Set them on the production environment or repository (MANUAL_TASKS.md M15)."
+            exit 1
+          fi
+          {
+            echo "### Deploy targets"
+            echo ""
+            echo "- Worker: \`$WORKER_NAME\`"
+            echo "- Pages project: \`$PAGES_PROJECT_NAME\` (deploy branch \`$PAGES_PRODUCTION_BRANCH\`)"
+            echo "- D1 database: \`$D1_DATABASE_NAME\` (migrations are never applied here)"
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:

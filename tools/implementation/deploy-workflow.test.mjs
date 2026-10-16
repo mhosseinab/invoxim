@@ -111,16 +111,27 @@ test("remote migrations, secrets and releases stay operator steps", () => {
 
 test("deploy targets come from environment variables", () => {
   const job = jobEnvBlock();
-  for (const [name, fallback] of [
-    ["WORKER_NAME", "invoxim-api"],
-    ["PAGES_PROJECT_NAME", "invoxim-web"],
-    ["PAGES_PRODUCTION_BRANCH", "main"],
-    ["D1_DATABASE_NAME", "invoxim-db"],
+  for (const name of [
+    "WORKER_NAME",
+    "PAGES_PROJECT_NAME",
+    "PAGES_PRODUCTION_BRANCH",
+    "D1_DATABASE_NAME",
   ])
     assert.ok(
-      job.includes(`${name}: \${{ vars.${name} || '${fallback}' }}`),
-      `${name} must come from a repository variable with a documented default`,
+      job.includes(`${name}: \${{ vars.${name} }}`),
+      `${name} must come from a repository or environment variable, without an in-file default`,
     );
+  // No Cloudflare resource name may be hardcoded anywhere in the workflow.
+  assert.equal(deploy.includes("invoxim-"), false);
+  assert.ok(
+    deploy.includes(
+      `url: \${{ vars.PAGES_URL || format('https://{0}.pages.dev/', vars.PAGES_PROJECT_NAME) }}`,
+    ),
+    "the environment URL must come from variables too",
+  );
+  const preflight = stepScript("config");
+  assert.ok(preflight.includes("Missing Actions variables"));
+  assert.ok(preflight.includes("exit 1"));
   assert.ok(deploy.includes('exec wrangler deploy --name "$WORKER_NAME"'));
   assert.ok(
     deploy.includes(
