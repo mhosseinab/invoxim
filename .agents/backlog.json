@@ -1904,14 +1904,16 @@
       "localProgressEvidence": [
         "Commit 8791970: initial workflow, test RED (workflow absent) then GREEN 6/6; node --test tools/implementation/*.test.mjs 69 pass; pnpm format:check, pnpm lint:biome, pnpm check:secrets (0 findings), pnpm check:boundaries, pnpm typecheck, pnpm build (production-artifact guard passed).",
         "Independent principal-reviewer report 2026-10-16 (read-only, no shell in reviewer environment; documentation-based verification): findings P1-1, P2-1, P2-2, P3-1..P3-5 plus unverified annotated-tag GITHUB_SHA peeling.",
-        "Review fixes: README P1-1 corrected, P2-1/P2-2/P3-4 documented (production-branch prerequisite, approver ref/commit check, re-bundle, duplicate verify cost), P3-2 step-scoped Cloudflare credentials, annotated-tag peel via git rev-parse^{commit}, P3-1 contract assertions added (RED 5 pass/2 fail against 8791970 -> GREEN 7/7), P3-5 backlog/acceptance IDs recorded."
+        "Owner follow-up (env-driven deploy targets): RED 5 pass/4 fail against the previous workflow -> GREEN 9/9. WORKER_NAME, PAGES_PROJECT_NAME, PAGES_PRODUCTION_BRANCH and D1_DATABASE_NAME come from Actions variables with the checked-in wrangler names as defaults; a new pages-project step verifies the live project production_branch via the Cloudflare API before any deploy and refuses on mismatch. node --test tools/implementation/*.test.mjs 72 pass; pnpm format:check, pnpm lint:biome, pnpm check:secrets (0 findings).",
+      "Review fixes: README P1-1 corrected, P2-1/P2-2/P3-4 documented (production-branch prerequisite, approver ref/commit check, re-bundle, duplicate verify cost), P3-2 step-scoped Cloudflare credentials, annotated-tag peel via git rev-parse^{commit}, P3-1 contract assertions added (RED 5 pass/2 fail against 8791970 -> GREEN 7/7), P3-5 backlog/acceptance IDs recorded."
       ],
       "completionEvidence": [],
       "blockedBy": [
         "M15 pending: the GitHub production environment (required reviewers) and narrowly scoped CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID secrets do not exist yet; the workflow has never run on GitHub Actions and no live Cloudflare deployment is verified by this work.",
-        "invoxim-web's Pages production branch must be confirmed as main, otherwise --branch main silently deploys previews (review P2-1).",
+        "The production-branch check (review P2-1) now fails closed against the live Pages project and deploy targets come from Actions variables, but neither has run on GitHub Actions; the live project settings remain unknown.",
         "The annotated-tag commit peeling fix is unconfirmed in a live tag run (reviewer open item 7).",
-        "Re-review of the review-fix commit is pending."
+        "Re-review of the review-fix commit is pending.",
+      "Follow-up commits (review follow-ups N1-N4 and the env-driven deploy targets requested by the owner) are not independently re-reviewed."
       ]
     }
   ]

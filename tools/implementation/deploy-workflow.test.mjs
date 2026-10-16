@@ -10,7 +10,9 @@ import { test } from "node:test";
  * - it reuses the single foundation verification gate rather than redefining it;
  * - deployment is read-only in Git and gated behind the `production` environment;
  * - only main-reachable history and strict `vX.Y.Z` tags may deploy;
- * - Cloudflare credentials reach only the wrangler steps;
+ * - deploy targets and the production branch come from environment variables;
+ * - the Pages production branch is verified before anything deploys;
+ * - Cloudflare credentials reach only the wrangler/API steps;
  * - remote migrations, secret changes and releases stay operator steps;
  * - the Worker deploys before the Pages frontend that binds to it.
  */
@@ -85,24 +87,57 @@ test("only main history and strict vX.Y.Z tags can deploy", () => {
   assert.ok(script.includes(`version="main-\${commit:0:7}"`));
 });
 
-test("deployment credentials reach only the wrangler steps", () => {
+test("deployment credentials reach only the wrangler and check steps", () => {
   const job = jobEnvBlock();
   assert.equal(job.includes("CLOUDFLARE_API_TOKEN"), false);
   assert.equal(job.includes("CLOUDFLARE_ACCOUNT_ID"), false);
   for (const name of ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"])
     assert.equal(
       deploy.split(`${name}: \${{ secrets.${name} }}`).length - 1,
-      3,
-      `${name} must be scoped to exactly three steps`,
+      4,
+      `${name} must be scoped to exactly four steps`,
     );
 });
 
 test("remote migrations, secrets and releases stay operator steps", () => {
-  assert.ok(deploy.includes("migrations list invoxim-db --remote"));
+  assert.ok(
+    deploy.includes('wrangler d1 migrations list "$D1_DATABASE_NAME" --remote'),
+  );
   assert.equal(deploy.includes("migrations apply"), false);
   assert.equal(deploy.includes("secret put"), false);
   assert.equal(deploy.includes("gh release"), false);
   assert.equal(deploy.includes("continue-on-error"), false);
+});
+
+test("deploy targets come from environment variables", () => {
+  const job = jobEnvBlock();
+  for (const [name, fallback] of [
+    ["WORKER_NAME", "invoxim-api"],
+    ["PAGES_PROJECT_NAME", "invoxim-web"],
+    ["PAGES_PRODUCTION_BRANCH", "main"],
+    ["D1_DATABASE_NAME", "invoxim-db"],
+  ])
+    assert.ok(
+      job.includes(`${name}: \${{ vars.${name} || '${fallback}' }}`),
+      `${name} must come from a repository variable with a documented default`,
+    );
+  assert.ok(deploy.includes('exec wrangler deploy --name "$WORKER_NAME"'));
+  assert.ok(
+    deploy.includes(
+      'exec wrangler pages deploy dist --project-name "$PAGES_PROJECT_NAME" --branch "$PAGES_PRODUCTION_BRANCH" --commit-hash',
+    ),
+  );
+});
+
+test("the Pages production branch is verified before deploying", () => {
+  const script = stepScript("pages-project");
+  assert.ok(script.includes("pages/projects/$PAGES_PROJECT_NAME"));
+  assert.ok(script.includes("production_branch"));
+  assert.ok(script.includes('[ "$branch" != "$PAGES_PRODUCTION_BRANCH" ]'));
+  assert.ok(script.includes("exit 1"));
+  const check = deploy.indexOf("id: pages-project");
+  const worker = deploy.indexOf("exec wrangler deploy");
+  assert.ok(check > 0 && worker > check);
 });
 
 test("the API Worker deploys before the Pages frontend", () => {
@@ -111,15 +146,10 @@ test("the API Worker deploys before the Pages frontend", () => {
   const pages = deploy.indexOf("exec wrangler pages deploy");
   assert.ok(worker > 0);
   assert.ok(pages > worker);
-  assert.ok(
-    deploy.includes(
-      "exec wrangler pages deploy dist --project-name invoxim-web --branch main --commit-hash",
-    ),
-  );
   // The deployed commit is the peeled one resolved by the version step.
   assert.ok(
     deploy.includes(
-      `exec wrangler pages deploy dist --project-name invoxim-web --branch main --commit-hash "\${{ steps.version.outputs.commit }}"`,
+      `--branch "$PAGES_PRODUCTION_BRANCH" --commit-hash "\${{ steps.version.outputs.commit }}"`,
     ),
   );
 });
