@@ -18,84 +18,19 @@ jobs:
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    # Owner approval gate: the `production` environment must carry required
-    # reviewers and hold the narrowly scoped Cloudflare credentials that only
-    # the wrangler and project-check steps below receive.
-    environment:
-      name: production
-      url: ${{ vars.PAGES_URL || format('https://{0}.pages.dev/', vars.PAGES_PROJECT_NAME) }}
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      commit: ${{ steps.version.outputs.commit }}
+    # Required reviewers on this environment are the approval gate; it also
+    # holds the Cloudflare secrets. Resource names live in apps/*/wrangler.jsonc.
+    environment: production
     env:
-      CI: "true"
       TURBO_TELEMETRY_DISABLED: "1"
       WRANGLER_SEND_METRICS: "false"
-      # Every Cloudflare resource name and the deploy branch come from
-      # repository or environment Actions variables (M15). Nothing names a
-      # resource in this file: a missing variable fails the preflight below
-      # instead of guessing a deployment target.
-      WORKER_NAME: ${{ vars.WORKER_NAME }}
-      PAGES_PROJECT_NAME: ${{ vars.PAGES_PROJECT_NAME }}
-      PAGES_PRODUCTION_BRANCH: ${{ vars.PAGES_PRODUCTION_BRANCH }}
-      D1_DATABASE_NAME: ${{ vars.D1_DATABASE_NAME }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Resolve the deploy identity
-        id: version
-        # Only reviewed history deploys: the commit (peeled from an annotated
-        # tag if the ref names a tag object) must be reachable from main, and a
-        # tag must be strict vX.Y.Z.
-        run: |
-          set -euo pipefail
-          commit="$(git rev-parse "$GITHUB_SHA^{commit}")"
-          if [ "$GITHUB_REF_TYPE" = "tag" ] && [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME is not a semantic release tag (expected vX.Y.Z)."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$commit" origin/main; then
-            echo "::error::Commit $commit is not reachable from main; refusing to deploy unreviewed history."
-            exit 1
-          fi
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            version="$GITHUB_REF_NAME"
-          else
-            version="main-${commit:0:7}"
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Deploy identity"
-            echo ""
-            echo "- Version: \`$version\`"
-            echo "- Commit: \`$commit\`"
-            echo "- Ref: \`$GITHUB_REF\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-      # No resource name is hardcoded in this workflow: each target comes from
-      # an Actions variable, so an unset one must fail before any work rather
-      # than deploy to a guessed target.
-      - name: Require deploy configuration
-        id: config
-        run: |
-          set -euo pipefail
-          missing=""
-          for name in WORKER_NAME PAGES_PROJECT_NAME PAGES_PRODUCTION_BRANCH D1_DATABASE_NAME; do
-            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
-          done
-          if [ -n "$missing" ]; then
-            echo "::error::Missing Actions variables:$missing. Set them on the production environment or repository (MANUAL_TASKS.md M15)."
-            exit 1
-          fi
-          {
-            echo "### Deploy targets"
-            echo ""
-            echo "- Worker: \`$WORKER_NAME\`"
-            echo "- Pages project: \`$PAGES_PROJECT_NAME\` (deploy branch \`$PAGES_PRODUCTION_BRANCH\`)"
-            echo "- D1 database: \`$D1_DATABASE_NAME\` (migrations are never applied here)"
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Refuse history not reviewed into main
+        run: git merge-base --is-ancestor HEAD origin/main || { echo "::error::$GITHUB_SHA is not reachable from main."; exit 1; }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: .node-version
@@ -104,65 +39,22 @@ jobs:
       # Only pnpm's reviewed native bootstrap runs; workspace scripts stay blocked.
       - run: node "$(npm root --global)/pnpm/install.js"
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      # Builds both apps and runs check:production: only apps/web/dist is
-      # publishable; the private .production graphs stay out of the deployment.
       - run: pnpm build
-      # Read-only listing: migrations stay a manual, owner-approved operator
-      # step (docs/09-operations-and-costs.md), so this never applies them and
-      # never blocks the code deployment.
-      - name: Report pending D1 migrations (read-only)
+      # Read-only and non-blocking: applying migrations stays a manual operator step.
+      - name: Report pending D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          if ! report="$(pnpm --filter @invoxim/worker exec wrangler d1 migrations list "$D1_DATABASE_NAME" --remote 2>&1)"; then
-            report="Migration status unavailable: $report"
-          fi
-          {
-            echo "### D1 migration status"
-            echo ""
-            echo "Nothing was applied; pending migrations need an owner-approved manual step."
-            echo ""
-            echo '```'
-            echo "$report"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-      # The deploy targets and the production branch come from environment
-      # variables, so verify them against the live project before anything
-      # deploys: `--branch` only reaches the production deployment when it
-      # matches the project's production branch (M15), and a mismatch must
-      # fail here rather than silently create a preview.
-      - name: Verify the Pages project's production branch
-        id: pages-project
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          if ! curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PAGES_PROJECT_NAME" \
-            > "$RUNNER_TEMP/pages-project.json"; then
-            echo "::error::Cannot read Pages project '$PAGES_PROJECT_NAME'. Check the PAGES_PROJECT_NAME variable and that the token holds Pages Read."
-            exit 1
-          fi
-          branch="$(node -e 'const p = require(process.argv[1]).result ?? {}; process.stdout.write(p.production_branch ?? p.source?.config?.production_branch ?? "")' "$RUNNER_TEMP/pages-project.json")"
-          if [ -z "$branch" ] || [ "$branch" != "$PAGES_PRODUCTION_BRANCH" ]; then
-            echo "::error::Pages project '$PAGES_PROJECT_NAME' has production branch '${branch:-<unknown>}', but this deploy targets '$PAGES_PRODUCTION_BRANCH'. Refusing so the deployment cannot silently land in preview."
-            exit 1
-          fi
-          echo "Pages project '$PAGES_PROJECT_NAME' production branch confirmed as '$branch'."
-      # Deployment order follows docs/09: Worker first, then the frontend that
-      # binds to it through the Pages API proxy.
+        run: pnpm --filter @invoxim/worker exec wrangler d1 migrations list DB --remote || echo "::warning::D1 migration status unavailable."
+      # Worker first: the Pages frontend binds to it.
       - name: Deploy the API Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm --filter @invoxim/worker exec wrangler deploy --name "$WORKER_NAME"
-      # wrangler re-bundles the guarded dist/_worker.js at upload; the reviewed
-      # dist stays the deployment input.
+        run: pnpm --filter @invoxim/worker exec wrangler deploy
+      # `main` must be the Pages project's production branch, or this lands in preview.
       - name: Deploy the Pages frontend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm --filter @invoxim/web exec wrangler pages deploy dist --project-name "$PAGES_PROJECT_NAME" --branch "$PAGES_PRODUCTION_BRANCH" --commit-hash "${{ steps.version.outputs.commit }}"
+        run: pnpm --filter @invoxim/web exec wrangler pages deploy --branch main

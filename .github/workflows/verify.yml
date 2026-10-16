@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      CI: "true"
       TURBO_TELEMETRY_DISABLED: "1"
       WRANGLER_SEND_METRICS: "false"
     steps:
