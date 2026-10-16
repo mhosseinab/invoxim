@@ -1,15 +1,7 @@
 name: Semantic deploy to Cloudflare
 run-name: Semantic deploy ${{ github.ref_name }}
 on:
-  # A `vX.Y.Z` tag records the deploy's semantic version. Any other tag shape
-  # never triggers this workflow, and the strict check below rejects a tag that
-  # somehow reaches it. Commits on main deploy the same reviewed build
-  # identified as `main-<short sha>`. Caveat: for a manual dispatch GitHub runs
-  # this file from the selected ref, so the approver must confirm the run's ref
-  # and commit before approving (docs/09-operations-and-costs.md).
   push:
-    branches:
-      - main
     tags:
       - "v*.*.*"
   workflow_dispatch:
