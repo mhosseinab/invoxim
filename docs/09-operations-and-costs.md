@@ -57,6 +57,8 @@ Pin the tested compatibility date, stable dependency versions, and deployment to
 
 No automated deployment to production from an unreviewed agent branch. Do not auto-enable billing or alter provider consent scopes during deployment.
 
+Deployment mechanics are automated in `.github/workflows/semantic-deploy.yml`; authority to deploy is not. A push to `main`, a `vX.Y.Z` tag, or a manual dispatch runs the foundation verification gate first, then waits for owner approval on the GitHub `production` environment before deploying the API Worker and the Pages frontend in that order. Only commits reachable from `main` deploy; a strict `vX.Y.Z` tag records the deploy's semantic version, other commits deploy as `main-<short sha>`. The workflow reports pending D1 migrations read-only and never applies them, never changes secrets, and does not enable features or cohorts. Its prerequisites (the approval environment and narrowly scoped Cloudflare credentials) are owner inputs in `MANUAL_TASKS.md`; this checklist's gates still govern every production deployment.
+
 ## Metrics and alerts
 
 Collect aggregate counts and timings: queue age, ready/retry/dead jobs, lease recovery count, import progress, mailbox last success, provider 401/429/5xx rates, extraction outcomes, review reasons, budget reservations/actual usage, D1 size and scanned rows, and archive failures. Do not include receipt amounts, merchant names, filenames, message subjects, prompts, raw provider errors, or secrets in telemetry.

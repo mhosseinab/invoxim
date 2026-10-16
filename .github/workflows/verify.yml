@@ -4,6 +4,8 @@ on:
     branches:
       - main
   pull_request:
+  # Reused by semantic-deploy.yml so deployment runs exactly this gate.
+  workflow_call:
 permissions:
   contents: read
 jobs:

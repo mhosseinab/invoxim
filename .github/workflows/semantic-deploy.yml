@@ -1,0 +1,106 @@
+name: Semantic deploy to Cloudflare
+run-name: Semantic deploy ${{ github.ref_name }}
+on:
+  # A `vX.Y.Z` tag records the deploy's semantic version. Any other tag shape
+  # never triggers this workflow, and the strict check below rejects a tag that
+  # somehow reaches it. Commits on main deploy the same reviewed build
+  # identified as `main-<short sha>`.
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+permissions:
+  contents: read
+# One production deployment at a time; never cancel an in-flight deploy.
+concurrency:
+  group: semantic-deploy-cloudflare
+  cancel-in-progress: false
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+  deploy:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Owner approval gate: the `production` environment must carry required
+    # reviewers and the two narrowly scoped deployment credentials.
+    environment:
+      name: production
+      url: https://invoxim-web.pages.dev/
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    env:
+      CI: "true"
+      TURBO_TELEMETRY_DISABLED: "1"
+      WRANGLER_SEND_METRICS: "false"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve the deploy identity
+        id: version
+        # Only reviewed history deploys: the commit must be reachable from main
+        # (covers tags and manual dispatch), and a tag must be strict vX.Y.Z.
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not a semantic release tag (expected vX.Y.Z)."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Commit $GITHUB_SHA is not reachable from main; refusing to deploy unreviewed history."
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="$GITHUB_REF_NAME"
+          else
+            version="main-${GITHUB_SHA:0:7}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Deploy identity"
+            echo ""
+            echo "- Version: \`$version\`"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Ref: \`$GITHUB_REF\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: npm install --global pnpm@12.6.0 --ignore-scripts
+      # Only pnpm's reviewed native bootstrap runs; workspace scripts stay blocked.
+      - run: node "$(npm root --global)/pnpm/install.js"
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Builds both apps and runs check:production: only apps/web/dist is
+      # publishable; the private .production graphs stay out of the deployment.
+      - run: pnpm build
+      # Read-only listing: migrations stay a manual, owner-approved operator
+      # step (docs/09-operations-and-costs.md), so this never applies them and
+      # never blocks the code deployment.
+      - name: Report pending D1 migrations (read-only)
+        run: |
+          set -euo pipefail
+          if ! report="$(pnpm --filter @invoxim/worker exec wrangler d1 migrations list invoxim-db --remote 2>&1)"; then
+            report="Migration status unavailable: $report"
+          fi
+          {
+            echo "### D1 migration status"
+            echo ""
+            echo "Nothing was applied; pending migrations need an owner-approved manual step."
+            echo ""
+            echo '```'
+            echo "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Deployment order follows docs/09: Worker first, then the frontend that
+      # binds to it through the Pages API proxy.
+      - name: Deploy the API Worker
+        run: pnpm --filter @invoxim/worker exec wrangler deploy
+      - name: Deploy the Pages frontend
+        run: pnpm --filter @invoxim/web exec wrangler pages deploy dist --project-name invoxim-web --branch main --commit-hash "$GITHUB_SHA"
