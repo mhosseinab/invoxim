@@ -51,7 +51,7 @@ For a focused native test:
 pnpm --filter @invoxim/worker exec vitest run test/auth-deployment-readiness.test.ts
 ```
 
-Mutation testing, live model evaluation and a broader release verification gate are not implemented; there are no scripts for them, and passing the commands above is not release evidence. `pnpm test:eval:clef` runs the synthetic Clef classifier evaluation (dry run by default) described in [tools/implementation/clef-eval.md](tools/implementation/clef-eval.md). GitHub Actions runs verification, dependency auditing and security tests; this repository's workflow does not deploy or synchronize D1.
+Mutation testing, live model evaluation and a broader release verification gate are not implemented; there are no scripts for them, and passing the commands above is not release evidence. `pnpm test:eval:clef` runs the synthetic Clef classifier evaluation (dry run by default) described in [tools/implementation/clef-eval.md](tools/implementation/clef-eval.md). GitHub Actions runs verification, dependency auditing and security tests, and [.github/workflows/semantic-deploy.yml](.github/workflows/semantic-deploy.yml) deploys the Worker and the Pages frontend to Cloudflare behind the GitHub `production` approval environment; no workflow synchronizes D1. See [Deployment commands](#deployment-commands) and [operations, deployment, and cost controls](docs/09-operations-and-costs.md) for what that automation may and may not do.
 
 ## Database commands
 
@@ -89,6 +89,8 @@ pnpm --filter @invoxim/web exec wrangler pages deploy dist --project-name invoxi
 ```
 
 Pages forwards `/api/*` through its `API` service binding to `invoxim-api`. Confirm that binding and the Worker's `DB` binding in the deployed environment. Configure Google login separately from mailbox and Drive authorization; the exact login callback is `<AUTH_ORIGIN>/api/auth/callback/google`. Secret names and feature prerequisites are documented in [Worker configuration](apps/worker/CONFIGURATION.md).
+
+The same sequence runs automatically from [.github/workflows/semantic-deploy.yml](.github/workflows/semantic-deploy.yml) after the foundation verification gate and owner approval on the GitHub `production` environment; its prerequisites are `MANUAL_TASKS.md` M15. Two details differ from a local run: `--branch main` reaches the production deployment only when `main` is the `invoxim-web` project's production branch, and `wrangler pages deploy` re-bundles the guarded `dist/_worker.js` at upload time. D1 migrations are never applied by the workflow; they stay the manual step described under [Database commands](#database-commands).
 
 The production Worker configuration binds `JOBS` to the existing `invoxim-jobs` Queue, consumes one message per invocation (at most two concurrent consumer invocations) and routes exhausted deliveries to `invoxim-jobs-dlq`. Settled jobs enqueue a bounded dispatch wakeup so ready continuation stages can start in a fresh invocation without waiting for Cron. The minute Cron remains the recovery fallback; recurring mailbox checks remain hourly in D1. Gmail discovery, extraction, jobs and corrections are enabled in that configuration; Outlook, Drive, lifecycle operations and FX reference rates are not. Import still requires the user's explicit reviewed Start; credentials remain Wrangler secrets.
 

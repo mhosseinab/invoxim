@@ -3,13 +3,15 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 /**
- * TOOL-2: the semantic deploy workflow is production automation, so its safety
- * contract is pinned here the same way `biome-policy.test.mjs` and
- * `security-gates.test.mjs` pin the verification workflow:
+ * RELEASE-07 (task OPS-SEMANTIC-DEPLOY-01): the semantic deploy workflow is
+ * production automation, so its safety contract is pinned here the same way
+ * `biome-policy.test.mjs` and `security-gates.test.mjs` pin the verification
+ * workflow:
  * - it reuses the single foundation verification gate rather than redefining it;
  * - deployment is read-only in Git and gated behind the `production` environment;
  * - only main-reachable history and strict `vX.Y.Z` tags may deploy;
- * - remote migrations and secret mutation stay manual operator steps;
+ * - Cloudflare credentials reach only the wrangler steps;
+ * - remote migrations, secret changes and releases stay operator steps;
  * - the Worker deploys before the Pages frontend that binds to it.
  */
 const root = new URL("../../", import.meta.url).pathname;
@@ -18,6 +20,25 @@ const deploy = readFileSync(
   "utf8",
 );
 const verify = readFileSync(`${root}.github/workflows/verify.yml`, "utf8");
+
+/** The job-level env block, which must not see deployment credentials. */
+function jobEnvBlock() {
+  const start = deploy.indexOf("\n    env:\n");
+  const end = deploy.indexOf("\n    steps:\n");
+  assert.ok(start >= 0 && end > start);
+  return deploy.slice(start, end);
+}
+
+/** The script of the named step, so literals cannot pass from a comment. */
+function stepScript(id) {
+  const marker = `\n        id: ${id}\n`;
+  const start = deploy.indexOf(marker);
+  assert.ok(start >= 0);
+  const run = deploy.indexOf("\n        run: |", start);
+  assert.ok(run > start);
+  const end = deploy.indexOf("\n      - ", run);
+  return deploy.slice(run, end < 0 ? deploy.length : end);
+}
 
 test("semantic deploy reuses the foundation verification gate", () => {
   assert.ok(verify.includes("\n  workflow_call:\n"));
@@ -28,7 +49,6 @@ test("semantic deploy reuses the foundation verification gate", () => {
 test("deployment keeps read-only Git permissions and an approval gate", () => {
   assert.ok(deploy.includes("permissions:\n  contents: read"));
   assert.equal(deploy.includes("contents: write"), false);
-  assert.ok(deploy.includes("environment:"));
   assert.match(deploy, /environment:\n {6}name: production\n/);
 });
 
@@ -44,26 +64,54 @@ test("every action is pinned to an immutable revision", () => {
 });
 
 test("only main history and strict vX.Y.Z tags can deploy", () => {
-  assert.ok(deploy.includes("tags:"));
+  assert.ok(deploy.includes("\n  workflow_dispatch:\n"));
   assert.ok(deploy.includes('- "v*.*.*"'));
-  assert.ok(deploy.includes("branches:"));
-  assert.ok(deploy.includes("- main"));
-  assert.ok(deploy.includes("git merge-base --is-ancestor"));
+  assert.ok(deploy.includes("      - main"));
+  const script = stepScript("version");
   assert.ok(
-    deploy.includes("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"),
+    script.includes('commit="$(git rev-parse "$GITHUB_SHA^{commit}")"'),
+  );
+  assert.ok(
+    script.includes(
+      'if ! git merge-base --is-ancestor "$commit" origin/main; then',
+    ),
+  );
+  assert.ok(
+    script.includes(
+      '[[ ! "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$ ]]',
+    ),
   );
 });
 
-test("remote migrations and secrets stay manual operator steps", () => {
+test("deployment credentials reach only the wrangler steps", () => {
+  const job = jobEnvBlock();
+  assert.equal(job.includes("CLOUDFLARE_API_TOKEN"), false);
+  assert.equal(job.includes("CLOUDFLARE_ACCOUNT_ID"), false);
+  for (const name of ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"])
+    assert.equal(
+      deploy.split(`${name}: \${{ secrets.${name} }}`).length - 1,
+      3,
+      `${name} must be scoped to exactly three steps`,
+    );
+});
+
+test("remote migrations, secrets and releases stay operator steps", () => {
   assert.ok(deploy.includes("migrations list invoxim-db --remote"));
   assert.equal(deploy.includes("migrations apply"), false);
   assert.equal(deploy.includes("secret put"), false);
+  assert.equal(deploy.includes("gh release"), false);
   assert.equal(deploy.includes("continue-on-error"), false);
 });
 
 test("the API Worker deploys before the Pages frontend", () => {
+  assert.ok(deploy.includes("pnpm install --frozen-lockfile --ignore-scripts"));
   const worker = deploy.indexOf("exec wrangler deploy");
   const pages = deploy.indexOf("exec wrangler pages deploy");
   assert.ok(worker > 0);
   assert.ok(pages > worker);
+  assert.ok(
+    deploy.includes(
+      "exec wrangler pages deploy dist --project-name invoxim-web --branch main --commit-hash",
+    ),
+  );
 });

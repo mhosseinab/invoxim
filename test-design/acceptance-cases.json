@@ -1601,6 +1601,16 @@
       "when": "Prepare validation report.",
       "then": "Worksheet remains marked not run with empty results; no invented participants/retention/accuracy or market-fit claims.",
       "status": "not_executed"
+    },
+{
+      "id": "RELEASE-07",
+      "task": "OPS-SEMANTIC-DEPLOY-01",
+      "milestone": "M1",
+      "layer": "release",
+      "given": "Semantic deploy workflow",
+      "when": "Push a strict vX.Y.Z tag or a main commit, or dispatch the workflow for a ref.",
+      "then": "Only main-reachable reviewed history deploys after the foundation verification gate and the production approval; CI applies no migration, secret or cohort change.",
+      "status": "not_executed"
     }
   ]
 }

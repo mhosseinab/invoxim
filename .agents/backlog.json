@@ -1886,6 +1886,33 @@
         "Operator must set Wrangler secret PERPLEXITY_API_KEY before deploying; every existing processing consent requires renewed Review/Start.",
         "Independent re-review (orchestrator-run) confirmed the first four findings fixed; its four new findings are fixed in c95e1f0, 0ea30f4, 4f8d096, 17e99e3 (docs 743e770); re-review of these is pending."
       ]
+    },
+{
+      "id": "OPS-SEMANTIC-DEPLOY-01",
+      "title": "Approval-gated semantic deploy workflow for Cloudflare (Worker + Pages)",
+      "milestone": "M1",
+      "status": "review",
+      "dependsOn": [],
+      "ownerRole": "orchestrator",
+      "reviewerRole": "principal-reviewer",
+      "scope": "Deployment automation only: add .github/workflows/semantic-deploy.yml reusing the foundation verification gate through workflow_call, deploying the API Worker before the Pages frontend from main-reachable reviewed history (a strict vX.Y.Z tag records the semantic version, other commits deploy as main-<short sha>), reporting pending D1 migrations read-only behind the GitHub production approval environment. No migration application, secret change, cohort enablement or release creation.",
+      "acceptanceCaseIds": [
+        "RELEASE-07"
+      ],
+      "redFirst": "Configuration contract validated by a named failing test: tools/implementation/deploy-workflow.test.mjs failed while the workflow was absent (confirmed), and failed 5 pass/2 fail against the pre-fix workflow before the review fixes reached 7/7.",
+      "deliverableEvidence": ".github/workflows/semantic-deploy.yml, workflow_call exposure in .github/workflows/verify.yml, contract tests tools/implementation/deploy-workflow.test.mjs, and matching docs in README.md, docs/09-operations-and-costs.md and MANUAL_TASKS.md M15.",
+      "localProgressEvidence": [
+        "Commit 8791970: initial workflow, test RED (workflow absent) then GREEN 6/6; node --test tools/implementation/*.test.mjs 69 pass; pnpm format:check, pnpm lint:biome, pnpm check:secrets (0 findings), pnpm check:boundaries, pnpm typecheck, pnpm build (production-artifact guard passed).",
+        "Independent principal-reviewer report 2026-10-16 (read-only, no shell in reviewer environment; documentation-based verification): findings P1-1, P2-1, P2-2, P3-1..P3-5 plus unverified annotated-tag GITHUB_SHA peeling.",
+        "Review fixes: README P1-1 corrected, P2-1/P2-2/P3-4 documented (production-branch prerequisite, approver ref/commit check, re-bundle, duplicate verify cost), P3-2 step-scoped Cloudflare credentials, annotated-tag peel via git rev-parse^{commit}, P3-1 contract assertions added (RED 5 pass/2 fail against 8791970 -> GREEN 7/7), P3-5 backlog/acceptance IDs recorded."
+      ],
+      "completionEvidence": [],
+      "blockedBy": [
+        "M15 pending: the GitHub production environment (required reviewers) and narrowly scoped CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID secrets do not exist yet; the workflow has never run on GitHub Actions and no live Cloudflare deployment is verified by this work.",
+        "invoxim-web's Pages production branch must be confirmed as main, otherwise --branch main silently deploys previews (review P2-1).",
+        "The annotated-tag commit peeling fix is unconfirmed in a live tag run (reviewer open item 7).",
+        "Re-review of the review-fix commit is pending."
+      ]
     }
   ]
 }
